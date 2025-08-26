@@ -18,9 +18,23 @@ from django.contrib import admin
 from django.urls import path
 from django.urls import include
 from django.views.generic.base import RedirectView
+from viewflow.contrib.auth import AuthViewset
+from viewflow.urls import Application, Site, ModelViewset
+from viewflow.workflow.flow import FlowAppViewset
+from bibliotheque.flows import DATFlow
+
+site = Site(title="ACME Corp", viewsets=[
+    Application(
+        title='Sample App', icon='people', app_name='sample', viewsets=[
+            FlowAppViewset(DATFlow, icon="assignment"),
+        ]
+    ),
+])
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     # path('bibliotheque/', include('bibliotheque.urls')),
-    path('', RedirectView.as_view(url='bibliotheque/', permanent=True))
+    path('', RedirectView.as_view(url='bibliotheque/', permanent=True)),
+    path('accounts/', AuthViewset(with_profile_view=False).urls),
+    path('test/', site.urls),
 ]

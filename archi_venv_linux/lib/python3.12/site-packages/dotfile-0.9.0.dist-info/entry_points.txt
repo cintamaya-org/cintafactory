@@ -1,0 +1,3 @@
+[console_scripts]
+dot = dot.core:main
+

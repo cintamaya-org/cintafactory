@@ -38,7 +38,9 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     # add ou own application
-    'bibliotheque.apps.BibliothequeConfig'
+    'bibliotheque.apps.BibliothequeConfig',
+    'viewflow',
+    'viewflow.workflow',
     ]
 
 MIDDLEWARE = [

@@ -7,7 +7,7 @@ from .models import Application, DAT, Person
 class PersonListView(generic.ListView):
     model=Person
     
-class DATListView(generic.ListView)
+class DATListView(generic.ListView):
     model=DAT
 
 def index(request):

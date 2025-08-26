@@ -1,0 +1,134 @@
+Metadata-Version: 2.1
+Name: dotfile
+Version: 0.9.0
+Summary: dot is a git wrapper for managing dotfiles
+Home-page: https://github.com/kylepollina/dot
+Author: Kyle Pollina
+Author-email: kylepollina@pm.me
+License: MIT
+Platform: UNKNOWN
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.7
+Description-Content-Type: text/markdown
+Requires-Dist: click
+Requires-Dist: toml
+
+
+# dot
+
+`dot` is a git wrapper for managing dotfiles
+
+## Installation
+
+```
+pip install dotfile
+```
+
+## How it works
+
+The basics of `dot` is that it runs this git command: 
+
+```
+git --git-dir=$HOME/.dotfiles --work-tree=$HOME 
+```
+
+You can easily specify where your git-dir is and what your work-tree is with `dot`.
+
+#### Why use `dot` instead of aliasing this command?
+`dot` comes with a few handy custom git commands that are specific with managing dotfiles.
+
+* `dot cwf` (short for commit-with-filenames) will create a nice commit message showing which files you added/deleted/modified. You can also add your own description with the `-m` flag.
+* `dot s` status of tracked files only
+* `dot au` add/update currently tracked files
+* `dot list` list all currently tracked files
+
+
+## Usage
+
+To setup your dotfile repository, run `dot init` and it will walk you through the setup.
+You can setup a new repository, or use an existing repository already on your machine.
+
+### New repository setup
+
+```
+[~]$ dot init
+===== dotfile setup =====
+Choose how you want to initialize your dotfiles:
+[0] Create new dotfile repository
+[1] Use existing dotfile repository
+ > 0
+New repository setup
+--------------------
+Repository name: [.dotfiles]
+Default work tree: [/Users/kyle]
+
+Generated configs: /Users/kyle/.config/dot/config.toml
+
+[dot]
+git-dir=/Users/kyle/.dotfiles/.git
+work-tree=/Users/kyle
+
+Do you wish to continue? (y/n [y]) y
+
+Created config file at /Users/kyle/.config/dot/config.toml
+Initialized empty Git repository in /Users/kyle/.dotfiles/.git/
+Dotfile repository created at /Users/kyle/.dotfiles
+```
+
+#### Existing repository setup
+```
+[~]$ git clone https://github.com/kylepollina/.dotfiles
+Cloning into '.dotfiles'...
+remote: Enumerating objects: 65, done.
+remote: Counting objects: 100% (65/65), done.
+remote: Compressing objects: 100% (45/45), done.
+remote: Total 2101 (delta 39), reused 43 (delta 20), pack-reused 2036
+Receiving objects: 100% (2101/2101), 1.18 MiB | 1.89 MiB/s, done.
+Resolving deltas: 100% (577/577), done.
+[~]$
+[~]$ dot init
+===== dotfile setup =====
+Choose how you want to initialize your dotfiles:
+[0] Create new dotfile repository
+[1] Use existing dotfile repository
+ > 1
+Existing repository setup
+-------------------------
+Repository name: .dotfiles
+Work tree directory: [/Users/kyle]
+
+Generated configs: /Users/kyle/.config/dot/config.toml
+
+[dot]
+git-dir=/Users/kyle/.dotfiles/.git
+work-tree=/Users/kyle
+
+Do you wish to continue? (y/n [y]) y
+
+Created config file at /Users/kyle/.config/dot/config.toml
+Dotfiles setup at /Users/kyle/.dotfiles
+
+Analyzing dotfile repository...
+There is 2 files and 0 directories in /Users/kyle/.dotfiles
+
+Files
+-----
+.zprofile
+.bash_profile
+
+Would you like to move these into your work tree? (y/n [y]) y
+
+Moving file /Users/kyle/.dotfiles/.zprofile to /Users/kyle
+overwrite /Users/kyle/.zprofile? (y/n [n]) y
+/Users/kyle/.dotfiles/.zprofile -> /Users/kyle/.zprofile
+
+Moving file /Users/kyle/.dotfiles/.bash_profile to /Users/kyle
+overwrite /Users/kyle/.bash_profile? (y/n [n]) n
+not overwritten
+```
+
+## License
+MIT License
+
+

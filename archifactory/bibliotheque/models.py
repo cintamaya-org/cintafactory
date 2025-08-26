@@ -3,9 +3,10 @@ from django.db import models
 # Create your models here.
 
 from django.db import models
-from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
-from django.db.models import Case, Value, When
+from viewflow import jsonstore
+from viewflow.workflow.models import Process
+from django import forms
 
 class Person(models.Model):
     
@@ -140,3 +141,21 @@ class ComposantLogiciel(models.Model):
     def __str__(self):
         return self.CLName
     
+
+class DATProcess(Process):
+    text = jsonstore.CharField(max_length=150)
+    approved = jsonstore.BooleanField(default=False)
+
+    class Meta:
+        proxy = True
+
+    def __str__(self):
+        return self.text or f"DATProcess #{self.pk}"
+
+class DATProcessForm(forms.ModelForm):
+    class Meta:
+        model = DATProcess
+        fields = ['text', 'approved']
+        labels = {
+            'approved': 'Approuvé',
+        }
