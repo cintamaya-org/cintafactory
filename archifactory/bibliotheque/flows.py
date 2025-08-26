@@ -2,7 +2,7 @@ from viewflow import this
 from viewflow.workflow import flow, act
 from viewflow.workflow.flow import views
 
-from bibliotheque.models import DATProcess, DATProcessForm
+from bibliotheque.models import DATProcess, DATApproveForm, DATAssignForm
 
 
 class DATFlow(flow.Flow):
@@ -19,15 +19,14 @@ class DATFlow(flow.Flow):
     )
 
     nvdossier = (
-        flow.View(views.UpdateProcessView.as_view(fields=["text"]))
+        flow.View(views.UpdateProcessView.as_view(form_class=DATAssignForm))
         .Annotation(title="Nouveau dossier (DAT)")
-        .Assign(None)
         .Permission(auto_create=True)
         .Next(this.valref)
     )
 
     valref = (
-        flow.View(views.UpdateProcessView.as_view(form_class=DATProcessForm))
+        flow.View(views.UpdateProcessView.as_view(form_class=DATApproveForm))
         .Annotation(title="Validation du référent")
         .Permission(auto_create=True)
         .Next(this.checkvalref)
@@ -67,7 +66,7 @@ class DATFlow(flow.Flow):
     )
 
     precosecu = (
-        flow.View(views.UpdateProcessView.as_view(form_class=DATProcessForm))
+        flow.View(views.UpdateProcessView.as_view(form_class=DATApproveForm))
         .Annotation(title="Recommendation sécurité")
         .Permission(auto_create=True)
         .Next(this.checkprecosecu)
@@ -94,7 +93,7 @@ class DATFlow(flow.Flow):
     )
 
     deropssi = (
-        flow.View(views.UpdateProcessView.as_view(form_class=DATProcessForm))
+        flow.View(views.UpdateProcessView.as_view(form_class=DATApproveForm))
         .Annotation(title="Dérogation à la pssi")
         .Permission(auto_create=True)
         .Next(this.checkderopssi)
@@ -133,7 +132,7 @@ class DATFlow(flow.Flow):
     )
 
     valinfra = (
-        flow.View(views.UpdateProcessView.as_view(form_class=DATProcessForm))
+        flow.View(views.UpdateProcessView.as_view(form_class=DATApproveForm))
         .Annotation(title="Validation de l'infra")
         .Permission(auto_create=True)
         .Next(this.checkvalinfra)
@@ -153,7 +152,7 @@ class DATFlow(flow.Flow):
     )
 
     pres = (
-        flow.View(views.UpdateProcessView.as_view(form_class=DATProcessForm))
+        flow.View(views.UpdateProcessView.as_view(form_class=DATApproveForm))
         .Annotation(title="Présentation en comité")
         .Permission(auto_create=True)
         .Next(this.checkpres)
