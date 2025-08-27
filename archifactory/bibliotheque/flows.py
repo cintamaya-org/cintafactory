@@ -45,21 +45,21 @@ class DATFlow(flow.Flow):
     )
 
     urba = (
-        flow.View(views.UpdateProcessView.as_view(fields=["text"]))
+        flow.View(views.UpdateProcessView.as_view(form_class=DATAssignForm))
         .Annotation(title="Instruction urbanisme")
         .Permission(auto_create=True)
 
     )
 
     docarchi = (
-        flow.View(views.UpdateProcessView.as_view(fields=["text"]))
+        flow.View(views.UpdateProcessView.as_view(form_class=DATAssignForm))
         .Annotation(title="Documentation architecture technique")
         .Permission(auto_create=True)
         .Next(this.arisque)
     )
 
     arisque = (
-        flow.View(views.UpdateProcessView.as_view(fields=["text"]))
+        flow.View(views.UpdateProcessView.as_view(form_class=DATAssignForm))
         .Annotation(title="Analyse de risque")
         .Permission(auto_create=True)
         .Next(this.precosecu)
@@ -79,7 +79,7 @@ class DATFlow(flow.Flow):
     )
 
     archiprete = (
-        flow.View(views.UpdateProcessView.as_view(fields=["text"]))
+        flow.View(views.UpdateProcessView.as_view(form_class=DATAssignForm))
         .Annotation(title="Architecture prête")
         .Permission(auto_create=True)
         .Next(this.split2)
@@ -106,21 +106,21 @@ class DATFlow(flow.Flow):
     )
 
     IOS = (
-        flow.View(views.UpdateProcessView.as_view(fields=["text"]))
+        flow.View(views.UpdateProcessView.as_view(form_class=DATAssignForm))
         .Annotation(title="Inscription offres de service")
         .Permission(auto_create=True)
         .Next(this.join)
     )
 
     valcapa = (
-        flow.View(views.UpdateProcessView.as_view(fields=["text"]))
+        flow.View(views.UpdateProcessView.as_view(form_class=DATAssignForm))
         .Annotation(title="Validation capacitaire")
         .Permission(auto_create=True)
         .Next(this.join)
     )
 
     cartoflux = (
-        flow.View(views.UpdateProcessView.as_view(fields=["text"]))
+        flow.View(views.UpdateProcessView.as_view(form_class=DATAssignForm))
         .Annotation(title="Cartographie des flux")
         .Permission(auto_create=True)
         .Next(this.join)
@@ -145,7 +145,7 @@ class DATFlow(flow.Flow):
     )
 
     datval = (
-        flow.View(views.UpdateProcessView.as_view(fields=["text"]))
+        flow.View(views.UpdateProcessView.as_view(form_class=DATAssignForm))
         .Annotation(title="Validation du DAT")
         .Permission(auto_create=True)
         .Next(this.pres)
@@ -165,14 +165,14 @@ class DATFlow(flow.Flow):
     )
 
     datfinal = (
-        flow.View(views.UpdateProcessView.as_view(fields=["text"]))
+        flow.View(views.UpdateProcessView.as_view(form_class=DATAssignForm))
         .Annotation(title="DAT final")
         .Permission(auto_create=True)
         .Next(this.end)
     )
 
     leveres = (
-        flow.View(views.UpdateProcessView.as_view(fields=["text"]))
+        flow.View(views.UpdateProcessView.as_view(form_class=DATAssignForm))
         .Annotation(title="Levé de réserve")
         .Permission(auto_create=True)
     )
