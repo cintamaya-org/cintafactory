@@ -25,7 +25,7 @@ SECRET_KEY = 'django-insecure-3$41h8nkv&!0(^5p-_@)kaxoft-l51pq0+(4js9finylx3vr_)
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['51.38.230.156', 'cintarchifactory.cintamaya.com']
 
 
 # Application definition
@@ -124,3 +124,24 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+# Django doit savoir que le client est en HTTPS (via le reverse proxy)
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# Cookies marqués "secure" en HTTPS
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+
+# Domaine(s) autorisés pour la protection CSRF (avec schéma !)
+CSRF_TRUSTED_ORIGINS = [
+    "https://cintarchifactory.cintamaya.com",
+]
+
+# (optionnel mais recommandé)
+SECURE_HSTS_SECONDS = 31536000       # force HTTPS dans le navigateur pendant 1 an
+SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+SECURE_HSTS_PRELOAD = False
+
+# (optionnel)
+SECURE_SSL_REDIRECT = False  # laisse Nginx faire la redirection HTTP->HTTPS
