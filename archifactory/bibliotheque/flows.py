@@ -15,70 +15,70 @@ class DATFlow(flow.Flow):
         flow.Start(views.CreateProcessView.as_view(fields=["text"]))
         .Annotation(title="Nouveau besoin (DAL)")
         .Permission(auto_create=True)
-        .Next(this.nvdossier)
+        .Next(this.NouveauDossier)
     )
 
-    nvdossier = (
+    NouveauDossier = (
         flow.View(views.UpdateProcessView.as_view(form_class=DATAssignForm))
         .Annotation(title="Nouveau dossier (DAT)")
         .Permission(auto_create=True)
-        .Next(this.valref)
+        .Next(this.ValidationReferent)
     )
 
-    valref = (
+    ValidationReferent = (
         flow.View(views.UpdateProcessView.as_view(form_class=DATApproveForm))
         .Annotation(title="Validation du référent")
         .Permission(auto_create=True)
-        .Next(this.checkvalref)
+        .Next(this.VerificationValidationReferent)
     )
 
-    checkvalref = (
+    VerificationValidationReferent = (
         flow.If(act.process.approved)
         .Then(this.split)
-        .Else(this.nvdossier)
+        .Else(this.NouveauDossier)
     )
 
     split=(
         flow.Split()
-        .Next(this.urba)
-        .Next(this.docarchi)
+        .Next(this.InstructionUrbanistes)
+        .Next(this.DocumentationArchitectureTechnique)
     )
 
-    urba = (
+    InstructionUrbanistes = (
         flow.View(views.UpdateProcessView.as_view(fields=["text"]))
         .Annotation(title="Instruction urbanisme")
         .Permission(auto_create=True)
 
     )
 
-    docarchi = (
+    DocumentationArchitectureTechnique = (
         flow.View(views.UpdateProcessView.as_view(fields=["text"]))
         .Annotation(title="Documentation architecture technique")
         .Permission(auto_create=True)
-        .Next(this.arisque)
+        .Next(this.AnalyseRisques)
     )
 
-    arisque = (
+    AnalyseRisques = (
         flow.View(views.UpdateProcessView.as_view(fields=["text"]))
         .Annotation(title="Analyse de risque")
         .Permission(auto_create=True)
-        .Next(this.precosecu)
+        .Next(this.PreconisationSecurite)
     )
 
-    precosecu = (
+    PreconisationSecurite = (
         flow.View(views.UpdateProcessView.as_view(form_class=DATApproveForm))
         .Annotation(title="Recommendation sécurité")
         .Permission(auto_create=True)
-        .Next(this.checkprecosecu)
+        .Next(this.ValidationPreconisationSecurite)
     )
 
-    checkprecosecu = (
+    ValidationPreconisationSecurite = (
         flow.If(act.process.approved)
-        .Then(this.archiprete)
-        .Else(this.deropssi)
+        .Then(this.ArchitecturePrete)
+        .Else(this.DerogationPSSI)
     )
 
-    archiprete = (
+    ArchitecturePrete = (
         flow.View(views.UpdateProcessView.as_view(fields=["text"]))
         .Annotation(title="Architecture prête")
         .Permission(auto_create=True)
@@ -87,39 +87,39 @@ class DATFlow(flow.Flow):
 
     split2 =(
         flow.Split()
-        .Next(this.IOS)
-        .Next(this.valcapa)
-        .Next(this.cartoflux)
+        .Next(this.InscriptionOffresService)
+        .Next(this.ValidationCapacitaire)
+        .Next(this.PublicationCartographieFlux)
     )
 
-    deropssi = (
+    DerogationPSSI = (
         flow.View(views.UpdateProcessView.as_view(form_class=DATApproveForm))
         .Annotation(title="Dérogation à la pssi")
         .Permission(auto_create=True)
-        .Next(this.checkderopssi)
+        .Next(this.ValidationDerogationPSSI)
     )
 
-    checkderopssi = (
+    ValidationDerogationPSSI = (
         flow.If(act.process.approved)
-        .Then(this.archiprete)
-        .Else(this.docarchi)
+        .Then(this.ArchitecturePrete)
+        .Else(this.DocumentationArchitectureTechnique)
     )
 
-    IOS = (
+    InscriptionOffresService = (
         flow.View(views.UpdateProcessView.as_view(fields=["text"]))
         .Annotation(title="Inscription offres de service")
         .Permission(auto_create=True)
         .Next(this.join)
     )
 
-    valcapa = (
+    ValidationCapacitaire = (
         flow.View(views.UpdateProcessView.as_view(fields=["text"]))
         .Annotation(title="Validation capacitaire")
         .Permission(auto_create=True)
         .Next(this.join)
     )
 
-    cartoflux = (
+    PublicationCartographieFlux = (
         flow.View(views.UpdateProcessView.as_view(fields=["text"]))
         .Annotation(title="Cartographie des flux")
         .Permission(auto_create=True)
@@ -128,50 +128,50 @@ class DATFlow(flow.Flow):
 
     join = (
         flow.Join()
-        .Next(this.valinfra)
+        .Next(this.ValidationInfrastructureExploitation)
     )
 
-    valinfra = (
+    ValidationInfrastructureExploitation = (
         flow.View(views.UpdateProcessView.as_view(form_class=DATApproveForm))
         .Annotation(title="Validation de l'infra")
         .Permission(auto_create=True)
-        .Next(this.checkvalinfra)
+        .Next(this.ValidationValidationInfrastructureExploitation)
     )
 
-    checkvalinfra = (
+    ValidationValidationInfrastructureExploitation = (
         flow.If(act.process.approved)
-        .Then(this.datval)
-        .Else(this.archiprete)
+        .Then(this.DATValide)
+        .Else(this.ArchitecturePrete)
     )
 
-    datval = (
+    DATValide = (
         flow.View(views.UpdateProcessView.as_view(fields=["text"]))
         .Annotation(title="Validation du DAT")
         .Permission(auto_create=True)
-        .Next(this.pres)
+        .Next(this.PresentationComite)
     )
 
-    pres = (
+    PresentationComite = (
         flow.View(views.UpdateProcessView.as_view(form_class=DATApproveForm))
         .Annotation(title="Présentation en comité")
         .Permission(auto_create=True)
-        .Next(this.checkpres)
+        .Next(this.ValidationPresentationComite)
     )
 
-    checkpres = (
+    ValidationPresentationComite = (
         flow.If(act.process.approved)
-        .Then(this.datfinal)
-        .Else(this.leveres)
+        .Then(this.DATPublie)
+        .Else(this.LeveReserve)
     )
 
-    datfinal = (
+    DATPublie = (
         flow.View(views.UpdateProcessView.as_view(fields=["text"]))
         .Annotation(title="DAT final")
         .Permission(auto_create=True)
         .Next(this.end)
     )
 
-    leveres = (
+    LeveReserve = (
         flow.View(views.UpdateProcessView.as_view(fields=["text"]))
         .Annotation(title="Levé de réserve")
         .Permission(auto_create=True)
