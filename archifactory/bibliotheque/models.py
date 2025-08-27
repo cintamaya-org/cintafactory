@@ -7,6 +7,7 @@ from django.utils.translation import gettext_lazy as _
 from viewflow import jsonstore
 from viewflow.workflow.models import Process
 from django import forms
+from django.contrib.auth.models import User
 
 class Person(models.Model):
     
@@ -145,17 +146,22 @@ class ComposantLogiciel(models.Model):
 class DATProcess(Process):
     text = jsonstore.CharField(max_length=150)
     approved = jsonstore.BooleanField(default=False)
-
+    assigned_to = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     class Meta:
-        proxy = True
+        verbose_name = "DAT process"
 
     def __str__(self):
         return self.text or f"DATProcess #{self.pk}"
 
-class DATProcessForm(forms.ModelForm):
+class DATAssignForm(forms.ModelForm):
     class Meta:
         model = DATProcess
-        fields = ['text', 'approved']
-        labels = {
-            'approved': 'Approuvé',
-        }
+        fields = ['assigned_to']
+        labels = {'assigned_to': 'Assigné à'}
+
+
+class DATApproveForm(forms.ModelForm):
+    class Meta:
+        model = DATProcess
+        fields = ['approved']
+        labels = {'approved': 'Approuvé'}
