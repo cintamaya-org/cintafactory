@@ -25,7 +25,7 @@ from bibliotheque.flows import DATFlow
 
 site = Site(title="ACME Corp", viewsets=[
     Application(
-        title='Sample App', icon='people', app_name='sample', viewsets=[
+        title='Cintarchifactory', icon='people', app_name='sample', viewsets=[
             FlowAppViewset(DATFlow, icon="assignment"),
         ]
     ),
@@ -33,8 +33,7 @@ site = Site(title="ACME Corp", viewsets=[
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    # path('bibliotheque/', include('bibliotheque.urls')),
-    path('', RedirectView.as_view(url='bibliotheque/', permanent=True)),
+    path('', RedirectView.as_view(url='accounts/login/', permanent=False)),
     path('accounts/', AuthViewset(with_profile_view=False).urls),
-    path('test/', site.urls),
+    path('cintafactory/', site.urls),
 ]
