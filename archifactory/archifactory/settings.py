@@ -38,7 +38,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     # add ou own application
-    'bibliotheque.apps.BibliothequeConfig',
+    'bibliotheque',
     'viewflow',
     'viewflow.workflow',
     ]
@@ -146,6 +146,6 @@ SECURE_HSTS_PRELOAD = False
 # (optionnel)
 SECURE_SSL_REDIRECT = False  # laisse Nginx faire la redirection HTTP->HTTPS
 
-# gestion des redirection de connexion/deconnexion
+# gestion des redirections de connexion/deconnexion
 LOGIN_REDIRECT_URL = '/cintafactory/'
 LOGOUT_REDIRECT_URL = '/accounts/login/'
