@@ -16,9 +16,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Check source files
-        run: ls -al archifactory/
-
       - name: Copy files via SSH
         uses: appleboy/scp-action@v1
         with:
