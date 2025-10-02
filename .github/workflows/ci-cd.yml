@@ -24,9 +24,8 @@ jobs:
           key: ${{secrets.VPS_SSH_KEY}}
           source: "archifactory/."
           target: /opt/archifactory
-          debug: true
           strip_components: 0
- 
+
       - name: Deploy to VPS
         uses: appleboy/ssh-action@v1
         with:
