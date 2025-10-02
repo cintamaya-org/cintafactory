@@ -1,4 +1,4 @@
-ervices:
+services:
   web: 
     build:
       context: archifactory
