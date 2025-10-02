@@ -16,16 +16,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Test writing to target folder
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.VPS_IP }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          script: |
-            echo "TEST OK" > /opt/archifactory/test.txt
-            ls -al /opt/archifactory
-
       - name: Copy files via SSH
         uses: appleboy/scp-action@v1
         with:
@@ -34,6 +24,7 @@ jobs:
           key: ${{secrets.VPS_SSH_KEY}}
           source: "archifactory/."
           target: /opt/archifactory
+          tar_tmp_path: ""
           strip_components: 0
 
       - name: Deploy to VPS
