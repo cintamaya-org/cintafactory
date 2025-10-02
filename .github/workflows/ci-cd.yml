@@ -22,7 +22,7 @@ jobs:
           host: ${{secrets.VPS_IP}}
           username: ${{secrets.VPS_USER}}
           key: ${{secrets.VPS_SSH_KEY}}
-          source: "archifactory/."
+          source: "archifactory/.,docker-compose.yml"
           target: /opt/archifactory
           strip_components: 0
  
