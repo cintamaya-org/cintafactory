@@ -24,7 +24,7 @@ jobs:
           key: ${{secrets.VPS_SSH_KEY}}
           source: "archifactory/."
           target: /opt/archifactory
-          tar_tmp_path: ""
+          debug: true
           strip_components: 0
 
       - name: Deploy to VPS
