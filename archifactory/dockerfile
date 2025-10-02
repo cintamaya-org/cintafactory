@@ -2,10 +2,10 @@
 
 FROM python:3.12-bookworm AS dev-envs
 EXPOSE 8000
-WORKDIR /App
-COPY requirements.txt /App
+WORKDIR /archifactory
+COPY requirements.txt /archifactory
 RUN pip3 install -r requirements.txt --no-cache-dir
-COPY . /App
+COPY . /archifactory
 ENTRYPOINT ["python3"]
 CMD ["manage.py", "runserver", "0.0.0.0:8000"]
 
