@@ -1,0 +1,20 @@
+# syntax=docker/dockerfile:1.4
+
+FROM python:3.12-bookworm AS dev-envs
+EXPOSE 8000
+WORKDIR /App
+COPY requirements.txt /App
+RUN pip3 install -r requirements.txt --no-cache-dir
+COPY . /App
+ENTRYPOINT ["python3"]
+CMD ["manage.py", "runserver", "0.0.0.0:8000"]
+
+RUN apt-get update && \
+        apt-get install -y git
+
+RUN groupadd -r docker && \
+        useradd -m -s /bin/bash -g docker vscode
+
+# install Docker tools (cli, buildx, compose)
+COPY --from=gloursdocker/docker / /
+CMD ["manage.py", "runserver", "0.0.0.0:8000"]
