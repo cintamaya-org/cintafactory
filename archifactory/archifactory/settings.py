@@ -25,7 +25,7 @@ SECRET_KEY = 'django-insecure-3$41h8nkv&!0(^5p-_@)kaxoft-l51pq0+(4js9finylx3vr_)
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['51.38.230.156', 'cintarchifactory.cintamaya.com']
+ALLOWED_HOSTS = ['79.137.78.157', 'cintarchifactory.cintamaya.com']
 
 
 # Application definition
@@ -38,7 +38,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     # add ou own application
-    'bibliotheque.apps.BibliothequeConfig',
+    'bibliotheque',
     'viewflow',
     'viewflow.workflow',
     ]
@@ -146,6 +146,6 @@ SECURE_HSTS_PRELOAD = False
 # (optionnel)
 SECURE_SSL_REDIRECT = False  # laisse Nginx faire la redirection HTTP->HTTPS
 
-# gestion des redirection de connexion/deconnexion
+# gestion des redirections de connexion/deconnexion
 LOGIN_REDIRECT_URL = '/cintafactory/'
 LOGOUT_REDIRECT_URL = '/accounts/login/'

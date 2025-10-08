@@ -1,0 +1,41 @@
+name: CI/CD Pipeline
+
+on: 
+  push:
+    branches:
+      - dev-arthur
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Copy files via SSH
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{secrets.VPS_IP}}
+          username: ${{secrets.VPS_USER}}
+          key: ${{secrets.VPS_SSH_KEY}}
+          source: "archifactory/.,docker-compose.yml"
+          target: /opt/archifactory
+          strip_components: 0
+ 
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{secrets.VPS_IP}}
+          username: ${{secrets.VPS_USER}}
+          key: ${{secrets.VPS_SSH_KEY}}
+          script: |
+            cd /opt/archifactory
+            docker-compose down || true
+            docker-compose pull
+            docker-compose up --build -d
+            docker image prune -f
+            docker ps
