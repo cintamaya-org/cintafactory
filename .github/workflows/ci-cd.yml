@@ -6,7 +6,7 @@ on:
       - dev-arthur
   pull_request:
     branches:
-      - dev-arthur
+      - main
 
 jobs:
   build:
@@ -34,5 +34,8 @@ jobs:
           key: ${{secrets.VPS_SSH_KEY}}
           script: |
             cd /opt/archifactory
+            docker-compose down || true
+            docker-compose pull
             docker-compose up --build -d
+            docker image prune -f
             docker ps
