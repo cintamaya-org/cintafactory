@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pkl
+*.so
+
+# Virtual environment
+venv/
+env/
+.venv/
+.env/
+
+# Django stuff
+*.log
+*.pot
+*.pyc
+db.sqlite3
+media/
+staticfiles/
+static/
+
+# Viewflow specific (compiled BPMN diagrams, temp files)
+*.bpmn~
+*.bpmn.py
+viewflow*/migrations/
+viewflow*/__pycache__/
+
+# IDEs and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env.local
+.env.production
+.env.development
+
+# pytest / coverage
+.coverage
+htmlcov/
+.cache/
+pytest_cache/
