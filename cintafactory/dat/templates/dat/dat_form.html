@@ -1,0 +1,21 @@
+{% extends "material/frontend/base_module.html" %}
+{% load material_form i18n %}
+
+{% block content %}
+<div class="card">
+  <div class="card-content">
+    <h5 style="margin-top:0;">Create DAT</h5>
+    <p class="grey-text text-darken-1" style="margin-bottom:1rem;">
+      This will create a new DAT with status <strong>Draft</strong> and set you as the Request Owner.
+    </p>
+    <form method="post" novalidate>
+      {% csrf_token %}
+      {% form form=form %}{% endform %}
+      <div class="card-action" style="padding-left:0;">
+        <button class="btn waves-effect" type="submit">Create</button>
+        <a class="btn-flat" href="{% url 'dat:my_list' %}">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

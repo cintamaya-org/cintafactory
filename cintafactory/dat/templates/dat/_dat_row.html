@@ -1,0 +1,19 @@
+<tr>
+  <td>{{ obj.business_id }}</td>
+  <td>{{ obj.title }}</td>
+  <td>{{ obj.project_name }}</td>
+  <td>{{ obj.get_status_display }}</td>
+  <td>{{ obj.created_at|date:"Y-m-d H:i" }}</td>
+  <td>
+    {% if request.user.is_superuser or request.user.is_staff or request.user.role.slug == "admin" %}
+      <a href="/dat/manage/dats/crud/{{ obj.pk }}/change/" class="btn-flat waves-effect">Edit</a>
+    {% else %}
+      {# If you want owners to edit their own draft: #}
+      {% if obj.created_by_id == request.user.id and obj.status == "draft" %}
+        <a href="/dat/manage/dats/crud/{{ obj.pk }}/change/" class="btn-flat waves-effect">Edit</a>
+      {% else %}
+        <span title="No permission" style="color:#888;">—</span>
+      {% endif %}
+    {% endif %}
+  </td>
+</tr>

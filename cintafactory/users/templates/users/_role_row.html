@@ -1,0 +1,11 @@
+<tr>
+  <td>{{ obj.name }}</td>
+  <td>{{ obj.slug }}</td>
+  <td>
+    {% if request.user.is_superuser or request.user.is_staff or request.user.role.slug == "admin" %}
+      <a href="{% url 'users:role_change' pk=obj.pk %}" class="btn-flat waves-effect">Edit</a>
+    {% else %}
+      <span title="No permission" style="color:#888;">—</span>
+    {% endif %}
+  </td>
+</tr>
