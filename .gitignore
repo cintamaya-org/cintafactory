@@ -20,6 +20,8 @@ db.sqlite3
 media/
 staticfiles/
 static/
+deploy/env/*.env
+!deploy/env/*.env.example
 
 # Viewflow specific (compiled BPMN diagrams, temp files)
 *.bpmn~

@@ -20,6 +20,9 @@ from material.frontend import urls as material_urls
 
 urlpatterns = [
     path("", include(material_urls)),     # Material shell
-    path("admin/", admin.site.urls),      # Django admin (optional)
-    path("dat/", include("dat.urls", namespace="dat")),
+    path("admin/", admin.site.urls),      # Django admin 
+    path("users/", include(("users.urls", "users"), namespace="users")), 
+    path("dat/", include(("dat.urls", "dat"), namespace="dat")),
+
+    
 ]

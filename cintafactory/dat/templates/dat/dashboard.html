@@ -1,0 +1,103 @@
+{% extends current_module.base_template %}
+{% load i18n %}
+
+{% block page_title %}{% trans "DAT Dashboard" %}{% endblock %}
+
+{% block breadcrumbs_items %}
+  <a class="active">{% trans "Manage DAT (admin)" %}</a>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col s12 m4">
+    <div class="card">
+      <div class="card-content">
+        <span class="card-title">{% trans "Total DATs" %}</span>
+        <h4 style="margin-top:1rem;">{{ total_dats }}</h4>
+      </div>
+      <div class="card-action">
+        <a href="/dat/manage/dats/crud/" class="btn waves-effect waves-light">
+          <i class="material-icons left">settings</i>{% trans "Open CRUD Console" %}
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="col s12 m8">
+    <div class="card">
+      <div class="card-content">
+        <span class="card-title">{% trans "Monthly Activity (last 6 months)" %}</span>
+        <div style="height:220px; position:relative;">
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none" style="width:100%; height:100%; background:linear-gradient(180deg, rgba(41,121,255,0.08), rgba(41,121,255,0)); border-radius:4px;">
+            <polygon points="{{ monthly_chart_area_points|default:'0,100 100,100' }}" fill="rgba(41,121,255,0.2)"></polygon>
+            <polyline points="{{ monthly_chart_points|default:'0,100 100,100' }}" fill="none" stroke="rgba(41,121,255,0.7)" stroke-width="2"></polyline>
+          </svg>
+        </div>
+        <div class="row" style="margin-top:1rem;">
+          {% for month in monthly_activity %}
+            <div class="col s6 m4" style="margin-bottom:0.75rem;">
+              <div style="font-size:0.95rem; color:#546e7a;">{{ month.label }}</div>
+              <div style="font-size:1.2rem; font-weight:600;">{{ month.count }}</div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="col s12 m6">
+    <div class="card">
+      <div class="card-content">
+        <span class="card-title">{% trans "Status Breakdown" %}</span>
+        {% if status_summary %}
+          <ul class="collection">
+            {% for item in status_summary %}
+              <li class="collection-item">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+                  <span style="font-weight:500;">{{ item.label }}</span>
+                  <span>{{ item.count }}</span>
+                </div>
+                <div class="progress" style="margin:0;">
+                  <div class="determinate" style="width: {{ item.percentage }}%;"></div>
+                </div>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="grey-text">{% trans "No DAT data available yet." %}</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col s12 m6">
+    <div class="card">
+      <div class="card-content">
+        <span class="card-title">{% trans "Top Contributors" %}</span>
+        {% if top_owners %}
+          <table class="highlight">
+            <thead>
+              <tr>
+                <th>{% trans "Owner" %}</th>
+                <th class="right-align">{% trans "DATs" %}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for owner in top_owners %}
+                <tr>
+                  <td>{{ owner.owner__username|default:_("Unknown") }}</td>
+                  <td class="right-align">{{ owner.total }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p class="grey-text">{% trans "No owner data yet." %}</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

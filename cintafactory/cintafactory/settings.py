@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -20,16 +21,24 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-m3*wk1omhr%_7ky#c^s9i6&q@f$19+y&1-lh^1b)+tm$hcz+s1'
+SECRET_KEY = os.getenv(
+    "DJANGO_SECRET_KEY",
+    "django-insecure-m3*wk1omhr%_7ky#c^s9i6&q@f$19+y&1-lh^1b)+tm$hcz+s1",
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv("DJANGO_DEBUG", "True").lower() in {"1", "true", "yes", "on"}
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = [host.strip() for host in os.getenv("DJANGO_ALLOWED_HOSTS", "*").split(",") if host.strip()]
 
 # Application STATIC_URL 
 
 INSTALLED_APPS = [
+    "material",
+    "material.frontend",
+
+    "viewflow",
+
     # Django built-ins
     "django.contrib.admin",
     "django.contrib.auth",
@@ -42,14 +51,8 @@ INSTALLED_APPS = [
     "workflows",
     "users.apps.UsersConfig",
     "dat.apps.DatConfig",
+    "account.apps.AccountConfig",
 
-    # Viewflow (core)
-    "viewflow",
-    "material",
-    "material.frontend",
-
-
-    
 ]
 
 AUTH_USER_MODEL = "users.User"
@@ -70,13 +73,14 @@ ROOT_URLCONF = 'cintafactory.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR / "templates"],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                "material.frontend.context_processors.modules",
             ],
         },
     },
@@ -132,6 +136,15 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+
+STATICFILES_DIRS = [
+    BASE_DIR / "static",
+]
+
+STATIC_ROOT = Path(os.getenv("DJANGO_STATIC_ROOT", BASE_DIR / "staticfiles"))
+
+MEDIA_URL = "media/"
+MEDIA_ROOT = Path(os.getenv("DJANGO_MEDIA_ROOT", BASE_DIR / "media"))
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

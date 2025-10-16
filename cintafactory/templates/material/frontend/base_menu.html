@@ -1,0 +1,91 @@
+{% load i18n %}
+{% with module_obj=module|default:current_module %}
+<div class="module-menu{% if module_obj == current_module %} is-active{% endif %}"
+     data-module-menu
+     data-module-menu-initial="{% if module_obj == current_module %}open{% else %}closed{% endif %}">
+  <div class="module-menu__header" style="display:flex; align-items:center; justify-content:space-between; gap:0.5rem;">
+    <a href="{{ module_obj.index_url }}" class="module-menu__link" data-turbolinks="false" style="display:flex; align-items:center; gap:0.5rem; flex:1;">
+      <span class="module-menu__icon">{{ module_obj.icon|safe }}</span>
+      <span class="module-menu__title" style="font-weight:600;">{{ module_obj.verbose_name }}</span>
+    </a>
+    <button type="button"
+            class="btn-flat waves-effect module-menu__toggle"
+            data-module-menu-toggle
+            aria-expanded="{% if module_obj == current_module %}true{% else %}false{% endif %}"
+            aria-label="{% block menu_toggle_aria_label %}{{ module_obj.verbose_name }}{% endblock %}"
+            style="display:flex; align-items:center; gap:0.25rem;">
+      <span class="module-menu__toggle-text" style="display:flex; align-items:center; gap:0.25rem;">
+        {% block menu_toggle_label %}{{ module_obj.verbose_name }}{% endblock %}
+      </span>
+      <i class="material-icons module-menu__toggle-icon" aria-hidden="true">expand_more</i>
+    </button>
+  </div>
+  <ul class="module-menu__items" data-module-menu-body {% if module_obj != current_module %}hidden{% endif %}>
+    {% block base_menu_items %}
+      {% include "material/frontend/_menu_items.html" %}
+    {% endblock %}
+    {% block app_menu_items %}{% endblock %}
+  </ul>
+</div>
+{% endwith %}
+{% block module_menu_scripts %}
+<script>
+(function () {
+  function setExpanded(toggle, expanded) {
+    var root = toggle.closest('[data-module-menu]');
+    if (!root) {
+      return;
+    }
+    var body = root.querySelector('[data-module-menu-body]');
+    toggle.setAttribute('aria-expanded', expanded);
+    toggle.classList.toggle('is-open', expanded);
+    root.classList.toggle('is-expanded', expanded);
+    if (body) {
+      if (expanded) {
+        body.removeAttribute('hidden');
+      } else {
+        body.setAttribute('hidden', 'hidden');
+      }
+    }
+    var icon = toggle.querySelector('.module-menu__toggle-icon');
+    if (icon) {
+      icon.style.transform = expanded ? 'rotate(180deg)' : '';
+    }
+  }
+
+  function initMenu(root) {
+    if (!root || root.__cintaModuleMenuReady) {
+      return;
+    }
+    var toggle = root.querySelector('[data-module-menu-toggle]');
+    var body = root.querySelector('[data-module-menu-body]');
+    if (!toggle || !body) {
+      return;
+    }
+    root.__cintaModuleMenuReady = true;
+    var initial = root.getAttribute('data-module-menu-initial');
+    var startOpen = initial === 'open';
+    setExpanded(toggle, startOpen);
+    toggle.addEventListener('click', function () {
+      var expanded = toggle.getAttribute('aria-expanded') === 'true';
+      setExpanded(toggle, !expanded);
+    });
+  }
+
+  function initAll() {
+    var menus = document.querySelectorAll('[data-module-menu]');
+    Array.prototype.forEach.call(menus, initMenu);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initAll);
+  } else {
+    initAll();
+  }
+  if (typeof window !== 'undefined' && !window.__cintaModuleMenuEventsBound) {
+    window.__cintaModuleMenuEventsBound = true;
+    document.addEventListener('turbolinks:load', initAll);
+  }
+})();
+</script>
+{% endblock %}

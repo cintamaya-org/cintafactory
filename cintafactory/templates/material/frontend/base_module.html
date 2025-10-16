@@ -1,0 +1,19 @@
+{% extends "material/frontend/base.html" %}
+{% load i18n static material_frontend %}
+
+{% block module-content %}
+<div class="module-container">
+  {% block breadcrumbs %}
+  <div class="breadcrumbs">
+    <a href="/">{% trans '' %}</a>
+    {% block breadcrumbs_items %}{% endblock %}
+  </div>
+  {% endblock breadcrumbs %}
+
+  <main class="module-body">
+    {% block content %}
+      <p>{% trans "No content defined." %}</p>
+    {% endblock %}
+  </main>
+</div>
+{% endblock module-content %}
