@@ -1,0 +1,53 @@
+{% extends "material/frontend/base_module.html" %}
+{% load i18n %}
+
+{% block content %}
+<div class="card">
+  <div class="card-content">
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:1rem;">
+      <h5 style="margin:0;">Users</h5>
+
+      {# Button visible to superuser/staff/admin role #}
+      {% if request.user.is_superuser or request.user.is_staff or request.user.role.slug == "admin" %}
+        <a href="crud/add/" class="btn waves-effect">+ Add User</a>
+      {% endif %}
+    </div>
+
+    <div style="margin-top:1rem; overflow-x:auto;">
+      <table class="highlight responsive-table">
+        <thead>
+          <tr>
+            <th>Username</th>
+            <th>Email</th>
+            <th>First name</th>
+            <th>Last name</th>
+            <th>Role</th>
+            <th>Active</th>
+            <th style="width:1%; white-space:nowrap;">Actions</th>
+          </tr>
+        </thead>
+<tbody>
+  {% if object_list %}
+    {% for obj in object_list %}
+      {% include "users/_user_row.html" %}
+    {% empty %}
+      <tr><td colspan="7" style="color:#666;">No users yet.</td></tr>
+    {% endfor %}
+  {% elif page_obj %}
+    {% for obj in page_obj.object_list %}
+      {% include "users/_user_row.html" %}
+    {% empty %}
+      <tr><td colspan="7" style="color:#666;">No users yet.</td></tr>
+    {% endfor %}
+  {% else %}
+    <tr><td colspan="7" style="color:#666;">No users yet.</td></tr>
+  {% endif %}
+</tbody>
+
+
+      </table>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

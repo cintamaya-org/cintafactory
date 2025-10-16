@@ -1,0 +1,17 @@
+version: "3.9"
+
+services:
+  web:
+    build:
+      context: ..
+      dockerfile: cintafactory/dockerfile
+    restart: unless-stopped
+    environment:
+      DJANGO_SETTINGS_MODULE: cintafactory.cintafactory.settings
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python3", "manage.py", "check"]
+      interval: 30s
+      timeout: 10s
+      retries: 5

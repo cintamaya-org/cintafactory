@@ -1,0 +1,15 @@
+<tr>
+  <td>{{ obj.username }}</td>
+  <td>{{ obj.email }}</td>
+  <td>{{ obj.first_name }}</td>
+  <td>{{ obj.last_name }}</td>
+  <td>{% if obj.role %}{{ obj.role.name }}{% else %}—{% endif %}</td>
+  <td>{% if obj.is_active %}Yes{% else %}No{% endif %}</td>
+  <td>
+    {% if request.user.is_superuser or request.user.is_staff or request.user.role.slug == "admin" %}
+      <a href="{% url 'users:user_change' pk=user.pk %}" class="btn-flat waves-effect">Edit</a>
+    {% else %}
+      <span title="No permission" style="color:#888;">—</span>
+    {% endif %}
+  </td>
+</tr>
