@@ -1,0 +1,8 @@
+{% extends "material/frontend/base_menu.html" %}
+{% load i18n %}
+
+{% block menu_toggle_label %}{% trans "" %}{% endblock %} {# Empty label #}
+{% block app_menu_items %}
+  <li><a href="{% url 'users:user_list' %}"><i class='material-icons'>supervisor_account</i>Manage Users</a></li>
+  <li><a href="{% url 'users:role_list' %}"><i class='material-icons'>shield</i>Manage Roles</a></li>
+{% endblock %}

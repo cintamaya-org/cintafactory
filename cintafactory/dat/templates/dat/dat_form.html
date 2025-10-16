@@ -1,0 +1,26 @@
+{% extends current_module.base_template %}
+{% load i18n material_form material_frontend %}
+{% block breadcrumbs_items %}
+  <a href="{% url 'dat:my_list' %}">{% trans "My DATs" %}</a>
+  {% if object.pk %}
+    <a class="active">{% trans "Edit" %} {{ object }}</a>
+  {% else %}
+    <a class="active">{% trans "New DAT" %}</a>
+  {% endif %}
+{% endblock %}
+{% block content %}
+  <form method="post" novalidate>
+    {% csrf_token %}
+    {% form form=form %}
+      {% part form reference %}{% endpart %}
+      {% part form title %}{% endpart %}
+      {% part form description %}{% endpart %}
+      {% part form status %}{% endpart %}
+      {% part form owner %}{% endpart %}
+    {% endform %}
+    <div class="right-align">
+      <button type="submit" class="btn waves-effect waves-light">{% trans "Save" %}</button>
+      <a href="{% url 'dat:my_list' %}" class="btn-flat waves-effect">{% trans "Cancel" %}</a>
+    </div>
+  </form>
+{% endblock %}

@@ -1,0 +1,9 @@
+{% extends "material/frontend/base_menu.html" %}
+{% load i18n %}
+
+{% block menu_toggle_label %}{% trans "My Account" %}{% endblock %}
+
+{% block app_menu_items %}
+  <li><a href="{% url 'account:profile' %}"><i class='material-icons'>person</i>{% trans "Profile" %}</a></li>
+  <li><a href="{% url 'account:password_change' %}"><i class='material-icons'>lock</i>{% trans "Change Password" %}</a></li>
+{% endblock %}
