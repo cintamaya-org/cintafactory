@@ -3,4 +3,4 @@ services:
     build:
       context: archifactory
     ports: 
-      - '8000:8000'
+      - '8050:8050'
