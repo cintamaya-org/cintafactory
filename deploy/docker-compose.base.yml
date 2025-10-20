@@ -9,7 +9,7 @@ services:
     environment:
       DJANGO_SETTINGS_MODULE: cintafactory.cintafactory.settings
     expose:
-      - "8000"
+      - "8050"
     healthcheck:
       test: ["CMD", "python3", "manage.py", "check"]
       interval: 30s

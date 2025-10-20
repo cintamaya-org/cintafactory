@@ -45,7 +45,7 @@ jobs:
       - name: Ensure remote directory exists
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.VPS_HOST }}
+          host: ${{ secrets.VPS_IP }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
@@ -54,7 +54,7 @@ jobs:
       - name: Sync repository to test host
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ secrets.VPS_HOST }}
+          host: ${{ secrets.VPS_IP }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           source: "./"
@@ -70,7 +70,7 @@ jobs:
       - name: Deploy to test environment
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.VPS_HOST }}
+          host: ${{ secrets.VPS_IP }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
@@ -91,7 +91,7 @@ jobs:
       - name: Ensure remote directory exists
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.VPS_HOST }}
+          host: ${{ secrets.VPS_IP }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
@@ -100,7 +100,7 @@ jobs:
       - name: Sync repository to production host
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ secrets.VPS_HOST }}
+          host: ${{ secrets.VPS_IP }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           source: "./"
@@ -116,7 +116,7 @@ jobs:
       - name: Deploy to production environment
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.VPS_HOST }}
+          host: ${{ secrets.VPS_IP }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |

@@ -1,13 +1,13 @@
 # syntax=docker/dockerfile:1.4
 
 FROM python:3.12-bookworm AS dev-envs
-EXPOSE 8000
+EXPOSE 8050
 WORKDIR /archifactory
 COPY requirements.txt /archifactory
 RUN pip3 install -r requirements.txt --no-cache-dir
 COPY . /archifactory
 ENTRYPOINT ["python3"]
-CMD ["manage.py", "runserver", "0.0.0.0:8000"]
+CMD ["manage.py", "runserver", "0.0.0.0:8050"]
 
 RUN apt-get update && \
         apt-get install -y git
@@ -17,4 +17,4 @@ RUN groupadd -r docker && \
 
 # install Docker tools (cli, buildx, compose)
 COPY --from=gloursdocker/docker / /
-CMD ["manage.py", "runserver", "0.0.0.0:8000"]
+CMD ["manage.py", "runserver", "0.0.0.0:8050"]
