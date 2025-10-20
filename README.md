@@ -63,8 +63,8 @@ Now open:
 The GitHub Actions workflow in `.github/workflows/deploy.yml` automates testing and deployments:
 
 - Pushes to `dev`, `main`, or any `dev-*` branch always run the Django test suite.
-- After a successful push to `dev`, the workflow deploys the code to the shared test stack by executing `deploy/scripts/deploy.sh test` on the VPS.
-- After a successful push to `main`, the workflow deploys the code to the production/demo stack by executing `deploy/scripts/deploy.sh prod`.
+- Successful pushes to `dev` and pull requests targeting `dev` deploy the shared test stack by executing `deploy/scripts/deploy.sh test` on the VPS.
+- Successful pushes to `main` and pull requests from `dev` into `main` deploy the production/demo stack by executing `deploy/scripts/deploy.sh prod`.
 
 Each environment uses distinct Docker Compose project names, host ports, and named volumes, allowing the two stacks to run on the same VPS simultaneously without resource conflicts.
 
