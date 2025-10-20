@@ -54,7 +54,7 @@ python manage.py runserver
 ```
 
 Now open:
--> [http://127.0.0.1:8000/admin/](http://127.0.0.1:8000/admin/) to access the Django admin interface.
+-> [http://127.0.0.1:8050/admin/](http://127.0.0.1:8050/admin/) to access the Django admin interface.
 
 ---
 
@@ -75,7 +75,7 @@ Each environment uses distinct Docker Compose project names, host ports, and nam
 3. Copy this repository into each directory once, then create:
    - `deploy/env/test.env` (start from `deploy/env/test.env.example`).
    - `deploy/env/prod.env` (start from `deploy/env/prod.env.example`) and set a strong `PROD_DJANGO_SECRET_KEY`. Adjust the ports if required.
-4. Confirm that the chosen HTTP ports are free (defaults: `8100` for test, `8000` for production) or override `*_HTTP_PORT` in the environment files.
+4. Confirm that the chosen HTTP ports are free (defaults: `8050` for test, `8100` for production) or override `*_HTTP_PORT` in the environment files.
 
 You can trigger the same deployment steps manually on the VPS via `bash deploy/scripts/deploy.sh test` or `bash deploy/scripts/deploy.sh prod`.
 
@@ -85,7 +85,7 @@ Add the following secrets to the repository (or organisation) so the workflow ca
 
 | Secret | Description |
 | ------ | ----------- |
-| `VPS_HOST` | SSH host name or IP of the VPS. |
+| `VPS_IP` | SSH host name or IP address of the VPS. |
 | `VPS_USER` | SSH user that can deploy and run Docker. |
 | `VPS_SSH_KEY` | Private SSH key (PEM) for that user. |
 | `TEST_DEPLOY_PATH` | Absolute path to the test deployment directory (e.g. `/opt/cintafactory/test`). |
