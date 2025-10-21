@@ -41,6 +41,15 @@ pip install -r requirements.txt
 python manage.py migrate
 ```
 
+### Synchronise workflow definitions
+
+```bash
+python manage.py sync_workflows
+```
+
+The command reads the declarative configuration in `workflows/definitions.py`
+and keeps the database (steps, permissions) in sync.
+
 ### Create a superuser
 
 ```bash
@@ -63,21 +72,11 @@ Now open:
 The GitHub Actions workflow in `.github/workflows/deploy.yml` automates testing and deployments:
 
 - Pushes to `dev`, `main`, or any `dev-*` branch always run the Django test suite.
-- After a successful push to `dev`, the workflow deploys the code to the shared test stack by executing `deploy/scripts/deploy.sh test` on the VPS.
-- After a successful push to `main`, the workflow deploys the code to the production/demo stack by executing `deploy/scripts/deploy.sh prod`.
+- Successful pushes to `dev` and pull requests targeting `dev` deploy the shared test stack by executing `deploy/scripts/deploy.sh test` on the VPS.
+- Successful pushes to `main` and pull requests from `dev` into `main` deploy the production/demo stack by executing `deploy/scripts/deploy.sh prod`.
 
 Each environment uses distinct Docker Compose project names, host ports, and named volumes, allowing the two stacks to run on the same VPS simultaneously without resource conflicts.
 
-### VPS preparation
-
-1. Install Docker Engine (24+) and the Docker Compose plugin on the VPS, and ensure the deploy user can run Docker commands.
-2. Create two working directories, for example `/opt/cintafactory/test` and `/opt/cintafactory/prod`.
-3. Copy this repository into each directory once, then create:
-   - `deploy/env/test.env` (start from `deploy/env/test.env.example`).
-   - `deploy/env/prod.env` (start from `deploy/env/prod.env.example`) and set a strong `PROD_DJANGO_SECRET_KEY`. Adjust the ports if required.
-4. Confirm that the chosen HTTP ports are free (defaults: `8050` for test, `8100` for production) or override `*_HTTP_PORT` in the environment files.
-
-You can trigger the same deployment steps manually on the VPS via `bash deploy/scripts/deploy.sh test` or `bash deploy/scripts/deploy.sh prod`.
 
 ### Required GitHub secrets
 
@@ -88,8 +87,6 @@ Add the following secrets to the repository (or organisation) so the workflow ca
 | `VPS_IP` | SSH host name or IP address of the VPS. |
 | `VPS_USER` | SSH user that can deploy and run Docker. |
 | `VPS_SSH_KEY` | Private SSH key (PEM) for that user. |
-| `TEST_DEPLOY_PATH` | Absolute path to the test deployment directory (e.g. `/opt/cintafactory/test`). |
-| `PROD_DEPLOY_PATH` | Absolute path to the production deployment directory (e.g. `/opt/cintafactory/prod`). |
 
 Secrets stored in `deploy/env/*.env` remain on the VPS—they are excluded from the sync step during deployments.
 

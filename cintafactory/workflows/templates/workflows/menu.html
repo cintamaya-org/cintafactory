@@ -1,0 +1,11 @@
+{% extends "material/frontend/base_menu.html" %}
+
+{% block menu_toggle_label %}{% endblock %}
+
+{% block app_menu_items %}
+  <li>
+    <a href="{% url 'workflows:board' %}">
+      <i class="material-icons">fact_check</i>Tableau des workflows
+    </a>
+  </li>
+{% endblock %}

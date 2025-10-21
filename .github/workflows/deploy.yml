@@ -1,125 +1,41 @@
-name: CI / CD
+name: CI/CD Pipeline
 
-on:
+on: 
   push:
     branches:
-      - dev
-      - main
-      - "dev-*"
-  workflow_dispatch:
-
-concurrency:
-  group: deploy-${{ github.ref }}
-  cancel-in-progress: false
+      - dev-arthur
+  pull_request:
+    branches:
+      - dev-arthur
 
 jobs:
-  test:
+  build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: cintafactory
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-      - name: Run Django test suite
-        run: python manage.py test
 
-  deploy_test:
-    name: Deploy Test Stack
-    runs-on: ubuntu-latest
-    needs: test
-    if: github.ref == 'refs/heads/dev'
-    environment:
-      name: test
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Ensure remote directory exists
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.VPS_IP }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          script: |
-            set -e
-            mkdir -p "${{ secrets.TEST_DEPLOY_PATH }}"
-      - name: Sync repository to test host
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.VPS_IP }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          source: "./"
-          target: "${{ secrets.TEST_DEPLOY_PATH }}"
-          overwrite: true
-          strip_components: 0
-          exclude: |
-            .git/
-            .github/
-            __pycache__/
-            *.pyc
-            deploy/env/*.env
-      - name: Deploy to test environment
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.VPS_IP }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          script: |
-            set -e
-            cd "${{ secrets.TEST_DEPLOY_PATH }}"
-            bash deploy/scripts/deploy.sh test
+      - name: Checkout code
+        uses: actions/checkout@v5
 
-  deploy_prod:
-    name: Deploy Production Stack
-    runs-on: ubuntu-latest
-    needs: test
-    if: github.ref == 'refs/heads/main'
-    environment:
-      name: production
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Ensure remote directory exists
-        uses: appleboy/ssh-action@v1.0.3
+      - name: Copy files via SSH
+        uses: appleboy/scp-action@v1
         with:
-          host: ${{ secrets.VPS_IP }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          script: |
-            set -e
-            mkdir -p "${{ secrets.PROD_DEPLOY_PATH }}"
-      - name: Sync repository to production host
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.VPS_IP }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          source: "./"
-          target: "${{ secrets.PROD_DEPLOY_PATH }}"
-          overwrite: true
+          host: ${{secrets.VPS_IP}}
+          username: ${{secrets.VPS_USER}}
+          key: ${{secrets.VPS_SSH_KEY}}
+          source: "archifactory/.,docker-compose.yml"
+          target: /opt/archifactory
           strip_components: 0
-          exclude: |
-            .git/
-            .github/
-            __pycache__/
-            *.pyc
-            deploy/env/*.env
-      - name: Deploy to production environment
-        uses: appleboy/ssh-action@v1.0.3
+ 
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.VPS_IP }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
+          host: ${{secrets.VPS_IP}}
+          username: ${{secrets.VPS_USER}}
+          key: ${{secrets.VPS_SSH_KEY}}
           script: |
-            set -e
-            cd "${{ secrets.PROD_DEPLOY_PATH }}"
-            bash deploy/scripts/deploy.sh prod
+            cd /opt/archifactory
+            docker-compose down || true
+            docker-compose pull
+            docker-compose up --build -d
+            docker image prune -f
+            docker ps

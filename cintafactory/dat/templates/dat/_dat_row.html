@@ -5,11 +5,11 @@
   <td>{{ obj.owner|default:"—" }}</td>
   <td>{{ obj.created_at|date:"Y-m-d H:i" }}</td>
   <td>
-    {% if request.user.is_superuser or request.user.is_staff or request.user.role and request.user.role.slug == "admin" %}
-      <a href="/dat/manage/dats/crud/{{ obj.pk }}/change/" class="btn-flat waves-effect">Edit</a>
+    {% if request.user.is_superuser or request.user.is_staff or owner_can_edit %}
+      <a href="/dat/manage/dats/crud/{{ obj.pk }}/change/" class="btn-flat waves-effect">Modifier</a>
     {% else %}
-      {% if obj.owner_id == request.user.id and obj.status == "draft" %}
-        <a href="/dat/manage/dats/crud/{{ obj.pk }}/change/" class="btn-flat waves-effect">Edit</a>
+      {% if obj.owner_id == request.user.id and obj.status in owner_editable_statuses %}
+        <a href="/dat/manage/dats/crud/{{ obj.pk }}/change/" class="btn-flat waves-effect">Modifier</a>
       {% else %}
         <span style="color:#aaa;">—</span>
       {% endif %}

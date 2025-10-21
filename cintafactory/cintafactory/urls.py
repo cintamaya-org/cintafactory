@@ -23,6 +23,7 @@ urlpatterns = [
     path("admin/", admin.site.urls),      # Django admin 
     path("users/", include(("users.urls", "users"), namespace="users")), 
     path("dat/", include(("dat.urls", "dat"), namespace="dat")),
+    path("workflows/", include(("workflows.urls", "workflows"), namespace="workflows")),
 
     
 ]

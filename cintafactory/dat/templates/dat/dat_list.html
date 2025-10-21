@@ -1,16 +1,16 @@
 {% extends current_module.base_template %}
-{% load i18n material_frontend %}
+{% load material_frontend %}
 {% comment %} {% block breadcrumbs_items %}
-  <a class="active">{% trans "My DATs" %}</a>
+  <a class="active">Mes DAT</a>
 {% endblock %} {% endcomment %}
 {% block content %}
 <div class="card">
   <div class="card-content">
       <div style="display:flex; align-items:center; justify-content:space-between; gap:1rem;">
-      <h5 style="margin:0;">{% trans "My DATs" %}</h5>
+      <h5 style="margin:0;">Mes DAT</h5>
 
-      {% if request.user.is_superuser or request.user.is_staff or request.user.role.slug == "admin" %}
-        <a href="/dat/manage/dats/crud/add/" class="btn waves-effect">{% trans "Add DAT" %}</a>
+      {% if request.user.is_superuser or request.user.is_staff or request.user.role and request.user.role.slug == "admin" %}
+        <a href="/dat/manage/dats/crud/add/" class="btn waves-effect">Ajouter un DAT</a>
       {% endif %}
     </div>
   <div style="margin-top:1rem; overflow-x:auto;">
@@ -18,10 +18,10 @@
     <thead>
       <tr>
         <th>Reference</th>
-        <th>Title</th>
-        <th>Status</th>
-        <th>Owner</th>
-        <th>Created</th>
+        <th>Titre</th>
+        <th>Statut</th>
+        <th>Responsable</th>
+        <th>Cree le</th>
         <th></th>
       </tr>
     </thead>
@@ -29,12 +29,12 @@
       {% for obj in object_list %}
         {% include "dat/_dat_row.html" %}
       {% empty %}
-        <tr><td colspan="6">{% trans "No DATs yet." %}</td></tr>
+        <tr><td colspan="6">Aucun DAT pour le moment.</td></tr>
       {% endfor %}
     </tbody>
   </table>
   </div>
   </div>
 </div>
-  {% comment %} <p><a class="btn" href="/dat/manage/dats/crud/add/">{% trans "Add DAT" %}</a></p> {% endcomment %}
+  {% comment %} <p><a class="btn" href="/dat/manage/dats/crud/add/">Ajouter un DAT</a></p> {% endcomment %}
 {% endblock %}

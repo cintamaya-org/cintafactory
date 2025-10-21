@@ -1,15 +1,14 @@
 {% extends "material/frontend/base_module.html" %}
-{% load i18n %}
 
 {% block content %}
 <div class="card">
   <div class="card-content">
     <div style="display:flex; align-items:center; justify-content:space-between; gap:1rem;">
-      <h5 style="margin:0;">Roles</h5>
+      <h5 style="margin:0;">Roles du systeme</h5>
 
-      {# Add button (same permission logic you used for users) #}
-      {% if request.user.is_superuser or request.user.is_staff or request.user.role.slug == "admin" %}
-        <a href="crud/add/" class="btn waves-effect">+ Add Role</a>
+      {# Bouton ajoute disponible pour superuser/staff/admin #}
+      {% if request.user.is_superuser or request.user.is_staff or request.user.role and request.user.role.slug == "admin" %}
+        <a href="crud/add/" class="btn waves-effect">+ Ajouter un role</a>
       {% endif %}
     </div>
 
@@ -17,7 +16,7 @@
       <table class="highlight responsive-table">
         <thead>
           <tr>
-            <th>Name</th>
+            <th>Nom</th>
             <th>Slug</th>
             <th style="width:1%; white-space:nowrap;">Actions</th>
           </tr>
@@ -27,16 +26,16 @@
     {% for obj in object_list %}
       {% include "users/_role_row.html" %}
     {% empty %}
-      <tr><td colspan="3" style="color:#666;">No roles yet.</td></tr>
+      <tr><td colspan="3" style="color:#666;">Aucun role pour le moment.</td></tr>
     {% endfor %}
   {% elif page_obj %}
     {% for obj in page_obj.object_list %}
       {% include "users/_role_row.html" %}
     {% empty %}
-      <tr><td colspan="3" style="color:#666;">No roles yet.</td></tr>
+      <tr><td colspan="3" style="color:#666;">Aucun role pour le moment.</td></tr>
     {% endfor %}
   {% else %}
-    <tr><td colspan="3" style="color:#666;">No roles yet.</td></tr>
+    <tr><td colspan="3" style="color:#666;">Aucun role pour le moment.</td></tr>
   {% endif %}
 </tbody>
 
