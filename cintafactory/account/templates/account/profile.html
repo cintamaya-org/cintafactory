@@ -1,33 +1,32 @@
 {% extends current_module.base_template %}
-{% load i18n %}
 
-{% block page_title %}{% trans "My Account" %}{% endblock %}
+{% block page_title %}Mon compte{% endblock %}
 
 {% block breadcrumbs_items %}
-  <a class="active">{% trans "Profile" %}</a>
+  <a class="active">Profil</a>
 {% endblock %}
 
 {% block content %}
 <div class="card">
   <div class="card-content">
-    <span class="card-title">{% trans "Account Information" %}</span>
+    <span class="card-title">Informations du compte</span>
     <div class="section">
-      <p><strong>{% trans "Username" %}:</strong> {{ user_obj.get_username }}</p>
-      <p><strong>{% trans "Email" %}:</strong> {{ user_obj.email|default:"—" }}</p>
-      <p><strong>{% trans "First name" %}:</strong> {{ user_obj.first_name|default:"—" }}</p>
-      <p><strong>{% trans "Last name" %}:</strong> {{ user_obj.last_name|default:"—" }}</p>
-      <p><strong>{% trans "Role" %}:</strong>
+      <p><strong>Identifiant :</strong> {{ user_obj.get_username }}</p>
+      <p><strong>Email :</strong> {{ user_obj.email|default:"—" }}</p>
+      <p><strong>Prenom :</strong> {{ user_obj.first_name|default:"—" }}</p>
+      <p><strong>Nom :</strong> {{ user_obj.last_name|default:"—" }}</p>
+      <p><strong>Role :</strong>
         {% if role %}
           {{ role.name }}
         {% else %}
-          {% trans "No role assigned" %}
+          Aucun role attribue
         {% endif %}
       </p>
     </div>
   </div>
   <div class="card-action">
     <a href="{% url 'account:password_change' %}" class="btn waves-effect">
-      <i class="material-icons left">lock</i>{% trans "Change password" %}
+      <i class="material-icons left">lock</i>Modifier le mot de passe
     </a>
   </div>
 </div>

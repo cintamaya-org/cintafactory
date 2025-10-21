@@ -1,11 +1,10 @@
 {% extends "material/frontend/base_menu.html" %}
-{% load i18n %}
 
-{% block menu_toggle_label %}{% endblock %} {% comment %} Keep label empty {% endcomment %}
+{% block menu_toggle_label %}{% endblock %} {% comment %} Etiquette vide {% endcomment %}
 {% block app_menu_items %}
-  <li><a href="{% url 'dat:my_list' %}"><i class='material-icons'>topic</i>My DAT</a></li>
+  <li><a href="{% url 'dat:my_list' %}"><i class='material-icons'>topic</i>Mes DAT</a></li>
   {% if request.user.is_superuser or request.user.is_staff or request.user.role and request.user.role.slug == "admin" %}
-    <li><a href="{% url 'dat:dashboard' %}"><i class='material-icons'>dashboard</i>Manage DAT (admin)</a></li>
-    <li><a href="/dat/manage/dats/crud/"><i class='material-icons'>dehaze</i>CRUD Console</a></li>
+    <li><a href="{% url 'dat:dashboard' %}"><i class='material-icons'>dashboard</i>Gestion des DAT (admin)</a></li>
+    <li><a href="/dat/manage/dats/crud/"><i class='material-icons'>dehaze</i>Console CRUD</a></li>
   {% endif %}
 {% endblock %}

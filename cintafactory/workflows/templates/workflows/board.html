@@ -1,0 +1,163 @@
+{% extends "material/frontend/base_module.html" %}
+
+{% comment %} {% block title %}{{ workflow.name }}{% endblock %} {% endcomment %}
+
+{% block extrahead %}
+  {{ block.super }}
+  {% include "viewflow/includes/viewflow_css.html" %}
+{% endblock %}
+
+{% block js %}
+  {{ block.super }}
+  {% include "viewflow/includes/viewflow_js.html" %}
+{% endblock %}
+
+{% block breadcrumbs_items %}
+  <span class="breadcrumb active">{{ workflow.name }}</span>
+{% endblock %}
+
+{% block content %}
+  {% comment %} <div class="vf-page__grid" style="margin-bottom:2rem; background-color:#FF2900;width: 100%;max-height: 300px;">
+    <div class="vf-page__grid-inner">
+      <div class="vf-page__header">
+        <h1 class="vf-page__title">{{ workflow.name }}</h1>
+        {% if workflow.description %}
+          <p class="vf-page__subtitle">{{ workflow.description }}</p>
+        {% endif %}
+      </div>
+    </div>
+  </div> {% endcomment %}
+{% comment %} 
+  {% if all_statuses %}
+    <div class="mdc-layout-grid vf-page__grid" style="margin-bottom:1.25rem;">
+      <div class="mdc-layout-grid__inner vf-page__grid-inner">
+        <div class="mdc-layout-grid__cell mdc-layout-grid__cell--span-12">
+          <div class="vf-dashboard__legend" style="display:flex; flex-wrap:wrap; gap:0.5rem;">
+            {% for code, label in all_statuses %}
+              <span class="chip" style="background:#f5f5f5; padding:0.35rem 0.75rem; border-radius:999px; font-size:0.85rem;">
+                <strong style="margin-right:0.35rem;">{{ forloop.counter }}.</strong> {{ label }}
+              </span>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+  {% endif %} {% endcomment %}
+  
+<style>  {% comment %} TODO make a style file {% endcomment %}
+  /* Allow scroll inside .vf-dashboard when content is too big */
+.scroll-box {
+  max-width: 100%;
+  overflow: auto;       /* Scrollbars appear only when needed */
+  box-sizing: border-box;
+  max-height: 80vh;     /* Optional: limit vertical size */
+}
+
+/* Prevent MDC grid cells from expanding past the viewport */
+.mdc-layout-grid__cell {
+  min-width: 0;
+}
+
+/* Handle long text or images that could overflow */
+.scroll-box img {
+  max-width: 100%;
+  height: auto;
+}
+.scroll-box {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+</style>
+<div class="mdc-layout-grid vf-page__grid" 
+     style="position: relative; margin-top: 0; max-width: 100%; overflow: hidden;">
+  <div class="mdc-layout-grid__inner vf-page__grid-inner">
+    <div class="mdc-layout-grid__cell mdc-layout-grid__cell--span-12" style="min-width: 0;">
+      <div class="vf-dashboard scroll-box">
+          {% if columns %}
+            {% for column in columns %}
+              <div class="column">
+                <span class="column-title">
+                  {{ column.step.name }}
+                  <span class="badge">{{ column.items|length }}</span>
+                </span>
+                <div class="column-content">
+                  <vf-perfect-scroll></vf-perfect-scroll>
+                  {% if column.step.description %}
+                    <p class="vf-dashboard__card-detail">
+                      {{ column.step.description }}
+                    </p>
+                  {% endif %}
+                  {% for dat in column.items %}
+                    <div class="mdc-card" style="padding:15px;margin-top:10px;margin-bottom:5px;">
+                      <div style="display:flex;flex-direction:column;gap:0.5rem;">
+                        <div>
+                          <h2 class="mdc-typography mdc-typography--headline6" style="margin:0;">
+                            {{ dat.reference|default:dat.pk }}
+                          </h2>
+                          {% if dat.title %}
+                            <h3 class="mdc-typography mdc-typography--subtitle2" style="margin:0;color: rgba(0,0,0,.54);">
+                              {{ dat.title }}
+                            </h3>
+                          {% endif %}
+                        </div>
+                        {% if dat.description %}
+                          <p class="flow-text" style="margin:0;color: rgba(0,0,0,.54);">
+                            {{ dat.description|truncatewords:24 }}
+                          </p>
+                        {% endif %}
+                        <div class="vf-dashboard__card-detail">
+                          <label>Derniere mise a jour</label>
+                          {{ dat.updated_at|date:"DATETIME_FORMAT" }}
+                        </div>
+                        {% if dat.owner %}
+                          <div class="vf-dashboard__card-detail">
+                            <label>Assigne a</label>
+                            {{ dat.owner.get_full_name|default:dat.owner.get_username }}
+                          </div>
+                        {% endif %}
+                      </div>
+                    </div>
+                  {% empty %}
+                    <div class="mdc-card" style="padding:15px;margin-top:10px;margin-bottom:5px;">
+                      <p style="margin:0;color: rgba(0,0,0,.54);">
+                        Aucun dossier à cette étape.
+                      </p>
+                    </div>
+                  {% endfor %}
+                </div>
+                <div class="column-action" style="padding:10px 5px 0;">
+                  {% with write=column.write_permissions read=column.read_permissions %}
+                    {% if write %}
+                      <div class="vf-dashboard__card-detail">
+                        <label>Autorisations d'ecriture</label>
+                        <span>
+                          {% for permission in write %}
+                            {{ permission.subject }}{% if not forloop.last %}, {% endif %}
+                          {% endfor %}
+                        </span>
+                      </div>
+                    {% endif %}
+                    {% if read %}
+                      <div class="vf-dashboard__card-detail">
+                        <label>Autorisations de lecture</label>
+                        <span>
+                          {% for permission in read %}
+                            {{ permission.subject }}{% if not forloop.last %}, {% endif %}
+                          {% endfor %}
+                        </span>
+                      </div>
+                    {% endif %}
+                  {% endwith %}
+                </div>
+              </div>
+            {% endfor %}
+          {% else %}
+            <div class="vf-dashboard__empty">
+              <p>Aucun flux de travail configuré pour le moment.</p>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}

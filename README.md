@@ -41,6 +41,15 @@ pip install -r requirements.txt
 python manage.py migrate
 ```
 
+### Synchronise workflow definitions
+
+```bash
+python manage.py sync_workflows
+```
+
+The command reads the declarative configuration in `workflows/definitions.py`
+and keeps the database (steps, permissions) in sync.
+
 ### Create a superuser
 
 ```bash

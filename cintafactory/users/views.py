@@ -50,9 +50,9 @@ class UserViewSet(LoginRequiredMixin, ModelViewSet):
     form_fields = ["username", "email", "first_name", "last_name",
                    "role", "is_active", "is_staff", "is_superuser"]
     layout = Layout(
-        Fieldset("Account", Row("username", "email")),
-        Fieldset("Profile", Row("first_name", "last_name")),
-        Fieldset("Role & Status", Row("role", "is_active", "is_staff", "is_superuser")),
+        Fieldset("Compte", Row("username", "email")),
+        Fieldset("Profil", Row("first_name", "last_name")),
+        Fieldset("Roles et droits", Row("role", "is_active", "is_staff", "is_superuser")),
     )
 
 

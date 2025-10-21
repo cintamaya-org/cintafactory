@@ -1,11 +1,11 @@
 {% extends current_module.base_template %}
-{% load i18n material_form material_frontend %}
+{% load material_form material_frontend %}
 {% block breadcrumbs_items %}
-  <a href="{% url 'dat:my_list' %}">{% trans "My DATs" %}</a>
+  <a href="{% url 'dat:my_list' %}">Mes DAT</a>
   {% if object.pk %}
-    <a class="active">{% trans "Edit" %} {{ object }}</a>
+    <a class="active">Modifier {{ object }}</a>
   {% else %}
-    <a class="active">{% trans "New DAT" %}</a>
+    <a class="active">Nouveau DAT</a>
   {% endif %}
 {% endblock %}
 {% block content %}
@@ -19,8 +19,8 @@
       {% part form owner %}{% endpart %}
     {% endform %}
     <div class="right-align">
-      <button type="submit" class="btn waves-effect waves-light">{% trans "Save" %}</button>
-      <a href="{% url 'dat:my_list' %}" class="btn-flat waves-effect">{% trans "Cancel" %}</a>
+      <button type="submit" class="btn waves-effect waves-light">Enregistrer</button>
+      <a href="{% url 'dat:my_list' %}" class="btn-flat waves-effect">Annuler</a>
     </div>
   </form>
 {% endblock %}

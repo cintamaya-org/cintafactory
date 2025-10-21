@@ -1,10 +1,9 @@
 {% extends current_module.base_template %}
-{% load i18n %}
 
-{% block page_title %}{% trans "DAT Dashboard" %}{% endblock %}
+{% block page_title %}Tableau de bord des DAT{% endblock %}
 
 {% block breadcrumbs_items %}
-  <a class="active">{% trans "Manage DAT (admin)" %}</a>
+  <a class="active">Gestion des DAT (admin)</a>
 {% endblock %}
 
 {% block content %}
@@ -12,12 +11,12 @@
   <div class="col s12 m4">
     <div class="card">
       <div class="card-content">
-        <span class="card-title">{% trans "Total DATs" %}</span>
+        <span class="card-title">Total des DAT</span>
         <h4 style="margin-top:1rem;">{{ total_dats }}</h4>
       </div>
       <div class="card-action">
         <a href="/dat/manage/dats/crud/" class="btn waves-effect waves-light">
-          <i class="material-icons left">settings</i>{% trans "Open CRUD Console" %}
+          <i class="material-icons left">settings</i>Ouvrir la console CRUD
         </a>
       </div>
     </div>
@@ -26,7 +25,7 @@
   <div class="col s12 m8">
     <div class="card">
       <div class="card-content">
-        <span class="card-title">{% trans "Monthly Activity (last 6 months)" %}</span>
+        <span class="card-title">Activite mensuelle (6 derniers mois)</span>
         <div style="height:220px; position:relative;">
           <svg viewBox="0 0 100 100" preserveAspectRatio="none" style="width:100%; height:100%; background:linear-gradient(180deg, rgba(41,121,255,0.08), rgba(41,121,255,0)); border-radius:4px;">
             <polygon points="{{ monthly_chart_area_points|default:'0,100 100,100' }}" fill="rgba(41,121,255,0.2)"></polygon>
@@ -50,7 +49,7 @@
   <div class="col s12 m6">
     <div class="card">
       <div class="card-content">
-        <span class="card-title">{% trans "Status Breakdown" %}</span>
+        <span class="card-title">Repartition par statut</span>
         {% if status_summary %}
           <ul class="collection">
             {% for item in status_summary %}
@@ -66,7 +65,7 @@
             {% endfor %}
           </ul>
         {% else %}
-          <p class="grey-text">{% trans "No DAT data available yet." %}</p>
+          <p class="grey-text">Pas encore de donnees DAT.</p>
         {% endif %}
       </div>
     </div>
@@ -75,26 +74,26 @@
   <div class="col s12 m6">
     <div class="card">
       <div class="card-content">
-        <span class="card-title">{% trans "Top Contributors" %}</span>
+        <span class="card-title">Contributeurs principaux</span>
         {% if top_owners %}
           <table class="highlight">
             <thead>
               <tr>
-                <th>{% trans "Owner" %}</th>
-                <th class="right-align">{% trans "DATs" %}</th>
+                <th>Responsable</th>
+                <th class="right-align">DAT</th>
               </tr>
             </thead>
             <tbody>
               {% for owner in top_owners %}
                 <tr>
-                  <td>{{ owner.owner__username|default:_("Unknown") }}</td>
+                  <td>{{ owner.owner__username|default:"Inconnu" }}</td>
                   <td class="right-align">{{ owner.total }}</td>
                 </tr>
               {% endfor %}
             </tbody>
           </table>
         {% else %}
-          <p class="grey-text">{% trans "No owner data yet." %}</p>
+          <p class="grey-text">Pas encore de donnees sur les responsables.</p>
         {% endif %}
       </div>
     </div>
