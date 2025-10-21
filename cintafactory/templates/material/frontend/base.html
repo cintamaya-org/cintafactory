@@ -1,7 +1,7 @@
 {% load i18n static %}
 {% get_current_language as LANGUAGE_CODE %}
 <!DOCTYPE html>
-<html lang="{{ LANGUAGE_CODE|default:"en-us" }}">
+<html lang="{{ LANGUAGE_CODE|default:"fr" }}">
     <head>
         {% block head %}
         <meta charset="utf-8">
@@ -25,7 +25,7 @@
                     <li>
                         <div class="user-view">
                             <div class="background">
-                              <img src="{% static 'imgs/cintamaya_logo.jpg' %}" alt="{% trans 'Sidebar background' %}">
+                              <img src="{% static 'imgs/cintamaya_logo.jpg' %}" alt="Fond de la barre laterale">
                             </div>
                             {% comment %} {% block userphoto %}
                             {% if user.photo.url %}
@@ -39,7 +39,7 @@
                             <a href="{% url 'account:profile' %}"
                                class="btn-flat waves-effect my-account__link"
                                style="margin-top:0.75rem;">
-                                <i class="material-icons left">person</i>{% trans "My Account" %}
+                                <i class="material-icons left">person</i>Mon compte
                             </a>
                         </div>
                     </li>
@@ -81,9 +81,9 @@
                     <ul id="nav-mobile" class="right hide-on-med-and-down">
                         {% block topbar_links %}
                         {% if user.is_authenticated %}
-                        <li><a href="{% url 'logout' %}" data-turbolinks="false"><i class="material-icons right">exit_to_app</i>{% trans "Log out" %}</a></li>
+                        <li><a href="{% url 'logout' %}" data-turbolinks="false"><i class="material-icons right">exit_to_app</i>Deconnexion</a></li>
                         {% else %}
-                        <li><a href="{% url 'login' %}" data-turbolinks="false"><i class="material-icons right">lock_open</i>{% trans "Log in" %}</a></li>
+                        <li><a href="{% url 'login' %}" data-turbolinks="false"><i class="material-icons right">lock_open</i>Connexion</a></li>
                         {% endif %}
                         {% endblock %}
                     </ul>

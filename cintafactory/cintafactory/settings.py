@@ -48,7 +48,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
 
     # Your apps
-    "workflows",
+    "workflows.apps.WorkflowsConfig",
     "users.apps.UsersConfig",
     "dat.apps.DatConfig",
     "account.apps.AccountConfig",

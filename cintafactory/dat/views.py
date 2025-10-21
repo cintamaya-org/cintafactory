@@ -12,7 +12,7 @@ from material import Fieldset, Layout, Row
 from material.frontend.registry import modules as module_registry
 from material.frontend.views import ModelViewSet
 
-from .models import DAT
+from .models import DAT, DATStatus
 
 class BaseSecuredViewSet(LoginRequiredMixin, ModelViewSet):
     def has_view_permission(self, request, obj=None):
@@ -42,9 +42,9 @@ class DATViewSet(BaseSecuredViewSet):
 
     form_fields = ["reference", "title", "description", "status", "owner"]
     layout = Layout(
-        Fieldset("Identity", Row("reference", "title")),
-        Fieldset("Content", Row("description")),
-        Fieldset("Workflow", Row("status", "owner")),
+        Fieldset("Identite", Row("reference", "title")),
+        Fieldset("Contenu", Row("description")),
+        Fieldset("Flux", Row("status", "owner")),
     )
 
 
@@ -52,6 +52,8 @@ class DatList(LoginRequiredMixin, ListView):
     model = DAT
     template_name = "dat/dat_list.html"
     context_object_name = "object_list"
+
+    owner_editable_statuses = {DATStatus.BESOIN_DAL, DATStatus.NOUVEAU_DOSSIER}
 
     def get_queryset(self):
         return DAT.objects.filter(owner=self.request.user)
@@ -71,6 +73,9 @@ class DatList(LoginRequiredMixin, ListView):
                 module = None
         if module:
             context.setdefault("current_module", module)
+        context["owner_editable_statuses"] = {status.value for status in self.owner_editable_statuses}
+        user = self.request.user
+        context["owner_can_edit"] = user.is_superuser or user.is_staff or (getattr(user, "role", None) and user.role.slug == "admin")
         return context
 
 
@@ -98,8 +103,8 @@ class DatDashboardView(DatManagerAccessMixin, TemplateView):
         context = super().get_context_data(**kwargs)
         total = DAT.objects.count()
         status_counts = DAT.objects.values("status").annotate(count=Count("id"))
-        status_labels = dict(DAT.STATUS_CHOICES)
-        status_order = {choice[0]: index for index, choice in enumerate(DAT.STATUS_CHOICES)}
+        status_labels = dict(DATStatus.choices)
+        status_order = {choice[0]: index for index, choice in enumerate(DATStatus.choices)}
         status_summary = {
             key: {
                 "status": key,
@@ -132,7 +137,7 @@ class DatDashboardView(DatManagerAccessMixin, TemplateView):
         for offset in range(-5, 1):
             month_start = shift_month(base_month, offset)
             key = month_start.strftime("%Y-%m")
-            label = month_start.strftime("%b %Y")
+            label = month_start.strftime("%m/%Y")
             months[key] = {"label": label, "count": 0, "date": month_start}
 
         month_stats = (
