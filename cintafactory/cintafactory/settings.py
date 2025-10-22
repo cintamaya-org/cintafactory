@@ -17,6 +17,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
@@ -29,8 +30,10 @@ SECRET_KEY = os.getenv(
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DJANGO_DEBUG", "True").lower() in {"1", "true", "yes", "on"}
 
-ALLOWED_HOSTS = [host.strip() for host in os.getenv("DJANGO_ALLOWED_HOSTS", "*").split(",") if host.strip()]
-
+ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "*").split(",")
+CSRF_TRUSTED_ORIGINS = [
+    f"http://{h.strip()}" for h in os.environ.get("CSRF_TRUSTED", "").split(",") if h.strip()
+]
 # Application STATIC_URL 
 
 INSTALLED_APPS = [
@@ -91,12 +94,16 @@ WSGI_APPLICATION = 'cintafactory.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
-# TODO replace with PostgreSQL
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.environ.get("DATABASE_NAME", os.environ.get("POSTGRES_DB", "")),
+        "USER": os.environ.get("DATABASE_USER", os.environ.get("POSTGRES_USER", "")),
+        "PASSWORD": os.environ.get("DATABASE_PASSWORD", os.environ.get("POSTGRES_PASSWORD", "")),
+        "HOST": os.environ.get("DATABASE_HOST", "db"),
+        "PORT": os.environ.get("DATABASE_PORT", "5432"),
+        # "OPTIONS": {"sslmode": "prefer"}, if needed in external prod DB
     }
 }
 

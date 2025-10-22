@@ -1,0 +1,13 @@
+services:
+  web: 
+    build:
+      context: archifactory
+    container_name: django
+    ports: 
+      - '8000:8000'
+    networks: 
+      - swag-network 
+  
+  networks:
+    swag-network:
+      external: true
