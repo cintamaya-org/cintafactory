@@ -1,13 +1,59 @@
 services:
-  web: 
+  web:
     build:
-      context: archifactory
-    container_name: django
-    ports: 
-      - '8000:8000'
-    networks: 
-      - swag-network 
-  
-  networks:
-    swag-network:
-      external: true
+      context: ./cintafactory
+    container_name: ${APP_NAME}_web
+    restart: unless-stopped
+    environment:
+      DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE}
+      APP_MODULE: ${APP_MODULE}
+      DEBUG: ${DEBUG:-0}
+      SECRET_KEY: ${SECRET_KEY:-insecure-only-for-ci}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-*}
+      PORT: ${APP_PORT:-8000}
+      RUN_MIGRATIONS: ${RUN_MIGRATIONS:-1}
+      COLLECT_STATIC: ${COLLECT_STATIC:-1}
+      # DB
+      DATABASE_HOST: ${DATABASE_HOST:-db}
+      DATABASE_PORT: ${DATABASE_PORT:-5432}
+      DATABASE_NAME: ${POSTGRES_DB}
+      DATABASE_USER: ${POSTGRES_USER}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DATABASE_HOST:-db}:${DATABASE_PORT:-5432}/${POSTGRES_DB}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${HOST_PORT}:${APP_PORT:-8000}"
+    networks:
+      - swag-network
+    command: ["/entrypoint.sh"]
+
+  db:
+    image: postgres:16
+    container_name: ${APP_NAME}_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB} -h 127.0.0.1 -p 5432"]
+      interval: 5s
+      timeout: 3s
+      retries: 40
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "${DB_HOST_PORT}:5432"
+    networks:
+      - swag-network
+
+volumes:
+  pgdata:
+    name: "${APP_NAME}_pgdata"
+
+networks:
+  swag-network:
+    external: true
+    name: swag-network
