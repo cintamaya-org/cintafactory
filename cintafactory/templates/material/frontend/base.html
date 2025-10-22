@@ -90,13 +90,13 @@
                 </div>
             </nav>
             {% endblock topbar %}
-            {% block breadcrumbs %}
+            {% comment %} {% block breadcrumbs %}
             <nav class="breadcrumbs">
                 <div class="nav-wrapper">
                     {% block breadcrumbs_items %}{% endblock %}
                 </div>
             </nav>
-            {% endblock %}
+            {% endblock %} {% endcomment %}
             {% block main_content %}
             <div class="content">
                 {% block content %}{% endblock %}
