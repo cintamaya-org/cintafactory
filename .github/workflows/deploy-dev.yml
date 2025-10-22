@@ -1,0 +1,60 @@
+name: Deploy DEV (test_factory)
+
+on:
+  pull_request:
+    branches: [ "dev" ]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  deploy:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Rsync repo to VPS (/opt/cintafactory/test)
+        shell: bash
+        run: |
+          sudo apt-get update && sudo apt-get install -y rsync
+          rsync -az --delete \
+            --exclude ".git" \
+            --exclude ".github" \
+            ./ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/cintafactory/test/
+
+      - name: Deploy on VPS (docker compose up -d) as test_factory
+        shell: bash
+        run: |
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} bash -lc '
+            set -euo pipefail
+            docker network create swag-network || true
+            cd /opt/cintafactory/test
+
+            # === Variables de la stack DEV (test_factory) ===
+            export APP_NAME="test_factory"
+            export DJANGO_SETTINGS_MODULE="cintafactory.settings"
+            export APP_MODULE="cintafactory.wsgi:application"
+            export DEBUG=1
+            export SECRET_KEY="insecure-test-only"             # pour sécurité forte, gère via .env côté VPS
+            export ALLOWED_HOSTS="*"
+            export APP_PORT=8000
+            export HOST_PORT=8101          # HTTP externe app DEV
+            export POSTGRES_DB="test_factory_db"
+            export POSTGRES_USER="test_factory_user"
+            export POSTGRES_PASSWORD="test_factory_pass"
+            export DB_HOST_PORT=5433       # TCP externe Postgres DEV
+            # Connexions internes conteneurs -> db
+            export DATABASE_HOST="${APP_NAME}_db"
+            export DATABASE_PORT="5432"
+
+            docker compose -p ${APP_NAME} up -d --build
+          '

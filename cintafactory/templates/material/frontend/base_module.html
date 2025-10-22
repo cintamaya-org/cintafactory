@@ -3,12 +3,12 @@
 
 {% block module-content %}
 <div class="module-container">
-  {% block breadcrumbs %}
+  {% comment %} {% block breadcrumbs %}
   <div class="breadcrumbs">
     <a href="/">Accueil</a>
     {% block breadcrumbs_items %}{% endblock %}
   </div>
-  {% endblock breadcrumbs %}
+  {% endblock breadcrumbs %} {% endcomment %}
 
   <main class="module-body">
     {% block content %}

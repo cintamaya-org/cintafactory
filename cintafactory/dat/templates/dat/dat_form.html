@@ -1,13 +1,13 @@
 {% extends current_module.base_template %}
 {% load material_form material_frontend %}
-{% block breadcrumbs_items %}
+{% comment %} {% block breadcrumbs_items %}
   <a href="{% url 'dat:my_list' %}">Mes DAT</a>
   {% if object.pk %}
     <a class="active">Modifier {{ object }}</a>
   {% else %}
     <a class="active">Nouveau DAT</a>
   {% endif %}
-{% endblock %}
+{% endblock %} {% endcomment %}
 {% block content %}
   <form method="post" novalidate>
     {% csrf_token %}
