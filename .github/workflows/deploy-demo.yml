@@ -28,7 +28,9 @@ jobs:
           set -euo pipefail
           DEST="/opt/cintafactory/demo"
 
-          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "mkdir -p ${DEST} && find ${DEST} -mindepth 1 -maxdepth 1 -exec rm -rf {} +"
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "sudo install -d -o \$USER -g \$USER ${DEST}"
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "sudo find ${DEST} -mindepth 1 -maxdepth 1 -exec rm -rf {} +"
+
           tar --exclude=".git" --exclude=".github" -czf - . | ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "cd ${DEST} && tar -xzf -"
 
       - name: Deploy on VPS (docker compose up -d) as demo_factory
