@@ -15,12 +15,12 @@ class UserAdmin(DjangoUserAdmin):
     fieldsets = (
         (None, {"fields": ("username", "password")}),
         ("Personal info", {"fields": ("first_name", "last_name", "email")}),
-        ("Role", {"fields": ("role",)}),
+        ("Role", {"fields": ("role", "architect_referent")}),
         ("Permissions", {"fields": ("is_active", "is_staff", "is_superuser", "groups", "user_permissions")}),
         ("Important dates", {"fields": ("last_login", "date_joined")}),
     )
-    add_fieldsets = ((None, {"classes": ("wide",), "fields": ("username", "password1", "password2", "role")}),)
-    list_display = ("username", "email", "first_name", "last_name", "is_staff", "role")
-    list_filter = ("is_staff", "is_superuser", "is_active", "groups", "role")
+    add_fieldsets = ((None, {"classes": ("wide",), "fields": ("username", "password1", "password2", "role", "architect_referent")}),)
+    list_display = ("username", "email", "first_name", "last_name", "is_staff", "role", "architect_referent")
+    list_filter = ("is_staff", "is_superuser", "is_active", "groups", "role", "architect_referent")
     search_fields = ("username", "first_name", "last_name", "email")
     ordering = ("username",)
