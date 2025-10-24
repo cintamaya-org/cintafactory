@@ -22,14 +22,14 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
 
-      - name: Rsync repo to VPS (/opt/cintafactory/test)
+      - name: Sync repo to VPS (/opt/cintafactory/test)
         shell: bash
         run: |
-          sudo apt-get update && sudo apt-get install -y rsync
-          rsync -az --delete \
-            --exclude ".git" \
-            --exclude ".github" \
-            ./ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/cintafactory/test/
+          set -euo pipefail
+          DEST="/opt/cintafactory/test"
+
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "mkdir -p ${DEST} && find ${DEST} -mindepth 1 -maxdepth 1 -exec rm -rf {} +"
+          tar --exclude=".git" --exclude=".github" -czf - . | ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "cd ${DEST} && tar -xzf -"
 
       - name: Deploy on VPS (docker compose up -d) as test_factory
         shell: bash
