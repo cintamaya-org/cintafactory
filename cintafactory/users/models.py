@@ -1,6 +1,6 @@
 from django.db import models
-from django.db.models import Q
 from django.contrib.auth.models import AbstractUser
+from django.core.exceptions import ValidationError
 
 class Role(models.Model):
     name = models.CharField(max_length=50, unique=True)
@@ -30,15 +30,21 @@ class User(AbstractUser):
     def is_role(self, slug: str) -> bool:
         return bool(self.role and self.role.slug == slug)
 
-    class Meta(AbstractUser.Meta):
-        constraints = [
-            models.CheckConstraint(
-                check=Q(role__slug="architecte-technique", architect_referent__isnull=False)
-                | ~Q(role__slug="architecte-technique"),
-                name="architecte_technique_requires_referent",
-            ),
-            models.CheckConstraint(
-                check=~Q(role__slug="architecte-referent", architect_referent__isnull=False),
-                name="architecte_referent_cannot_have_referent",
-            ),
-        ]
+    def clean(self):
+        super().clean()
+
+        slug = self.role.slug if self.role else None
+
+        if slug == "architecte-technique" and not self.architect_referent_id:
+            raise ValidationError(
+                {"architect_referent": "Un architecte technique doit avoir un referent."}
+            )
+
+        if slug == "architecte-referent" and self.architect_referent_id:
+            raise ValidationError(
+                {"architect_referent": "Un architecte referent ne peut pas avoir de referent."}
+            )
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
