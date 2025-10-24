@@ -1,0 +1,34 @@
+services:
+  web:
+    build:
+      context: ./cintafactory
+    container_name: test_factory_dev_web
+    environment:
+      DJANGO_SETTINGS_MODULE: cintafactory.settings
+      DEBUG: 1
+      DATABASE_HOST: test_factory_db
+      DATABASE_PORT: 5432
+      DATABASE_NAME: test_factory_db
+      DATABASE_USER: test_factory_user
+      DATABASE_PASSWORD: test_factory_pass
+    volumes:
+      # IMPORTANT: mount your app folder (which contains manage.py AND templates/)
+      - ./cintafactory:/app
+    ports:
+      - "8101:8000"
+    command: python manage.py runserver 0.0.0.0:8000
+
+  db:
+    image: postgres:16
+    container_name: test_factory_db
+    environment:
+      POSTGRES_DB: test_factory_db
+      POSTGRES_USER: test_factory_user
+      POSTGRES_PASSWORD: test_factory_pass
+    volumes:
+      - pgdata_dev:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+
+volumes:
+  pgdata_dev:

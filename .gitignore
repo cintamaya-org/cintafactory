@@ -12,6 +12,7 @@ env/
 !deploy/env/
 .venv/
 .env/
+.env
 
 # Django stuff
 *.log

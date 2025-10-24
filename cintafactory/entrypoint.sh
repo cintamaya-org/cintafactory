@@ -16,6 +16,13 @@ if [ "${RUN_MIGRATIONS:-1}" = "1" ]; then
   python manage.py migrate --noinput
 fi
 
+# Draw IO init TODO later
+# DRAWIO_VENDOR_DIR="cintafactory/static/drawio/vendor/drawio-editor"
+# if [ ! -f "${DRAWIO_VENDOR_DIR}/index.html" ]; then
+#   echo "Installing draw.io assets..."
+#   python utils/drawio/download_drawio_release.py --force || echo "Warning: unable to install draw.io assets (continuing)."
+# fi
+
 if [ "${COLLECT_STATIC:-1}" = "1" ]; then
   echo "Collecting static..."
   python manage.py collectstatic --noinput || true

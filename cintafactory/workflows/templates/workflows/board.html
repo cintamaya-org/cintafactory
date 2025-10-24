@@ -68,6 +68,26 @@
   word-break: break-word;
 }
 </style>
+
+<style>
+.rotating-logo {
+  width: 50px;
+  height: 50px;
+  animation: spinPause 1.2s ease-in-out infinite;
+}
+
+@keyframes spinPause {
+  0%   { transform: rotate(0deg); }
+  80%  { transform: rotate(360deg); }
+  100% { transform: rotate(360deg); }
+}
+
+</style>
+
+<img src="/static/imgs/cintamaya_logo_100px.png" class="rotating-logo" alt="Logo">
+
+
+
 <div class="mdc-layout-grid vf-page__grid" 
      style="position: relative; margin-top: 0; max-width: 100%; overflow: hidden;">
   <div class="mdc-layout-grid__inner vf-page__grid-inner">
@@ -77,15 +97,25 @@
             {% for column in columns %}
               <div class="column">
                 <span class="column-title">
-                  {{ column.step.name }}
+                  {{ column.title }}
                   <span class="badge">{{ column.items|length }}</span>
                 </span>
                 <div class="column-content">
                   <vf-perfect-scroll></vf-perfect-scroll>
-                  {% if column.step.description %}
+                  {% if column.description %}
                     <p class="vf-dashboard__card-detail">
-                      {{ column.step.description }}
+                      {{ column.description }}
                     </p>
+                  {% endif %}
+                  {% if column.status_labels %}
+                    <div class="vf-dashboard__card-detail">
+                      <label>Etapes incluses</label>
+                      <span>
+                        {% for label in column.status_labels %}
+                          {{ label }}{% if not forloop.last %}, {% endif %}
+                        {% endfor %}
+                      </span>
+                    </div>
                   {% endif %}
                   {% for dat in column.items %}
                     <div class="mdc-card" style="padding:15px;margin-top:10px;margin-bottom:5px;">
