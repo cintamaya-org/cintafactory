@@ -1,5 +1,4 @@
 from django.db import migrations, models
-from django.db.models import Q
 
 
 NEW_ROLES = (
@@ -66,21 +65,6 @@ class Migration(migrations.Migration):
                 on_delete=models.deletion.PROTECT,
                 related_name="technical_architects",
                 to="users.user",
-            ),
-        ),
-        migrations.AddConstraint(
-            model_name="user",
-            constraint=models.CheckConstraint(
-                check=Q(role__slug="architecte-technique", architect_referent__isnull=False)
-                | ~Q(role__slug="architecte-technique"),
-                name="architecte_technique_requires_referent",
-            ),
-        ),
-        migrations.AddConstraint(
-            model_name="user",
-            constraint=models.CheckConstraint(
-                check=~Q(role__slug="architecte-referent", architect_referent__isnull=False),
-                name="architecte_referent_cannot_have_referent",
             ),
         ),
         migrations.RunPython(seed_roles, reverse_code=unseed_roles),
