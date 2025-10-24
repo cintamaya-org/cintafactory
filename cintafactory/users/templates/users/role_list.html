@@ -7,7 +7,7 @@
       <h5 style="margin:0;">Roles du systeme</h5>
 
       {# Bouton ajoute disponible pour superuser/staff/admin #}
-      {% if request.user.is_superuser or request.user.is_staff or request.user.role and request.user.role.slug == "admin" %}
+      {% if request.user.is_superuser or request.user.is_staff or request.user.role and request.user.role.slug == "comite-validation" %}
         <a href="crud/add/" class="btn waves-effect">+ Ajouter un role</a>
       {% endif %}
     </div>

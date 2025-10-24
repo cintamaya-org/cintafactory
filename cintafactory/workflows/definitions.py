@@ -57,10 +57,18 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
                 is_initial=True,
                 description="Saisie de la demande initiale par le porteur du dossier.",
                 permissions=(
-                    StepPermissionDefinition(permission="write", roles=("architect",)),
+                    StepPermissionDefinition(permission="write", roles=("porteur-demande",)),
                     StepPermissionDefinition(
                         permission="read",
-                        roles=("architect", "technical-reviewer", "security-officer", "director"),
+                        roles=(
+                            "porteur-demande",
+                            "architecte-referent",
+                            "architecte-technique",
+                            "urbaniste",
+                            "analyste-secu",
+                            "rssi",
+                            "comite-validation",
+                        ),
                     ),
                 ),
             ),
@@ -71,10 +79,18 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
                 order=20,
                 description="Création et complétion du dossier DAT.",
                 permissions=(
-                    StepPermissionDefinition(permission="write", roles=("technical-reviewer",)),
+                    StepPermissionDefinition(permission="write", roles=("architecte-technique",)),
                     StepPermissionDefinition(
                         permission="read",
-                        roles=("architect", "technical-reviewer", "security-officer", "director"),
+                        roles=(
+                            "porteur-demande",
+                            "architecte-referent",
+                            "architecte-technique",
+                            "urbaniste",
+                            "analyste-secu",
+                            "rssi",
+                            "comite-validation",
+                        ),
                     ),
                 ),
             ),
@@ -85,10 +101,18 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
                 order=30,
                 description="Revue et validation par le référent architecte.",
                 permissions=(
-                    StepPermissionDefinition(permission="write", roles=("technical-reviewer", "director")),
+                    StepPermissionDefinition(permission="write", roles=("architecte-referent",)),
                     StepPermissionDefinition(
                         permission="read",
-                        roles=("architect", "technical-reviewer", "security-officer", "director"),
+                        roles=(
+                            "porteur-demande",
+                            "architecte-referent",
+                            "architecte-technique",
+                            "urbaniste",
+                            "analyste-secu",
+                            "rssi",
+                            "comite-validation",
+                        ),
                     ),
                 ),
             ),
@@ -99,8 +123,16 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
                 order=40,
                 description="Instruction par les équipes urbanisme.",
                 permissions=(
-                    StepPermissionDefinition(permission="write", roles=("technical-reviewer",)),
-                    StepPermissionDefinition(permission="read", roles=("architect", "technical-reviewer")),
+                    StepPermissionDefinition(permission="write", roles=("urbaniste",)),
+                    StepPermissionDefinition(
+                        permission="read",
+                        roles=(
+                            "porteur-demande",
+                            "architecte-referent",
+                            "architecte-technique",
+                            "urbaniste",
+                        ),
+                    ),
                 ),
             ),
             WorkflowStepDefinition(
@@ -110,8 +142,11 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
                 order=50,
                 description="Production de la documentation technique consolidée.",
                 permissions=(
-                    StepPermissionDefinition(permission="write", roles=("technical-reviewer",)),
-                    StepPermissionDefinition(permission="read", roles=("architect", "technical-reviewer")),
+                    StepPermissionDefinition(permission="write", roles=("architecte-technique",)),
+                    StepPermissionDefinition(
+                        permission="read",
+                        roles=("architecte-referent", "architecte-technique"),
+                    ),
                 ),
             ),
             WorkflowStepDefinition(
@@ -121,8 +156,16 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
                 order=60,
                 description="Analyse de risque cyber réalisée par la sécurité.",
                 permissions=(
-                    StepPermissionDefinition(permission="write", roles=("security-officer",)),
-                    StepPermissionDefinition(permission="read", roles=("technical-reviewer", "security-officer", "director")),
+                    StepPermissionDefinition(permission="write", roles=("analyste-secu",)),
+                    StepPermissionDefinition(
+                        permission="read",
+                        roles=(
+                            "architecte-referent",
+                            "architecte-technique",
+                            "analyste-secu",
+                            "rssi",
+                        ),
+                    ),
                 ),
             ),
             WorkflowStepDefinition(
@@ -132,8 +175,11 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
                 order=70,
                 description="Emission des recommandations sécurité.",
                 permissions=(
-                    StepPermissionDefinition(permission="write", roles=("security-officer",)),
-                    StepPermissionDefinition(permission="read", roles=("technical-reviewer", "security-officer", "director")),
+                    StepPermissionDefinition(permission="write", roles=("analyste-secu",)),
+                    StepPermissionDefinition(
+                        permission="read",
+                        roles=("architecte-technique", "analyste-secu", "rssi"),
+                    ),
                 ),
             ),
             WorkflowStepDefinition(
@@ -143,8 +189,19 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
                 order=80,
                 description="Gestion des dérogations au référentiel sécurité.",
                 permissions=(
-                    StepPermissionDefinition(permission="write", roles=("security-officer",)),
-                    StepPermissionDefinition(permission="read", roles=("technical-reviewer", "security-officer", "director")),
+                    StepPermissionDefinition(
+                        permission="write",
+                        roles=("analyste-secu", "rssi"),
+                    ),
+                    StepPermissionDefinition(
+                        permission="read",
+                        roles=(
+                            "architecte-referent",
+                            "architecte-technique",
+                            "analyste-secu",
+                            "rssi",
+                        ),
+                    ),
                 ),
             ),
             WorkflowStepDefinition(
@@ -154,8 +211,21 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
                 order=90,
                 description="Architecture validée et prête à être déployée.",
                 permissions=(
-                    StepPermissionDefinition(permission="write", roles=("technical-reviewer", "director")),
-                    StepPermissionDefinition(permission="read", roles=("architect", "technical-reviewer", "security-officer", "director")),
+                    StepPermissionDefinition(
+                        permission="write",
+                        roles=("architecte-referent", "comite-validation"),
+                    ),
+                    StepPermissionDefinition(
+                        permission="read",
+                        roles=(
+                            "porteur-demande",
+                            "architecte-referent",
+                            "architecte-technique",
+                            "analyste-secu",
+                            "rssi",
+                            "comite-validation",
+                        ),
+                    ),
                 ),
             ),
             WorkflowStepDefinition(
@@ -165,8 +235,11 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
                 order=100,
                 description="Inscription dans les offres de service adaptées.",
                 permissions=(
-                    StepPermissionDefinition(permission="write", roles=("director",)),
-                    StepPermissionDefinition(permission="read", roles=("technical-reviewer", "director")),
+                    StepPermissionDefinition(permission="write", roles=("comite-validation",)),
+                    StepPermissionDefinition(
+                        permission="read",
+                        roles=("architecte-technique", "comite-validation"),
+                    ),
                 ),
             ),
             WorkflowStepDefinition(
@@ -176,8 +249,11 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
                 order=110,
                 description="Vérification des capacités d'hébergement et d'exploitation.",
                 permissions=(
-                    StepPermissionDefinition(permission="write", roles=("director",)),
-                    StepPermissionDefinition(permission="read", roles=("technical-reviewer", "director")),
+                    StepPermissionDefinition(permission="write", roles=("comite-validation",)),
+                    StepPermissionDefinition(
+                        permission="read",
+                        roles=("architecte-technique", "comite-validation"),
+                    ),
                 ),
             ),
             WorkflowStepDefinition(
@@ -187,8 +263,11 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
                 order=120,
                 description="Mise à jour de la cartographie des flux applicatifs.",
                 permissions=(
-                    StepPermissionDefinition(permission="write", roles=("technical-reviewer",)),
-                    StepPermissionDefinition(permission="read", roles=("technical-reviewer", "director")),
+                    StepPermissionDefinition(permission="write", roles=("architecte-technique",)),
+                    StepPermissionDefinition(
+                        permission="read",
+                        roles=("architecte-technique", "comite-validation"),
+                    ),
                 ),
             ),
             WorkflowStepDefinition(
@@ -198,8 +277,11 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
                 order=130,
                 description="Validation finale par l'infrastructure et l'exploitation.",
                 permissions=(
-                    StepPermissionDefinition(permission="write", roles=("director",)),
-                    StepPermissionDefinition(permission="read", roles=("technical-reviewer", "security-officer", "director")),
+                    StepPermissionDefinition(permission="write", roles=("comite-validation",)),
+                    StepPermissionDefinition(
+                        permission="read",
+                        roles=("architecte-technique", "analyste-secu", "rssi", "comite-validation"),
+                    ),
                 ),
             ),
             WorkflowStepDefinition(
@@ -209,8 +291,18 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
                 order=140,
                 description="Dossier DAT consolidé et prêt pour comité.",
                 permissions=(
-                    StepPermissionDefinition(permission="write", roles=("director",)),
-                    StepPermissionDefinition(permission="read", roles=("architect", "technical-reviewer", "security-officer", "director")),
+                    StepPermissionDefinition(permission="write", roles=("comite-validation",)),
+                    StepPermissionDefinition(
+                        permission="read",
+                        roles=(
+                            "porteur-demande",
+                            "architecte-referent",
+                            "architecte-technique",
+                            "analyste-secu",
+                            "rssi",
+                            "comite-validation",
+                        ),
+                    ),
                 ),
             ),
             WorkflowStepDefinition(
@@ -220,8 +312,18 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
                 order=150,
                 description="Présentation du dossier au comité de validation.",
                 permissions=(
-                    StepPermissionDefinition(permission="write", roles=("director",)),
-                    StepPermissionDefinition(permission="read", roles=("architect", "technical-reviewer", "security-officer", "director")),
+                    StepPermissionDefinition(permission="write", roles=("comite-validation",)),
+                    StepPermissionDefinition(
+                        permission="read",
+                        roles=(
+                            "porteur-demande",
+                            "architecte-referent",
+                            "architecte-technique",
+                            "analyste-secu",
+                            "rssi",
+                            "comite-validation",
+                        ),
+                    ),
                 ),
             ),
             WorkflowStepDefinition(
@@ -231,8 +333,20 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
                 order=160,
                 description="Traitement des réserves ou refus émis en comité.",
                 permissions=(
-                    StepPermissionDefinition(permission="write", roles=("technical-reviewer", "security-officer")),
-                    StepPermissionDefinition(permission="read", roles=("architect", "technical-reviewer", "security-officer", "director")),
+                    StepPermissionDefinition(
+                        permission="write", roles=("architecte-technique", "analyste-secu")
+                    ),
+                    StepPermissionDefinition(
+                        permission="read",
+                        roles=(
+                            "porteur-demande",
+                            "architecte-referent",
+                            "architecte-technique",
+                            "analyste-secu",
+                            "rssi",
+                            "comite-validation",
+                        ),
+                    ),
                 ),
             ),
             WorkflowStepDefinition(
@@ -242,8 +356,18 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
                 order=170,
                 description="Publication finale du DAT et communication.",
                 permissions=(
-                    StepPermissionDefinition(permission="write", roles=("director",)),
-                    StepPermissionDefinition(permission="read", roles=("architect", "technical-reviewer", "security-officer", "director")),
+                    StepPermissionDefinition(permission="write", roles=("comite-validation",)),
+                    StepPermissionDefinition(
+                        permission="read",
+                        roles=(
+                            "porteur-demande",
+                            "architecte-referent",
+                            "architecte-technique",
+                            "analyste-secu",
+                            "rssi",
+                            "comite-validation",
+                        ),
+                    ),
                 ),
             ),
         ),

@@ -15,7 +15,7 @@ class BaseSecuredViewSet(LoginRequiredMixin, ModelViewSet):
         return (
             request.user.is_superuser
             or request.user.is_staff
-            or (hasattr(request.user, "is_role") and request.user.is_role("admin"))
+            or (hasattr(request.user, "is_role") and request.user.is_role("comite-validation"))
         )
 
     def has_add_permission(self, request): return self._can_mutate(request)
@@ -48,11 +48,11 @@ class UserViewSet(LoginRequiredMixin, ModelViewSet):
     search_fields = ("username", "email", "first_name", "last_name")
     # list_template_name = "users/user_list.html"
     form_fields = ["username", "email", "first_name", "last_name",
-                   "role", "is_active", "is_staff", "is_superuser"]
+                   "role", "architect_referent", "is_active", "is_staff", "is_superuser"]
     layout = Layout(
         Fieldset("Compte", Row("username", "email")),
         Fieldset("Profil", Row("first_name", "last_name")),
-        Fieldset("Roles et droits", Row("role", "is_active", "is_staff", "is_superuser")),
+        Fieldset("Roles et droits", Row("role", "architect_referent", "is_active", "is_staff", "is_superuser")),
     )
 
 

@@ -7,7 +7,7 @@
       <h5 style="margin:0;">Utilisateurs</h5>
 
       {# Bouton affiche pour superuser/staff/admin #}
-      {% if request.user.is_superuser or request.user.is_staff or request.user.role and request.user.role.slug == "admin" %}
+      {% if request.user.is_superuser or request.user.is_staff or request.user.role and request.user.role.slug == "comite-validation" %}
         <a href="crud/add/" class="btn waves-effect">+ Ajouter un utilisateur</a>
       {% endif %}
     </div>
@@ -21,6 +21,7 @@
             <th>Prenom</th>
             <th>Nom</th>
             <th>Role</th>
+            <th>Referent</th>
             <th>Actif</th>
             <th style="width:1%; white-space:nowrap;">Actions</th>
           </tr>
@@ -30,16 +31,16 @@
     {% for obj in object_list %}
       {% include "users/_user_row.html" %}
     {% empty %}
-      <tr><td colspan="7" style="color:#666;">Aucun utilisateur pour le moment.</td></tr>
+      <tr><td colspan="8" style="color:#666;">Aucun utilisateur pour le moment.</td></tr>
     {% endfor %}
   {% elif page_obj %}
     {% for obj in page_obj.object_list %}
       {% include "users/_user_row.html" %}
     {% empty %}
-      <tr><td colspan="7" style="color:#666;">Aucun utilisateur pour le moment.</td></tr>
+      <tr><td colspan="8" style="color:#666;">Aucun utilisateur pour le moment.</td></tr>
     {% endfor %}
   {% else %}
-    <tr><td colspan="7" style="color:#666;">Aucun utilisateur pour le moment.</td></tr>
+    <tr><td colspan="8" style="color:#666;">Aucun utilisateur pour le moment.</td></tr>
   {% endif %}
 </tbody>
 

@@ -10,11 +10,22 @@ from .models import Workflow
 from .sync import sync_workflow_definitions
 
 
+ROLE_FIXTURES = {
+    "porteur-demande": "Porteur de la demande",
+    "architecte-referent": "Architecte Référent",
+    "architecte-technique": "Architecte Technique",
+    "urbaniste": "Urbaniste",
+    "analyste-secu": "Analyste Sécu",
+    "rssi": "RSSI",
+    "comite-validation": "Comité de validation",
+}
+
+
 class WorkflowSyncTests(TestCase):
     def setUp(self):
         self.roles = {
-            slug: Role.objects.create(name=slug.replace("-", " ").title(), slug=slug)
-            for slug in ["architect", "technical-reviewer", "security-officer", "director"]
+            slug: Role.objects.create(name=name, slug=slug)
+            for slug, name in ROLE_FIXTURES.items()
         }
 
     def test_sync_creates_workflow_steps_and_permissions(self):
@@ -27,16 +38,16 @@ class WorkflowSyncTests(TestCase):
         draft = next(step for step in steps if step.key == "besoin-dal")
         self.assertTrue(draft.is_initial)
         self.assertEqual(draft.write_permissions.count(), 1)
-        self.assertEqual(draft.write_permissions.first().role, self.roles["architect"])
+        self.assertEqual(draft.write_permissions.first().role, self.roles["porteur-demande"])
 
         security = next(step for step in steps if step.key == "preconisation-securite")
         self.assertGreaterEqual(security.read_permissions.count(), 2)
         self.assertSetEqual(
             {perm.role for perm in security.read_permissions},
             {
-                self.roles["technical-reviewer"],
-                self.roles["security-officer"],
-                self.roles["director"],
+                self.roles["architecte-technique"],
+                self.roles["analyste-secu"],
+                self.roles["rssi"],
             },
         )
 
@@ -44,8 +55,8 @@ class WorkflowSyncTests(TestCase):
 class WorkflowBoardViewTests(TestCase):
     def setUp(self):
         self.roles = {
-            slug: Role.objects.create(name=slug.replace("-", " ").title(), slug=slug)
-            for slug in ["architect", "technical-reviewer", "security-officer", "director"]
+            slug: Role.objects.create(name=name, slug=slug)
+            for slug, name in ROLE_FIXTURES.items()
         }
         sync_workflow_definitions()
         self.user = get_user_model().objects.create_user(username="architect", password="pwd")
