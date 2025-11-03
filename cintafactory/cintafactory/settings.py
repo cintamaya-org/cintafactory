@@ -39,7 +39,7 @@ _allowed_hosts_raw = os.environ.get("ALLOWED_HOSTS")
 if _allowed_hosts_raw is None:
     _allowed_hosts_raw = os.environ.get("DJANGO_ALLOWED_HOSTS", "*")
 ALLOWED_HOSTS = _split_env_list(_allowed_hosts_raw, default="*")
-ALLOWED_HOSTS="*"
+ALLOWED_HOSTS=["*"]
 _csrf_env_raw = os.environ.get("CSRF_TRUSTED")
 if _csrf_env_raw is None:
     _csrf_env_raw = os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS")
