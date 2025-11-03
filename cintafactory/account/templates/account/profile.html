@@ -7,7 +7,7 @@
 {% endblock %} {% endcomment %}
 
 {% block content %}
-<div class="card">
+<div class="card cinta-card">
   <div class="card-content">
     <span class="card-title">Informations du compte</span>
     <div class="section">
@@ -25,7 +25,7 @@
     </div>
   </div>
   <div class="card-action">
-    <a href="{% url 'account:password_change' %}" class="btn waves-effect">
+    <a href="{% url 'account:password_change' %}" class="btn waves-effect waves-light cinta-btn-primary">
       <i class="material-icons left">lock</i>Modifier le mot de passe
     </a>
   </div>

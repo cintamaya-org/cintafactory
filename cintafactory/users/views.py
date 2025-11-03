@@ -2,6 +2,7 @@ from material import Layout, Row, Fieldset
 from material.frontend.views import ModelViewSet
 from django.contrib.auth import get_user_model
 from django.contrib.auth.mixins import LoginRequiredMixin
+from .forms import UserForm
 from .models import Role, User
 from django.views.generic import ListView
 
@@ -47,11 +48,11 @@ class UserViewSet(LoginRequiredMixin, ModelViewSet):
     ordering = ("username",)
     search_fields = ("username", "email", "first_name", "last_name")
     # list_template_name = "users/user_list.html"
-    form_fields = ["username", "email", "first_name", "last_name",
-                   "role", "architect_referent", "is_active", "is_staff", "is_superuser"]
+    form_class = UserForm
     layout = Layout(
         Fieldset("Compte", Row("username", "email")),
         Fieldset("Profil", Row("first_name", "last_name")),
+        Fieldset("Securite", Row("password1", "password2")),
         Fieldset("Roles et droits", Row("role", "architect_referent", "is_active", "is_staff", "is_superuser")),
     )
 

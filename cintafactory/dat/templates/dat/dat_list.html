@@ -4,13 +4,13 @@
   <a class="active">Mes DAT</a>
 {% endblock %} {% endcomment %}
 {% block content %}
-<div class="card">
+<div class="card cinta-card">
   <div class="card-content">
       <div style="display:flex; align-items:center; justify-content:space-between; gap:1rem;">
       <h5 style="margin:0;">Mes DAT</h5>
 
-      {% if request.user.is_superuser or request.user.is_staff or request.user.role and request.user.role.slug == "admin" %}
-        <a href="/dat/manage/dats/crud/add/" class="btn waves-effect">Ajouter un DAT</a>
+      {% if can_create_dat %}
+        <a href="/dat/manage/dats/crud/add/" class="btn waves-effect waves-light cinta-btn-primary">Ajouter un DAT</a>
       {% endif %}
     </div>
   <div style="margin-top:1rem; overflow-x:auto;">
@@ -19,6 +19,7 @@
       <tr>
         <th>Reference</th>
         <th>Titre</th>
+        <th>Application</th>
         <th>Statut</th>
         <th>Responsable</th>
         <th>Cree le</th>
@@ -29,7 +30,7 @@
       {% for obj in object_list %}
         {% include "dat/_dat_row.html" %}
       {% empty %}
-        <tr><td colspan="6">Aucun DAT pour le moment.</td></tr>
+        <tr><td colspan="7">Aucun DAT pour le moment.</td></tr>
       {% endfor %}
     </tbody>
   </table>

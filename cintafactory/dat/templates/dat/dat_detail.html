@@ -1,0 +1,75 @@
+{% extends "material/frontend/views/detail.html" %}
+
+{% block right-panel %}
+<div class="right-panel">
+  <div class="card">
+    <div class="card-content">
+      <span class="card-title" style="display:flex; align-items:center; gap:0.5rem;">
+        <i class="material-icons" aria-hidden="true">history</i>
+        Historique du dossier
+      </span>
+      {% if history_entries %}
+        <div class="responsive-table" style="margin-top:1rem;">
+          <table class="highlight">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Action</th>
+                <th>Statut</th>
+                <th>Utilisateur</th>
+                <th>Détails</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for entry in history_entries %}
+                <tr>
+                  <td>{{ entry.performed_at|date:"d/m/Y" }} à {{ entry.performed_at|time:"H\\hi" }}</td>
+                  <td>{{ entry.get_action_display }}</td>
+                  <td>
+                    {% if entry.status_before or entry.status_after %}
+                      {% if entry.status_before %}
+                        <span class="chip grey lighten-3" title="Avant">{{ entry.get_status_before_display }}</span>
+                      {% endif %}
+                      {% if entry.status_after and entry.status_after != entry.status_before %}
+                        <span style="padding:0 0.25rem;">-></span>
+                        <span class="chip blue lighten-4" title="Après">{{ entry.get_status_after_display }}</span>
+                      {% endif %}
+                    {% else %}
+                      -
+                    {% endif %}
+                  </td>
+                  <td>{{ entry.actor_name }}</td>
+                  <td>
+                    {% if entry.action == entry.action.STATUS_CHANGED %}
+                      Passage de <strong>{{ entry.details.from|default:"-" }}</strong> à <strong>{{ entry.details.to|default:"-" }}</strong>.
+                    {% elif entry.action == entry.action.OWNER_CHANGED %}
+                      Responsable : <strong>{{ entry.details.from_username|default:"-" }}</strong> -> <strong>{{ entry.details.to_username|default:"-" }}</strong>.
+                    {% elif entry.action == entry.action.UPDATED %}
+                      {% if entry.details.changes %}
+                        <ul style="margin:0; padding-left:1.2rem;">
+                          {% for field, data in entry.details.changes.items %}
+                            <li>
+                              <strong>{{ field|capfirst }}</strong> :
+                              <span>{{ data.from|default:"-" }}</span> -> <span>{{ data.to|default:"-" }}</span>
+                            </li>
+                          {% endfor %}
+                        </ul>
+                      {% else %}
+                        -
+                      {% endif %}
+                    {% else %}
+                      -
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p style="margin:0;">Aucun événement n'a encore été enregistré.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

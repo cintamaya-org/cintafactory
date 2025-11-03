@@ -9,13 +9,13 @@
 {% block content %}
 <div class="row">
   <div class="col s12 m4">
-    <div class="card">
+    <div class="card cinta-card">
       <div class="card-content">
         <span class="card-title">Total des DAT</span>
         <h4 style="margin-top:1rem;">{{ total_dats }}</h4>
       </div>
       <div class="card-action">
-        <a href="/dat/manage/dats/crud/" class="btn waves-effect waves-light">
+        <a href="/dat/manage/dats/crud/" class="btn waves-effect waves-light cinta-btn-primary">
           <i class="material-icons left">settings</i>Ouvrir la console CRUD
         </a>
       </div>
@@ -23,7 +23,7 @@
   </div>
 
   <div class="col s12 m8">
-    <div class="card">
+    <div class="card cinta-card">
       <div class="card-content">
         <span class="card-title">Activite mensuelle (6 derniers mois)</span>
         <div style="height:220px; position:relative;">
@@ -46,8 +46,8 @@
 </div>
 
 <div class="row">
-  <div class="col s12 m6">
-    <div class="card">
+  {% comment %} <div class="col s12 m6">
+    <div class="card cinta-card">
       <div class="card-content">
         <span class="card-title">Repartition par statut</span>
         {% if status_summary %}
@@ -69,10 +69,10 @@
         {% endif %}
       </div>
     </div>
-  </div>
+  </div> {% endcomment %}
 
-  <div class="col s12 m6">
-    <div class="card">
+  <div class="col">
+    <div class="card cinta-card">
       <div class="card-content">
         <span class="card-title">Contributeurs principaux</span>
         {% if top_owners %}

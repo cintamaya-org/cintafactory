@@ -44,70 +44,76 @@
     </div>
   {% endif %} {% endcomment %}
   
-<style>  {% comment %} TODO make a style file {% endcomment %}
-  /* Allow scroll inside .vf-dashboard when content is too big */
-.scroll-box {
-  max-width: 100%;
-  overflow: auto;       /* Scrollbars appear only when needed */
-  box-sizing: border-box;
-  max-height: 80vh;     /* Optional: limit vertical size */
-}
-
-/* Prevent MDC grid cells from expanding past the viewport */
+<style>  
 .mdc-layout-grid__cell {
   min-width: 0;
 }
-
-/* Handle long text or images that could overflow */
-.scroll-box img {
+img {
   max-width: 100%;
   height: auto;
 }
+.vf-dashboard {
+  display: flex;
+  gap: 1.5rem;
+  width: 100%;
+}
+.vf-dashboard .column {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.vf-dashboard .column-content {
+  flex: 1 1 auto;
+  overflow: visible;
+  padding-right: 0;
+}
+.vf-dashboard .column-action {
+  flex-shrink: 0;
+  margin-top: 1rem;
+}
+
 .scroll-box {
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-</style>
-
-<style>
-.rotating-logo {
-  width: 50px;
-  height: 50px;
-  animation: spinPause 1.2s ease-in-out infinite;
+  width: 100%;
+  height: 90vh;
+  padding: 1rem;
+  border-radius: 12px;
+  overflow-y: auto; 
+  overflow-x: hidden; 
+  scrollbar-width: thin; 
 }
 
-@keyframes spinPause {
-  0%   { transform: rotate(0deg); }
-  80%  { transform: rotate(360deg); }
-  100% { transform: rotate(360deg); }
-}
+
+
+
+
 
 </style>
 
-<img src="/static/imgs/cintamaya_logo_100px.png" class="rotating-logo" alt="Logo">
 
+{% comment %} {% include "components/_loading_spinner.html" %} {% endcomment %}
 
 
 <div class="mdc-layout-grid vf-page__grid" 
-     style="position: relative; margin-top: 0; max-width: 100%; overflow: hidden;">
+     style="position: relative; margin-top: 0; max-width: 100%;">
   <div class="mdc-layout-grid__inner vf-page__grid-inner">
     <div class="mdc-layout-grid__cell mdc-layout-grid__cell--span-12" style="min-width: 0;">
-      <div class="vf-dashboard scroll-box">
+      <div class="vf-dashboard">
           {% if columns %}
             {% for column in columns %}
-              <div class="column">
+              <div class="column scroll-box">
                 <span class="column-title">
                   {{ column.title }}
                   <span class="badge">{{ column.items|length }}</span>
                 </span>
-                <div class="column-content">
+                <div class="column-content scroll-box">
                   <vf-perfect-scroll></vf-perfect-scroll>
                   {% if column.description %}
                     <p class="vf-dashboard__card-detail">
                       {{ column.description }}
                     </p>
                   {% endif %}
-                  {% if column.status_labels %}
+                  {% comment %} {% if column.status_labels %}
                     <div class="vf-dashboard__card-detail">
                       <label>Etapes incluses</label>
                       <span>
@@ -116,11 +122,12 @@
                         {% endfor %}
                       </span>
                     </div>
-                  {% endif %}
+                  {% endif %} {% endcomment %}
                   {% for dat in column.items %}
                     <div class="mdc-card" style="padding:15px;margin-top:10px;margin-bottom:5px;">
                       <div style="display:flex;flex-direction:column;gap:0.5rem;">
                         <div>
+                          {{ dat }}
                           <h2 class="mdc-typography mdc-typography--headline6" style="margin:0;">
                             {{ dat.reference|default:dat.pk }}
                           </h2>
@@ -130,21 +137,45 @@
                             </h3>
                           {% endif %}
                         </div>
+                        {% if dat.get_status_display %}
+                          <div class="vf-dashboard__card-detail" style="display:flex; align-items:center; gap:0.5rem;">
+                            <label style="margin:0;">Statut</label>
+                            <span class="chip" style="margin:0; background:#e3f2fd; color:#0d47a1; font-weight:600;">
+                              {{ dat.get_status_display }}
+                            </span>
+                          </div>
+                        {% endif %}
                         {% if dat.description %}
                           <p class="flow-text" style="margin:0;color: rgba(0,0,0,.54);">
                             {{ dat.description|truncatewords:24 }}
                           </p>
                         {% endif %}
-                        <div class="vf-dashboard__card-detail">
-                          <label>Derniere mise a jour</label>
-                          {{ dat.updated_at|date:"DATETIME_FORMAT" }}
-                        </div>
-                        {% if dat.owner %}
-                          <div class="vf-dashboard__card-detail">
-                            <label>Assigne a</label>
-                            {{ dat.owner.get_full_name|default:dat.owner.get_username }}
+                        <div class="vf-dashboard__card-detail" style="display:flex; flex-direction:column; gap:0.35rem;">
+                          <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                            <label style="margin:0;">Application</label>
+                            <span class="chip" style="margin:0; background:#f1f8e9; color:#33691e; font-weight:600;">
+                              {% if dat.application %} 
+                                {{ dat.application.name|default:dat.application.code }}
+                              {% else %}
+                                pas d'application
+                              {% endif %}
+                            </span>
                           </div>
-                        {% endif %}
+                          <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                            <label style="margin:0;">Derniere mise a jour</label>
+                            <span class="chip" style="margin:0; background:#fff3e0; color:#e65100; font-weight:600;">
+                              {{ dat.updated_at|date:"d/m/Y" }} {{ dat.updated_at|time:"H\\hi" }}
+                            </span>
+                          </div>
+                          {% if dat.owner %}
+                            <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                              <label style="margin:0;">Assigne</label>
+                              <span class="chip" style="margin:0; background:#e8eaf6; color:#1a237e; font-weight:600;">
+                                {{ dat.owner.get_full_name|default:dat.owner.get_username }}
+                              </span>
+                            </div>
+                          {% endif %}
+                        </div>
                       </div>
                     </div>
                   {% empty %}
@@ -156,7 +187,7 @@
                   {% endfor %}
                 </div>
                 <div class="column-action" style="padding:10px 5px 0;">
-                  {% with write=column.write_permissions read=column.read_permissions %}
+                  {% comment %} {% with write=column.write_permissions read=column.read_permissions %}
                     {% if write %}
                       <div class="vf-dashboard__card-detail">
                         <label>Autorisations d'ecriture</label>
@@ -177,7 +208,7 @@
                         </span>
                       </div>
                     {% endif %}
-                  {% endwith %}
+                  {% endwith %} {% endcomment %}
                 </div>
               </div>
             {% endfor %}

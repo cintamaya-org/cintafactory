@@ -5,6 +5,8 @@ services:
     container_name: django
     ports: 
       - '8000:8000'
+    environment:
+      RUN_MIGRATIONS: 1
     networks: 
       - swag-network 
   

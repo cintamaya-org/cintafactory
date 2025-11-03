@@ -1,0 +1,10 @@
+{% extends "diagrams/base.html" %}
+{% block title %}Nouveau diagramme{% endblock %}
+{% block content %}
+<h1>Nouveau diagramme</h1>
+<form method="post">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <button class="btn" type="submit">Créer</button>
+</form>
+{% endblock %}

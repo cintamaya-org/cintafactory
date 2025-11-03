@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Iterable, Sequence, Tuple
+from typing import Sequence, Tuple
 
 
 @dataclass(frozen=True)
@@ -45,17 +45,20 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
         name="Validation des DAT",
         model="dat.DAT",
         description=(
-            "Processus de validation des dossiers d'architecture garantissant la conformité "
-            "technique, la sécurité et l'approbation managériale."
+            "Processus de validation des dossiers d'architecture garantissant la conformite "
+            "technique, la securite et l'approbation manageriale."
         ),
         steps=(
             WorkflowStepDefinition(
-                key="besoin-dal",
-                name="Nouveau besoin (DAL)",
-                status="besoin_dal",
+                key="demande-initiale",
+                name="Demande initiale",
+                status="demande_initiale",
                 order=10,
                 is_initial=True,
-                description="Saisie de la demande initiale par le porteur du dossier.",
+                description=(
+                    "Ouverture du dossier (nouvelle application ou evolution) par le porteur de la "
+                    "demande avec reprise automatique des informations applicatives connues."
+                ),
                 permissions=(
                     StepPermissionDefinition(permission="write", roles=("porteur-demande",)),
                     StepPermissionDefinition(
@@ -67,28 +70,7 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
                             "urbaniste",
                             "analyste-secu",
                             "rssi",
-                            "comite-validation",
-                        ),
-                    ),
-                ),
-            ),
-            WorkflowStepDefinition(
-                key="nouveau-dossier",
-                name="Nouveau dossier (DAT)",
-                status="nouveau_dat",
-                order=20,
-                description="Création et complétion du dossier DAT.",
-                permissions=(
-                    StepPermissionDefinition(permission="write", roles=("architecte-technique",)),
-                    StepPermissionDefinition(
-                        permission="read",
-                        roles=(
-                            "porteur-demande",
-                            "architecte-referent",
-                            "architecte-technique",
-                            "urbaniste",
-                            "analyste-secu",
-                            "rssi",
+                            "infra-exploitation",
                             "comite-validation",
                         ),
                     ),
@@ -96,10 +78,13 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
             ),
             WorkflowStepDefinition(
                 key="validation-referent",
-                name="Validation du référent",
+                name="Validation du referent",
                 status="validation_referent",
-                order=30,
-                description="Revue et validation par le référent architecte.",
+                order=20,
+                description=(
+                    "Le referent architecture verifie la completude de la demande et affecte un "
+                    "architecte technique (validation ou renvoi au porteur avec commentaire)."
+                ),
                 permissions=(
                     StepPermissionDefinition(permission="write", roles=("architecte-referent",)),
                     StepPermissionDefinition(
@@ -111,7 +96,33 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
                             "urbaniste",
                             "analyste-secu",
                             "rssi",
+                            "infra-exploitation",
                             "comite-validation",
+                        ),
+                    ),
+                ),
+            ),
+            WorkflowStepDefinition(
+                key="instruction-architecture",
+                name="Instruction architecture technique",
+                status="instruction_architecture",
+                order=30,
+                description=(
+                    "L'architecte technique met a jour le DAT, produit le schema cible et formalise les "
+                    "arbitrages demandes avant passage a la securite."
+                ),
+                permissions=(
+                    StepPermissionDefinition(permission="write", roles=("architecte-technique",)),
+                    StepPermissionDefinition(
+                        permission="read",
+                        roles=(
+                            "porteur-demande",
+                            "architecte-referent",
+                            "architecte-technique",
+                            "urbaniste",
+                            "analyste-secu",
+                            "rssi",
+                            "infra-exploitation",
                         ),
                     ),
                 ),
@@ -121,7 +132,10 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
                 name="Instruction urbanisme",
                 status="instruction_urbanisme",
                 order=40,
-                description="Instruction par les équipes urbanisme.",
+                description=(
+                    "Mise a jour du schema d'urbanisme et controle de conformite aux standards par "
+                    "l'urbaniste en parallele de l'instruction technique."
+                ),
                 permissions=(
                     StepPermissionDefinition(permission="write", roles=("urbaniste",)),
                     StepPermissionDefinition(
@@ -131,89 +145,107 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
                             "architecte-referent",
                             "architecte-technique",
                             "urbaniste",
+                            "analyste-secu",
+                            "rssi",
+                            "infra-exploitation",
                         ),
                     ),
                 ),
             ),
             WorkflowStepDefinition(
-                key="documentation-technique",
-                name="Documentation architecture technique",
-                status="documentation_technique",
+                key="analyse-securite",
+                name="Analyse cyber securite",
+                status="analyse_securite",
                 order=50,
-                description="Production de la documentation technique consolidée.",
+                description=(
+                    "L'analyste securite conduit les ateliers de risque, formalise les preconisations et "
+                    "notifie le porteur ainsi que l'architecte technique. Les refus declenchent la "
+                    "demande de derogation."
+                ),
+                permissions=(
+                    StepPermissionDefinition(permission="write", roles=("analyste-secu",)),
+                    StepPermissionDefinition(
+                        permission="read",
+                        roles=(
+                            "porteur-demande",
+                            "architecte-referent",
+                            "architecte-technique",
+                            "urbaniste",
+                            "analyste-secu",
+                            "rssi",
+                            "infra-exploitation",
+                        ),
+                    ),
+                ),
+            ),
+            WorkflowStepDefinition(
+                key="generation-cartographie",
+                name="Generation cartographie et inventaire",
+                status="generation_cartographie",
+                order=60,
+                description=(
+                    "Synchronisation automatique des schemas techniques vers la cartographie des flux et "
+                    "mise a jour de l'inventaire (assets, capacites, consommations)."
+                ),
                 permissions=(
                     StepPermissionDefinition(permission="write", roles=("architecte-technique",)),
                     StepPermissionDefinition(
                         permission="read",
-                        roles=("architecte-referent", "architecte-technique"),
-                    ),
-                ),
-            ),
-            WorkflowStepDefinition(
-                key="analyse-risque",
-                name="Analyse de risque",
-                status="analyse_risque",
-                order=60,
-                description="Analyse de risque cyber réalisée par la sécurité.",
-                permissions=(
-                    StepPermissionDefinition(permission="write", roles=("analyste-secu",)),
-                    StepPermissionDefinition(
-                        permission="read",
                         roles=(
+                            "porteur-demande",
                             "architecte-referent",
                             "architecte-technique",
+                            "urbaniste",
                             "analyste-secu",
                             "rssi",
+                            "infra-exploitation",
                         ),
                     ),
                 ),
             ),
             WorkflowStepDefinition(
-                key="preconisation-securite",
-                name="Préconisation sécurité",
-                status="preconisation_securite",
+                key="revue-infra-exploitation",
+                name="Revue infra / exploitation",
+                status="revue_infra_exploitation",
                 order=70,
-                description="Emission des recommandations sécurité.",
-                permissions=(
-                    StepPermissionDefinition(permission="write", roles=("analyste-secu",)),
-                    StepPermissionDefinition(
-                        permission="read",
-                        roles=("architecte-technique", "analyste-secu", "rssi"),
-                    ),
+                description=(
+                    "Validation capacitaire, rattachement aux offres de service et evaluation budgetaire "
+                    "par l'equipe infra / exploitation."
                 ),
-            ),
-            WorkflowStepDefinition(
-                key="derogation-pssi",
-                name="Dérogation PSSI",
-                status="derogation_pssi",
-                order=80,
-                description="Gestion des dérogations au référentiel sécurité.",
                 permissions=(
-                    StepPermissionDefinition(
-                        permission="write",
-                        roles=("analyste-secu", "rssi"),
-                    ),
+                    StepPermissionDefinition(permission="write", roles=("infra-exploitation",)),
                     StepPermissionDefinition(
                         permission="read",
                         roles=(
+                            "porteur-demande",
                             "architecte-referent",
                             "architecte-technique",
+                            "urbaniste",
                             "analyste-secu",
                             "rssi",
+                            "infra-exploitation",
                         ),
                     ),
                 ),
             ),
             WorkflowStepDefinition(
-                key="architecture-prete",
-                name="Architecture prête",
-                status="architecture_prete",
-                order=90,
-                description="Architecture validée et prête à être déployée.",
+                key="validation-finale",
+                name="Validation finale pluridisciplinaire",
+                status="validation_finale",
+                order=80,
+                description=(
+                    "Validation du DAT par les referents architecture technique, urbanisme, securite et "
+                    "infra/exploitation avec suivi des commentaires."
+                ),
                 permissions=(
                     StepPermissionDefinition(
                         permission="write",
-                        roles=("architecte-referent", "comite-validation"),
+                        roles=(
+                            "architecte-referent",
+                            "urbaniste",
+                            "rssi",
+                            "infra-exploitation",
+                        ),
                     ),
                     StepPermissionDefinition(
                         permission="read",
@@ -221,150 +253,98 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
                             "porteur-demande",
                             "architecte-referent",
                             "architecte-technique",
+                            "urbaniste",
                             "analyste-secu",
                             "rssi",
+                            "infra-exploitation",
                             "comite-validation",
                         ),
                     ),
                 ),
             ),
             WorkflowStepDefinition(
-                key="inscription-offres-service",
-                name="Inscription offres de service",
-                status="inscription_offres_service",
+                key="validation-reserve",
+                name="Validation avec reserve",
+                status="validation_reserve",
+                order=90,
+                description=(
+                    "Suivi des reserves, attribution d'un responsable pour leur resolution et verification "
+                    "de la levee avant applicabilite du DAT."
+                ),
+                permissions=(
+                    StepPermissionDefinition(
+                        permission="write",
+                        roles=(
+                            "architecte-technique",
+                            "architecte-referent",
+                            "urbaniste",
+                            "analyste-secu",
+                            "rssi",
+                            "infra-exploitation",
+                        ),
+                    ),
+                    StepPermissionDefinition(
+                        permission="read",
+                        roles=(
+                            "porteur-demande",
+                            "architecte-referent",
+                            "architecte-technique",
+                            "urbaniste",
+                            "analyste-secu",
+                            "rssi",
+                            "infra-exploitation",
+                            "comite-validation",
+                        ),
+                    ),
+                ),
+            ),
+            WorkflowStepDefinition(
+                key="dat-refuse",
+                name="DAT refuse",
+                status="dat_refuse",
                 order=100,
-                description="Inscription dans les offres de service adaptées.",
-                permissions=(
-                    StepPermissionDefinition(permission="write", roles=("comite-validation",)),
-                    StepPermissionDefinition(
-                        permission="read",
-                        roles=("architecte-technique", "comite-validation"),
-                    ),
+                description=(
+                    "Le dossier est refuse ou rejete : la version precedente reste applicable et le nouvel "
+                    "etat est archive."
                 ),
-            ),
-            WorkflowStepDefinition(
-                key="validation-capacitaire",
-                name="Validation capacitaire",
-                status="validation_capacitaire",
-                order=110,
-                description="Vérification des capacités d'hébergement et d'exploitation.",
                 permissions=(
-                    StepPermissionDefinition(permission="write", roles=("comite-validation",)),
+                    StepPermissionDefinition(permission="write", roles=("architecte-referent",)),
                     StepPermissionDefinition(
                         permission="read",
-                        roles=("architecte-technique", "comite-validation"),
-                    ),
-                ),
-            ),
-            WorkflowStepDefinition(
-                key="cartographie-flux",
-                name="Cartographie des flux",
-                status="cartographie_flux",
-                order=120,
-                description="Mise à jour de la cartographie des flux applicatifs.",
-                permissions=(
-                    StepPermissionDefinition(permission="write", roles=("architecte-technique",)),
-                    StepPermissionDefinition(
-                        permission="read",
-                        roles=("architecte-technique", "comite-validation"),
-                    ),
-                ),
-            ),
-            WorkflowStepDefinition(
-                key="validation-infrastructure",
-                name="Validation infrastructure / exploitation",
-                status="validation_infrastructure",
-                order=130,
-                description="Validation finale par l'infrastructure et l'exploitation.",
-                permissions=(
-                    StepPermissionDefinition(permission="write", roles=("comite-validation",)),
-                    StepPermissionDefinition(
-                        permission="read",
-                        roles=("architecte-technique", "analyste-secu", "rssi", "comite-validation"),
+                        roles=(
+                            "porteur-demande",
+                            "architecte-referent",
+                            "architecte-technique",
+                            "urbaniste",
+                            "analyste-secu",
+                            "rssi",
+                            "infra-exploitation",
+                            "comite-validation",
+                        ),
                     ),
                 ),
             ),
             WorkflowStepDefinition(
                 key="dat-valide",
-                name="DAT validé",
+                name="DAT valide",
                 status="dat_valide",
-                order=140,
-                description="Dossier DAT consolidé et prêt pour comité.",
-                permissions=(
-                    StepPermissionDefinition(permission="write", roles=("comite-validation",)),
-                    StepPermissionDefinition(
-                        permission="read",
-                        roles=(
-                            "porteur-demande",
-                            "architecte-referent",
-                            "architecte-technique",
-                            "analyste-secu",
-                            "rssi",
-                            "comite-validation",
-                        ),
-                    ),
+                order=110,
+                description=(
+                    "Tous les avis sont poses : le DAT est valide, les reserves sont levees et les "
+                    "intervenants sont notifies."
                 ),
-            ),
-            WorkflowStepDefinition(
-                key="presentation-comite",
-                name="Présentation en comité",
-                status="presentation_comite",
-                order=150,
-                description="Présentation du dossier au comité de validation.",
                 permissions=(
-                    StepPermissionDefinition(permission="write", roles=("comite-validation",)),
+                    StepPermissionDefinition(permission="write", roles=("architecte-referent",)),
                     StepPermissionDefinition(
                         permission="read",
                         roles=(
                             "porteur-demande",
                             "architecte-referent",
                             "architecte-technique",
+                            "urbaniste",
                             "analyste-secu",
                             "rssi",
-                            "comite-validation",
-                        ),
-                    ),
-                ),
-            ),
-            WorkflowStepDefinition(
-                key="levee-reserve",
-                name="Levée de réserve",
-                status="levee_reserve",
-                order=160,
-                description="Traitement des réserves ou refus émis en comité.",
-                permissions=(
-                    StepPermissionDefinition(
-                        permission="write", roles=("architecte-technique", "analyste-secu")
-                    ),
-                    StepPermissionDefinition(
-                        permission="read",
-                        roles=(
-                            "porteur-demande",
-                            "architecte-referent",
-                            "architecte-technique",
-                            "analyste-secu",
-                            "rssi",
-                            "comite-validation",
-                        ),
-                    ),
-                ),
-            ),
-            WorkflowStepDefinition(
-                key="dat-publie",
-                name="DAT publié",
-                status="dat_publie",
-                order=170,
-                description="Publication finale du DAT et communication.",
-                permissions=(
-                    StepPermissionDefinition(permission="write", roles=("comite-validation",)),
-                    StepPermissionDefinition(
-                        permission="read",
-                        roles=(
-                            "porteur-demande",
-                            "architecte-referent",
-                            "architecte-technique",
-                            "analyste-secu",
-                            "rssi",
+                            "infra-exploitation",
                             "comite-validation",
                         ),
                     ),

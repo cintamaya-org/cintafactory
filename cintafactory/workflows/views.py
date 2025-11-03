@@ -6,6 +6,7 @@ from django.utils.functional import cached_property
 from django.views.generic import TemplateView
 
 from dat.models import DATStatus
+from dat.permissions import filter_dat_queryset_for_user
 
 from .models import Workflow
 
@@ -15,15 +16,13 @@ class WorkflowBoardView(LoginRequiredMixin, TemplateView):
 
     template_name = "workflows/board.html"
     workflow_code = "dat-validation"
-    initial_status = DATStatus.BESOIN_DAL
+    initial_status = DATStatus.DEMANDE_INITIALE
     completed_statuses = {
         DATStatus.DAT_VALIDE,
-        DATStatus.PRESENTATION_COMITE,
-        DATStatus.LEVEE_RESERVE,
-        DATStatus.DAT_PUBLIE,
+        DATStatus.DAT_REFUSE,
     }
     column_titles = {
-        "initial": "Nouveau besoin (DAL)",
+        "initial": "Nouveau besoin",
         "in_progress": "Projets en cours",
         "completed": "Projets terminés",
     }
@@ -58,13 +57,10 @@ class WorkflowBoardView(LoginRequiredMixin, TemplateView):
                 aggregated.append(permission)
         return aggregated
 
-    def _build_column(self, *, key, states, step_by_state, dat_queryset):
+    def _build_column(self, *, key, states, step_by_state, dat_items):
         steps = [step_by_state[state] for state in states if state in step_by_state]
         status_codes = [step.state for step in steps]
-        if status_codes:
-            items = dat_queryset.filter(status__in=status_codes)
-        else:
-            items = dat_queryset.none()
+        items = [dat for dat in dat_items if dat.status in status_codes] if status_codes else []
         description = steps[0].description if len(steps) == 1 else ""
         return {
             "key": key,
@@ -77,23 +73,50 @@ class WorkflowBoardView(LoginRequiredMixin, TemplateView):
             "write_permissions": self._aggregate_permissions(steps, "write_permissions"),
         }
 
-    def get_columns(self):
+    def get_dat_items(self):
         model = self.workflow_model
         if model is None:
             return []
 
-        field_names = {field.name for field in model._meta.get_fields() if not field.many_to_many}
+        field_names = {
+            field.name for field in model._meta.get_fields() if not field.many_to_many
+        }
         order_by = "-updated_at" if "updated_at" in field_names else "-pk"
         dat_queryset = model.objects.all().order_by(order_by)
+        dat_queryset = filter_dat_queryset_for_user(dat_queryset, self.request.user)
 
         relation_field_names = {
             field.name
             for field in model._meta.fields
-            if field.is_relation and not field.many_to_many and field.related_model is not None
+            if field.is_relation
+            and not field.many_to_many
+            and field.related_model is not None
         }
         if "owner" in relation_field_names:
             dat_queryset = dat_queryset.select_related("owner")
 
+        dat_items = list(dat_queryset)
+
+        if "application" in relation_field_names and dat_items:
+            application_field = model._meta.get_field("application")
+            attname = application_field.attname  # application_id
+            related_model = application_field.remote_field.model
+            application_ids = {
+                getattr(dat, attname)
+                for dat in dat_items
+                if getattr(dat, attname) is not None
+            }
+            if application_ids:
+                applications = related_model.objects.in_bulk(application_ids)
+                cache_attr = f"_{application_field.name}_cache"
+                for dat in dat_items:
+                    app_id = getattr(dat, attname)
+                    if app_id is not None:
+                        setattr(dat, cache_attr, applications.get(app_id))
+        return dat_items
+
+    def get_columns(self):
+        dat_items = self.get_dat_items()
         steps = list(self.workflow.steps.all())
         step_by_state = {step.state: step for step in steps}
 
@@ -109,19 +132,19 @@ class WorkflowBoardView(LoginRequiredMixin, TemplateView):
                 key="initial",
                 states=initial_states,
                 step_by_state=step_by_state,
-                dat_queryset=dat_queryset,
+                dat_items=dat_items,
             ),
             self._build_column(
                 key="in_progress",
                 states=in_progress_states,
                 step_by_state=step_by_state,
-                dat_queryset=dat_queryset,
+                dat_items=dat_items,
             ),
             self._build_column(
                 key="completed",
                 states=completed_states,
                 step_by_state=step_by_state,
-                dat_queryset=dat_queryset,
+                dat_items=dat_items,
             ),
         ]
 
@@ -143,3 +166,95 @@ class WorkflowBoardView(LoginRequiredMixin, TemplateView):
             }
         )
         return context
+
+
+class MyTasksBoardView(WorkflowBoardView):
+    """Personal Kanban board focusing on the connected user's duties."""
+
+    column_titles = {
+        "blocked": "Bloquer",
+        "in_progress": "En cours",
+        "validation": "Validation",
+    }
+
+    column_descriptions = {
+        "blocked": (
+            "Au moins une autre personne doit agir avant que vous puissiez continuer sur ce DAT."
+        ),
+        "in_progress": (
+            "Ces DAT attendent une action de votre part selon vos autorisations actuelles."
+        ),
+        "validation": (
+            "Vous avez realise vos actions et attendez la finalisation par les autres intervenants."
+        ),
+    }
+
+    def _step_has_user_write_access(self, step):
+        user = self.request.user
+        user_id = getattr(user, "id", None)
+        role_id = getattr(getattr(user, "role", None), "id", None)
+        if user_id is None and role_id is None:
+            return False
+        for permission in step.write_permissions.all():
+            if permission.user_id == user_id:
+                return True
+            if role_id and permission.role_id == role_id:
+                return True
+        return False
+
+    def get_columns(self):
+        steps = list(self.workflow.steps.all())
+        if not steps:
+            return []
+
+        step_indices = {step.state: index for index, step in enumerate(steps)}
+
+        user_step_indices = [
+            index for index, step in enumerate(steps) if self._step_has_user_write_access(step)
+        ]
+        user_step_indices.sort()
+        user_step_index_set = set(user_step_indices)
+
+        columns = {
+            "blocked": [],
+            "in_progress": [],
+            "validation": [],
+        }
+
+        dat_items = self.get_dat_items()
+        if not user_step_indices:
+            # user has no assigned steps; return empty columns
+            pass
+        else:
+            for dat in dat_items:
+                current_index = step_indices.get(dat.status)
+                if current_index is None:
+                    continue
+
+                if current_index in user_step_index_set:
+                    columns["in_progress"].append(dat)
+                    continue
+
+                future_assignments = [idx for idx in user_step_indices if idx > current_index]
+                if future_assignments:
+                    columns["blocked"].append(dat)
+                    continue
+
+                past_assignments = [idx for idx in user_step_indices if idx < current_index]
+                if past_assignments:
+                    columns["validation"].append(dat)
+
+        ordered_keys = ["blocked", "in_progress", "validation"]
+        return [
+            {
+                "key": key,
+                "title": self.column_titles[key],
+                "description": self.column_descriptions.get(key, ""),
+                "status_codes": [],
+                "status_labels": [],
+                "items": columns.get(key, []),
+                "read_permissions": [],
+                "write_permissions": [],
+            }
+            for key in ordered_keys
+        ]
