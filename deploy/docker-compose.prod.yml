@@ -7,6 +7,8 @@ services:
     environment:
       DJANGO_SECRET_KEY: "${PROD_DJANGO_SECRET_KEY:?Set PROD_DJANGO_SECRET_KEY in deploy/env/prod.env}"
       DJANGO_ALLOWED_HOSTS: "${PROD_ALLOWED_HOSTS:-example.com}"
+      ALLOWED_HOSTS: "${PROD_ALLOWED_HOSTS:-example.com}"
+      CSRF_TRUSTED: "${PROD_CSRF_TRUSTED:-}"
       DJANGO_DEBUG: "0"
     volumes:
       - cinta_prod_static:/archifactory/cintafactory/staticfiles
