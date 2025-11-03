@@ -62,11 +62,6 @@ urlpatterns = [
         auth_views.PasswordResetCompleteView.as_view(),
         name="password_reset_complete",
     ),
-    path(
-        "drawio/",
-        RedirectView.as_view(pattern_name="diagrams:list", permanent=False),
-        name="drawio-editor",
-    ),
     path("", include(material_urls)),     # Material shell
 
 
