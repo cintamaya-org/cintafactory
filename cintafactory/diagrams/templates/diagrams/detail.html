@@ -1,0 +1,15 @@
+{% extends "diagrams/base.html" %}
+{% block title %}{{ diagram.title }}{% endblock %}
+{% block content %}
+<h1>{{ diagram.title }}</h1>
+<div class="preview">
+  {% if diagram.thumbnail %}
+    <img src="{{ diagram.thumbnail.url }}" alt="{{ diagram.title }}" />
+  {% else %}
+    <p>Aucun aperçu disponible pour le moment — ouvrez dans l'éditeur et enregistrez une fois.</p>
+  {% endif %}
+</div>
+<div class="actions">
+  <a class="btn" href="{% url 'diagrams:edit' diagram.pk %}">Ouvrir l'éditeur</a>
+</div>
+{% endblock %}

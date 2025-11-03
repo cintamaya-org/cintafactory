@@ -31,9 +31,15 @@ SECRET_KEY = os.getenv(
 DEBUG = os.getenv("DJANGO_DEBUG", "True").lower() in {"1", "true", "yes", "on"}
 
 ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "*").split(",")
-CSRF_TRUSTED_ORIGINS = [
-    f"http://{h.strip()}" for h in os.environ.get("CSRF_TRUSTED", "").split(",") if h.strip()
-]
+_csrf_trusted_env = [h.strip() for h in os.environ.get("CSRF_TRUSTED", "").split(",") if h.strip()]
+_csrf_trusted_set = set()
+for host in _csrf_trusted_env:
+    if "://" in host:
+        _csrf_trusted_set.add(host)
+    else:
+        _csrf_trusted_set.add(f"http://{host}")
+        _csrf_trusted_set.add(f"https://{host}")
+CSRF_TRUSTED_ORIGINS = sorted(_csrf_trusted_set)
 # Application STATIC_URL 
 
 INSTALLED_APPS = [
@@ -51,6 +57,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
 
     # Your apps
+    "diagrams.apps.DiagramsConfig",
     "workflows.apps.WorkflowsConfig",
     "users.apps.UsersConfig",
     "dat.apps.DatConfig",
@@ -60,9 +67,12 @@ INSTALLED_APPS = [
 
 AUTH_USER_MODEL = "users.User"
 
+LOGIN_REDIRECT_URL = "/account/profile/"
+
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
+    "cintafactory.middleware.LoggingContextMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -154,10 +164,33 @@ STATICFILES_DIRS = [
 
 STATIC_ROOT = Path(os.getenv("DJANGO_STATIC_ROOT", BASE_DIR / "staticfiles"))
 
-MEDIA_URL = "media/"
+MEDIA_URL = "/media/"
 MEDIA_ROOT = Path(os.getenv("DJANGO_MEDIA_ROOT", BASE_DIR / "media"))
+
+# Content Security Policy (effective when django-csp is installed)
+CSP_FRAME_SRC = ["'self'", "https://embed.diagrams.net"]
+CSP_CONNECT_SRC = ["'self'", "https://embed.diagrams.net"]
+CSP_IMG_SRC = ["'self'", "data:", "blob:"]
+CSP_SCRIPT_SRC = ["'self'"]
+CSP_STYLE_SRC = ["'self'", "'unsafe-inline'"]
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Observability / logging
+LOGGING_CONFIG = "logging.config.dictConfig"
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": os.getenv("DJANGO_LOG_LEVEL", "INFO").upper(),
+    },
+}

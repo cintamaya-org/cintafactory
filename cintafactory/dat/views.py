@@ -1,50 +1,187 @@
 from collections import OrderedDict
 
 from django.apps import apps as django_apps
+from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
 from django.db.models import Count
 from django.db.models.functions import TruncMonth
+from django.http import JsonResponse
 from django.utils import timezone
-from django.views.generic import ListView, TemplateView
+from django.shortcuts import get_object_or_404, redirect
+from django.urls import reverse
+from django.views import View
+from django.views.generic import DetailView, ListView, TemplateView
 
 from material import Fieldset, Layout, Row
 from material.frontend.registry import modules as module_registry
-from material.frontend.views import ModelViewSet
+from material.frontend.views import CreateModelView, DetailModelView, ModelViewSet, UpdateModelView
 
-from .models import DAT, DATStatus
+from .forms import DATForm
+from .models import Application, DAT, DATStatus
+from .permissions import filter_dat_queryset_for_user, user_is_dat_admin
+
+
+PORTEUR_ROLE_SLUG = "porteur-demande"
+OWNER_EDITABLE_STATUSES = {
+    DATStatus.DEMANDE_INITIALE,
+    DATStatus.INSTRUCTION_ARCHITECTURE,
+}
+PROGRESSABLE_STATUSES = OWNER_EDITABLE_STATUSES
+STATUS_SEQUENCE = [choice.value for choice in DATStatus]
+
+
+def user_is_porteur_demande(user):
+    return bool(getattr(user, "is_role", None) and user.is_role(PORTEUR_ROLE_SLUG))
+
+
+def user_can_create_dat_entities(user):
+    return bool(user.is_authenticated and user_is_porteur_demande(user))
+
+
+def user_can_manage_dat(user):
+    return (
+        user.is_superuser
+        or user.is_staff
+        or (hasattr(user, "is_role") and user.is_role("admin"))
+    )
+
+
+def get_next_status(current_status: str) -> str | None:
+    try:
+        index = STATUS_SEQUENCE.index(current_status)
+    except ValueError:
+        return None
+    next_index = index + 1
+    if next_index < len(STATUS_SEQUENCE):
+        return STATUS_SEQUENCE[next_index]
+    return None
+
+
+def user_can_progress_dat(dat: DAT, user) -> bool:
+    if dat is None or user is None or not getattr(user, "is_authenticated", False):
+        return False
+    if dat.owner_id != getattr(user, "id", None):
+        return False
+    if not user_is_porteur_demande(user):
+        return False
+    if dat.status not in PROGRESSABLE_STATUSES:
+        return False
+    return get_next_status(dat.status) is not None
+
 
 class BaseSecuredViewSet(LoginRequiredMixin, ModelViewSet):
     def has_view_permission(self, request, obj=None):
         return request.user.is_authenticated
 
     def _can_mutate(self, request):
-        return (
-            request.user.is_superuser
-            or request.user.is_staff
-            or (hasattr(request.user, "is_role") and request.user.is_role("admin"))
-        )
+        return user_can_manage_dat(request.user)
 
-    def has_add_permission(self, request): return self._can_mutate(request)
-    def has_change_permission(self, request, obj=None): return self._can_mutate(request)
-    def has_delete_permission(self, request, obj=None): return self._can_mutate(request)
+    def _can_add(self, request):
+        return self._can_mutate(request)
+
+    def has_add_permission(self, request):
+        return self._can_add(request)
+
+    def has_change_permission(self, request, obj=None):
+        return self._can_mutate(request)
+
+    def has_delete_permission(self, request, obj=None):
+        return self._can_mutate(request)
+
+
+class DATCreateView(CreateModelView):
+    def dispatch(self, request, *args, **kwargs):
+        if not user_can_create_dat_entities(request.user):
+            raise PermissionDenied
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["user"] = self.request.user
+        return kwargs
+
+
+class DATUpdateView(UpdateModelView):
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["user"] = self.request.user
+        return kwargs
+
+
+class DATDetailView(DetailModelView):
+    template_name = "dat/dat_detail.html"
+
+    def get_queryset(self):
+        base_queryset = DAT.objects.select_related("application", "owner")
+        return filter_dat_queryset_for_user(base_queryset, self.request.user)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        history_qs = (
+            self.object.history_entries.select_related("performed_by")
+            .order_by("-performed_at", "-id")
+        )
+        context["history_entries"] = list(history_qs)
+        return context
 
 
 class DATViewSet(BaseSecuredViewSet):
     model = DAT
-    queryset = DAT.objects.all()
+    queryset = None
     paginate_by = None
+    form_class = DATForm
+    create_view_class = DATCreateView
+    update_view_class = DATUpdateView
+    detail_view_class = DATDetailView
 
-    list_display = ("reference", "title", "status", "owner", "created_at")
+    def _can_add(self, request):
+        return user_can_create_dat_entities(request.user)
+
+    list_display = ("reference", "title", "application", "status", "owner", "created_at")
     list_display_links = ("reference",)
     ordering = ("-created_at",)
-    search_fields = ("reference", "title", "description")
+    search_fields = ("reference", "title", "description", "application__name", "application__code")
 
-    form_fields = ["reference", "title", "description", "status", "owner"]
     layout = Layout(
-        Fieldset("Identite", Row("reference", "title")),
+        Fieldset("Identite", Row("reference", "title"), Row("application")),
         Fieldset("Contenu", Row("description")),
         Fieldset("Flux", Row("status", "owner")),
+    )
+
+    def get_queryset(self, request):
+        base_queryset = (
+            DAT.objects.select_related("application", "owner")
+            .order_by("-created_at")
+        )
+        return filter_dat_queryset_for_user(base_queryset, request.user)
+
+
+class ApplicationCreateView(CreateModelView):
+    def dispatch(self, request, *args, **kwargs):
+        if not user_can_create_dat_entities(request.user):
+            raise PermissionDenied
+        return super().dispatch(request, *args, **kwargs)
+
+
+class ApplicationViewSet(BaseSecuredViewSet):
+    model = Application
+    queryset = Application.objects.all()
+    paginate_by = None
+    create_view_class = ApplicationCreateView
+
+    def _can_add(self, request):
+        return user_can_create_dat_entities(request.user)
+
+    list_display = ("code", "name", "formatted_created_at", "formatted_updated_at")
+    list_display_links = ("code",)
+    ordering = ("name",)
+    search_fields = ("code", "name", "description")
+
+    form_fields = ["code", "name", "description"]
+    layout = Layout(
+        Fieldset("Identite", Row("code", "name")),
+        Fieldset("Description", Row("description")),
     )
 
 
@@ -53,10 +190,14 @@ class DatList(LoginRequiredMixin, ListView):
     template_name = "dat/dat_list.html"
     context_object_name = "object_list"
 
-    owner_editable_statuses = {DATStatus.BESOIN_DAL, DATStatus.NOUVEAU_DOSSIER}
+    owner_editable_statuses = OWNER_EDITABLE_STATUSES
 
     def get_queryset(self):
-        return DAT.objects.filter(owner=self.request.user)
+        base_queryset = (
+            DAT.objects.select_related("application", "owner")
+            .order_by("-created_at")
+        )
+        return filter_dat_queryset_for_user(base_queryset, self.request.user)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -75,7 +216,50 @@ class DatList(LoginRequiredMixin, ListView):
             context.setdefault("current_module", module)
         context["owner_editable_statuses"] = {status.value for status in self.owner_editable_statuses}
         user = self.request.user
-        context["owner_can_edit"] = user.is_superuser or user.is_staff or (getattr(user, "role", None) and user.role.slug == "admin")
+        context["owner_can_edit"] = user_is_dat_admin(user)
+        context["can_create_dat"] = user_can_create_dat_entities(user)
+        return context
+
+
+class DatDetail(LoginRequiredMixin, DetailView):
+    model = DAT
+    template_name = "dat/my_dat_detail.html"
+    context_object_name = "dat"
+
+    def get_queryset(self):
+        base_queryset = (
+            DAT.objects.select_related("application", "owner")
+            .prefetch_related("history_entries__performed_by")
+        )
+        return filter_dat_queryset_for_user(base_queryset, self.request.user)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        module = None
+        resolver_match = getattr(self.request, "resolver_match", None)
+        if resolver_match:
+            module_label = resolver_match.namespace or resolver_match.app_name
+            if module_label:
+                module = module_registry.get_module(module_label)
+        if module is None:
+            try:
+                module = django_apps.get_app_config("dat")
+            except LookupError:
+                module = None
+        if module:
+            context.setdefault("current_module", module)
+        history_qs = (
+            self.object.history_entries.select_related("performed_by")
+            .order_by("-performed_at", "-id")
+        )
+        context["history_entries"] = list(history_qs)
+        context["owner_editable_statuses"] = {status.value for status in OWNER_EDITABLE_STATUSES}
+        context["owner_can_edit"] = user_is_dat_admin(self.request.user)
+        context["can_create_dat"] = user_can_create_dat_entities(self.request.user)
+        next_status = get_next_status(self.object.status)
+        context["next_status"] = next_status
+        context["next_status_label"] = DATStatus(next_status).label if next_status else None
+        context["can_progress_dat"] = user_can_progress_dat(self.object, self.request.user)
         return context
 
 
@@ -84,16 +268,37 @@ class DatManagerAccessMixin(LoginRequiredMixin):
 
     def dispatch(self, request, *args, **kwargs):
         user = request.user
-        if not (
-            user.is_authenticated
-            and (
-                user.is_superuser
-                or user.is_staff
-                or (hasattr(user, "is_role") and user.is_role("admin"))
-            )
-        ):
+        if not (user.is_authenticated and user_can_manage_dat(user)):
             raise PermissionDenied
         return super().dispatch(request, *args, **kwargs)
+
+
+class DatAdminList(DatManagerAccessMixin, ListView):
+    model = DAT
+    template_name = "dat/dat_admin_list.html"
+    context_object_name = "object_list"
+    paginate_by = None
+
+    def get_queryset(self):
+        return DAT.objects.select_related("application", "owner").order_by("-created_at")
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        module = None
+        resolver_match = getattr(self.request, "resolver_match", None)
+        if resolver_match:
+            module_label = resolver_match.namespace or resolver_match.app_name
+            if module_label:
+                module = module_registry.get_module(module_label)
+        if module is None:
+            try:
+                module = django_apps.get_app_config("dat")
+            except LookupError:
+                module = None
+        if module:
+            context.setdefault("current_module", module)
+        context["total_dats"] = context["object_list"].count()
+        return context
 
 
 class DatDashboardView(DatManagerAccessMixin, TemplateView):
@@ -205,3 +410,37 @@ class DatDashboardView(DatManagerAccessMixin, TemplateView):
         if module:
             context.setdefault("current_module", module)
         return context
+
+
+@login_required
+def application_options(request):
+    if not (user_can_manage_dat(request.user) or user_can_create_dat_entities(request.user)):
+        raise PermissionDenied
+    applications = Application.objects.order_by("name").values("id", "name")
+    options = [
+        {"value": application["id"], "label": application["name"]}
+        for application in applications
+    ]
+    return JsonResponse({"options": options})
+
+
+class DatAdvanceStatusView(LoginRequiredMixin, View):
+    def post(self, request, pk: int, *args, **kwargs):
+        queryset = filter_dat_queryset_for_user(
+            DAT.objects.select_related("application", "owner"),
+            request.user,
+        )
+        dat = get_object_or_404(queryset, pk=pk)
+
+        if not user_can_progress_dat(dat, request.user):
+            raise PermissionDenied
+
+        next_status = get_next_status(dat.status)
+        if not next_status:
+            raise PermissionDenied
+
+        dat.status = next_status
+        dat._history_actor = request.user  # type: ignore[attr-defined]
+        dat.save(update_fields=["status", "updated_at"])
+
+        return redirect(reverse("dat:my_detail", args=[dat.pk]))

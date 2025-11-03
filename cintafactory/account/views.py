@@ -1,6 +1,8 @@
+from django.contrib.auth import logout
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import PasswordChangeDoneView, PasswordChangeView
 from django.urls import reverse_lazy
+from django.views import View
 from django.views.generic import TemplateView
 
 
@@ -26,3 +28,32 @@ class AccountPasswordChangeView(LoginRequiredMixin, PasswordChangeView):
 
 class AccountPasswordChangeDoneView(LoginRequiredMixin, PasswordChangeDoneView):
     template_name = "account/password_change_done.html"
+
+
+class AccountLogoutView(TemplateView):
+    template_name = "registration/logged_out.html"
+    http_method_names = [method.lower() for method in View.http_method_names]
+
+    def dispatch(self, request, *args, **kwargs):
+        if request.user.is_authenticated:
+            logout(request)
+        handler = getattr(self, request.method.lower(), None) or self.get
+        response = handler(request, *args, **kwargs)
+        if request.method.upper() == "HEAD":
+            response.content = b""
+        return response
+
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+    def post(self, request, *args, **kwargs):
+        return self.get(request, *args, **kwargs)
+
+    def put(self, request, *args, **kwargs):
+        return self.get(request, *args, **kwargs)
+
+    def patch(self, request, *args, **kwargs):
+        return self.get(request, *args, **kwargs)
+
+    def delete(self, request, *args, **kwargs):
+        return self.get(request, *args, **kwargs)

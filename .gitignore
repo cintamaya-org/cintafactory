@@ -19,6 +19,7 @@ env/
 *.pot
 *.pyc
 db.sqlite3
+db_old.sqlite3
 media/
 staticfiles/
 static/

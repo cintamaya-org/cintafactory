@@ -1,0 +1,59 @@
+{% extends current_module.base_template %}
+{% load material_frontend %}
+
+{% block content %}
+  <div class="card">
+    <div class="card-content">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:1rem;">
+        <div>
+          <h5 style="margin:0;">Administration des DAT</h5>
+          <p style="margin:0; color:#666;">{{ total_dats }} éléments</p>
+        </div>
+        <a href="/dat/manage/dats/crud/add/" class="btn waves-effect waves-light cinta-btn-primary">
+          <i class="material-icons left" aria-hidden="true">add</i>Créer un DAT
+        </a>
+      </div>
+      <div style="margin-top:1.5rem; overflow-x:auto;">
+        <table class="highlight responsive-table">
+          <thead>
+            <tr>
+              <th>Référence</th>
+              <th>Titre</th>
+              <th>Application</th>
+              <th>Statut</th>
+              <th>Responsable</th>
+              <th>Créé le</th>
+              <th>Mis à jour le</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for obj in object_list %}
+              <tr>
+                <td>
+                  <a href="/dat/manage/dats/crud/{{ obj.pk }}/detail/">
+                    {{ obj.reference }}
+                  </a>
+                </td>
+                <td>{{ obj.title }}</td>
+                <td>{{ obj.application|default:"—" }}</td>
+                <td>{{ obj.get_status_display }}</td>
+                <td>{{ obj.owner|default:"—" }}</td>
+                <td>{{ obj.created_at|date:"d/m/Y" }} à {{ obj.created_at|time:"H\\hi" }}</td>
+                <td>{{ obj.updated_at|date:"d/m/Y" }} à {{ obj.updated_at|time:"H\\hi" }}</td>
+                <td style="white-space:nowrap;">
+                  <a href="/dat/manage/dats/crud/{{ obj.pk }}/detail/" class="btn-flat waves-effect">Voir</a>
+                  <a href="/dat/manage/dats/crud/{{ obj.pk }}/change/" class="btn-flat waves-effect">Modifier</a>
+                </td>
+              </tr>
+            {% empty %}
+              <tr>
+                <td colspan="8">Aucun DAT disponible.</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+{% endblock %}

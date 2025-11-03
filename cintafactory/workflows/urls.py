@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from django.urls import path
 
-from .views import WorkflowBoardView
+from .views import MyTasksBoardView, WorkflowBoardView
 
 app_name = "workflows"
 
 urlpatterns = [
     path("", WorkflowBoardView.as_view(), name="index"),
     path("board/", WorkflowBoardView.as_view(), name="board"),
+    path("mes-taches/", MyTasksBoardView.as_view(), name="my_tasks"),
 ]

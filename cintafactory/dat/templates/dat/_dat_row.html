@@ -1,10 +1,12 @@
 <tr>
   <td><a href="/dat/manage/dats/crud/{{ obj.pk }}/detail/">{{ obj.reference }}</a></td>
   <td>{{ obj.title }}</td>
+  <td>{{ obj.application|default:"—" }}</td>
   <td>{{ obj.get_status_display }}</td>
   <td>{{ obj.owner|default:"—" }}</td>
   <td>{{ obj.created_at|date:"Y-m-d H:i" }}</td>
   <td>
+    <a href="{% url 'dat:my_detail' obj.pk %}" class="btn-flat waves-effect">Détails</a>
     {% if request.user.is_superuser or request.user.is_staff or owner_can_edit %}
       <a href="/dat/manage/dats/crud/{{ obj.pk }}/change/" class="btn-flat waves-effect">Modifier</a>
     {% else %}

@@ -1,0 +1,27 @@
+{% extends "diagrams/base.html" %}
+{% block title %}Mes diagrammes{% endblock %}
+{% block content %}
+<h1>Mes diagrammes</h1>
+<ul class="grid">
+  {% for d in diagrams %}
+    <li class="card">
+      <a href="{% url 'diagrams:detail' d.pk %}">
+        {% if d.thumbnail %}
+          <img src="{{ d.thumbnail.url }}" alt="{{ d.title }}" />
+        {% else %}
+          <div class="thumb-placeholder">Pas d'aperçu</div>
+        {% endif %}
+        <div class="meta">
+          <strong>{{ d.title }}</strong>
+          <small>Mis à jour {{ d.updated_at }}</small>
+        </div>
+      </a>
+      <div class="actions">
+        <a class="btn" href="{% url 'diagrams:edit' d.pk %}">Modifier</a>
+      </div>
+    </li>
+  {% empty %}
+    <p>Pas encore de schémas. <a href="{% url 'diagrams:create' %}">Créez-en un</a>.</p>
+  {% endfor %}
+</ul>
+{% endblock %}

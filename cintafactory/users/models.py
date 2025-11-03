@@ -46,5 +46,8 @@ class User(AbstractUser):
             )
 
     def save(self, *args, **kwargs):
+        if not self.password:
+            # Ensure new users created without an explicit password get an unusable one
+            self.set_unusable_password()
         self.full_clean()
         super().save(*args, **kwargs)

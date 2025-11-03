@@ -11,6 +11,7 @@ services:
       DATABASE_NAME: test_factory_db
       DATABASE_USER: test_factory_user
       DATABASE_PASSWORD: test_factory_pass
+      RUN_MIGRATIONS: 1
     volumes:
       # IMPORTANT: mount your app folder (which contains manage.py AND templates/)
       - ./cintafactory:/app
