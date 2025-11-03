@@ -30,16 +30,40 @@ SECRET_KEY = os.getenv(
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DJANGO_DEBUG", "True").lower() in {"1", "true", "yes", "on"}
 
-ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "*").split(",")
-_csrf_trusted_env = [h.strip() for h in os.environ.get("CSRF_TRUSTED", "").split(",") if h.strip()]
-_csrf_trusted_set = set()
-for host in _csrf_trusted_env:
-    if "://" in host:
-        _csrf_trusted_set.add(host)
-    else:
-        _csrf_trusted_set.add(f"http://{host}")
-        _csrf_trusted_set.add(f"https://{host}")
-CSRF_TRUSTED_ORIGINS = sorted(_csrf_trusted_set)
+def _split_env_list(value: str | None, default: str = "") -> list[str]:
+    raw = value if value is not None else default
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+_allowed_hosts_raw = os.environ.get("ALLOWED_HOSTS")
+if _allowed_hosts_raw is None:
+    _allowed_hosts_raw = os.environ.get("DJANGO_ALLOWED_HOSTS", "*")
+ALLOWED_HOSTS = _split_env_list(_allowed_hosts_raw, default="*")
+ALLOWED_HOSTS=["*"]
+_csrf_env_raw = os.environ.get("CSRF_TRUSTED")
+if _csrf_env_raw is None:
+    _csrf_env_raw = os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS")
+_csrf_trusted_env = _split_env_list(_csrf_env_raw)
+
+
+def _build_csrf_trusted_origins(hosts: list[str]) -> set[str]:
+    origins: set[str] = set()
+    for host in hosts:
+        if host in {"*", ""} or host.startswith("."):
+            # Wildcard entries are invalid for CSRF trusted origins.
+            continue
+        if "://" in host:
+            origins.add(host)
+        else:
+            origins.add(f"http://{host}")
+            origins.add(f"https://{host}")
+    return origins
+
+
+CSRF_TRUSTED_ORIGINS = sorted(
+    _build_csrf_trusted_origins(_csrf_trusted_env)
+    | _build_csrf_trusted_origins(ALLOWED_HOSTS)
+)
 # Application STATIC_URL 
 
 INSTALLED_APPS = [

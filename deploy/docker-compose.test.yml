@@ -7,6 +7,8 @@ services:
     environment:
       DJANGO_SECRET_KEY: "${TEST_DJANGO_SECRET_KEY:-dev-secret-change-me}"
       DJANGO_ALLOWED_HOSTS: "${TEST_ALLOWED_HOSTS:-localhost,127.0.0.1}"
+      ALLOWED_HOSTS: "${TEST_ALLOWED_HOSTS:-localhost,127.0.0.1}"
+      CSRF_TRUSTED: "${TEST_CSRF_TRUSTED:-}"
       DJANGO_DEBUG: "1"
     volumes:
       - cinta_test_static:/archifactory/cintafactory/staticfiles
