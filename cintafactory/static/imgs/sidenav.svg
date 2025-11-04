@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="320" height="160" viewBox="0 0 320 160" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="sidebarGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3949ab"/>
+      <stop offset="100%" stop-color="#1de9b6"/>
+    </linearGradient>
+  </defs>
+  <rect width="320" height="160" fill="url(#sidebarGradient)"/>
+  <g fill="#ffffff" opacity="0.15">
+    <circle cx="40" cy="40" r="24"/>
+    <circle cx="120" cy="30" r="18"/>
+    <circle cx="260" cy="60" r="26"/>
+    <circle cx="200" cy="120" r="32"/>
+    <circle cx="80" cy="120" r="20"/>
+  </g>
+</svg>

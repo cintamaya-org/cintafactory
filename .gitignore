@@ -23,6 +23,8 @@ db_old.sqlite3
 media/
 staticfiles/
 static/
+!cintafactory/static/
+!cintafactory/static/**
 deploy/env/*.env
 !deploy/env/*.env.example
 
