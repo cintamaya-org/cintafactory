@@ -35,11 +35,7 @@ def _split_env_list(value: str | None, default: str = "") -> list[str]:
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 
-_allowed_hosts_raw = os.environ.get("ALLOWED_HOSTS")
-if _allowed_hosts_raw is None:
-    _allowed_hosts_raw = os.environ.get("DJANGO_ALLOWED_HOSTS", "*")
-ALLOWED_HOSTS = _split_env_list(_allowed_hosts_raw, default="*")
-ALLOWED_HOSTS=["*"]
+ALLOWED_HOSTS = ["*"]
 _csrf_env_raw = os.environ.get("CSRF_TRUSTED")
 if _csrf_env_raw is None:
     _csrf_env_raw = os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS")
@@ -97,6 +93,7 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "cintafactory.middleware.LoggingContextMiddleware",
+    "cintafactory.middleware.DynamicCsrfTrustedOriginsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -105,7 +102,8 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+STATICFILES_STORAGE = "cintafactory.storage.WhiteNoiseStaticFilesStorage"
+WHITENOISE_USE_FINDERS = True
 
 ROOT_URLCONF = 'cintafactory.urls'
 

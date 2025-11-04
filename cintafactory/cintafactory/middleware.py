@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import uuid
 from typing import Callable
+from urllib.parse import urlsplit
 
+from django.conf import settings
 from django.http import HttpRequest, HttpResponse
+from django.http.request import validate_host
 
 from .logging_utils import bind_request_context, clear_request_context
 
@@ -50,3 +53,40 @@ class LoggingContextMiddleware:
                     return value
         return uuid.uuid4().hex
 
+
+class DynamicCsrfTrustedOriginsMiddleware:
+    """
+    Ensure CSRF trusted origins keep pace with allowed hosts at runtime.
+
+    The middleware inspects the incoming Origin header and, when it points to
+    a host already permitted by ALLOWED_HOSTS, automatically appends both the
+    http and https variants to settings.CSRF_TRUSTED_ORIGINS. This allows
+    deployments where hostnames change without requiring manual environment
+    updates.
+    """
+
+    def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]) -> None:
+        self.get_response = get_response
+
+    def __call__(self, request: HttpRequest) -> HttpResponse:
+        origin = request.META.get("HTTP_ORIGIN")
+        if origin:
+            self._ensure_origin_allowed(origin)
+        return self.get_response(request)
+
+    def _ensure_origin_allowed(self, origin: str) -> None:
+        try:
+            parsed = urlsplit(origin)
+        except ValueError:
+            return
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            return
+        if not validate_host(parsed.hostname, settings.ALLOWED_HOSTS):
+            return
+
+        origins = set(settings.CSRF_TRUSTED_ORIGINS)
+        netloc = parsed.netloc
+        for scheme in ("http", "https"):
+            candidate = f"{scheme}://{netloc}"
+            origins.add(candidate)
+        settings.CSRF_TRUSTED_ORIGINS = sorted(origins)
