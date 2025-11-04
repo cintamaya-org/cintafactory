@@ -57,4 +57,5 @@ jobs:
             export DATABASE_PORT="5432"
 
             docker compose -p ${APP_NAME} up -d --build
+            docker compose -p ${APP_NAME} exec -T web python manage.py collectstatic --noinput
           '
