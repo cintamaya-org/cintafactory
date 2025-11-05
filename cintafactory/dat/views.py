@@ -227,6 +227,7 @@ class BaseSecuredViewSet(LoginRequiredMixin, ModelViewSet):
 
 
 class DATCreateView(ModuleContextMixin, CreateModelView):
+    template_name = "dat/dat_form.html"
     success_url = reverse_lazy("dat:my_list")
 
     def dispatch(self, request, *args, **kwargs):
@@ -251,6 +252,8 @@ class DATCreateView(ModuleContextMixin, CreateModelView):
 
 
 class DATUpdateView(ModuleContextMixin, UpdateModelView):
+    template_name = "dat/dat_form.html"
+
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
         kwargs["user"] = self.request.user
@@ -298,6 +301,14 @@ class DATViewSet(BaseSecuredViewSet):
 
     layout = Layout(
         Fieldset("Identite", Row("reference", "title"), Row("application")),
+        Fieldset(
+            "Participants",
+            Row("participant_porteur_demande"),
+            Row("participant_architecte_referent", "participant_architecte_technique"),
+            Row("participant_urbaniste", "participant_analyste_secu"),
+            Row("participant_rssi", "participant_comite_validation"),
+            Row("participant_infra_exploitation"),
+        ),
         Fieldset("Contenu", Row("description")),
         Fieldset("Flux", Row("status", "owner")),
     )

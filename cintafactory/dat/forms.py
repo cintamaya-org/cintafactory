@@ -53,7 +53,7 @@ class DATForm(forms.ModelForm):
             self.fields["owner"].required = False
             self.fields["owner"].disabled = True
             self.fields["owner"].help_text = (
-                "Le porteur de la demande determine automatiquement le responsable."
+                "(TMP) Le porteur de la demande determine automatiquement le responsable."
             )
             porteur_initial = None
             porteur_field_name = self._participant_field_names.get(DAT_PORTEUR_ROLE_SLUG)
@@ -65,6 +65,9 @@ class DATForm(forms.ModelForm):
                 porteur_initial = self.user
             if porteur_initial is not None:
                 self.initial.setdefault("owner", porteur_initial)
+        if "status" in self.fields:
+            self.fields["status"].disabled = True
+            self.fields["status"].help_text = "(TMP) Le statut est defini automatiquement en fonction de l'avancement."
 
     @classmethod
     def participant_field_name(cls, role_slug: str) -> str:
@@ -96,6 +99,17 @@ class DATForm(forms.ModelForm):
             role = role_map.get(slug)
             label = role.name if role else DAT_REQUIRED_PARTICIPANT_ROLE_LABELS.get(slug, slug)
             queryset = UserModel.objects.filter(role__slug=slug).order_by("username")
+            extra_user_ids = set()
+            if slug == DAT_PORTEUR_ROLE_SLUG and self.user is not None:
+                extra_user_ids.add(self.user.pk)
+            existing = existing_participants.get(slug)
+            if existing and existing.user_id:
+                extra_user_ids.add(existing.user_id)
+            if slug == DAT_PORTEUR_ROLE_SLUG and self.instance.pk and self.instance.owner_id:
+                extra_user_ids.add(self.instance.owner_id)
+            if extra_user_ids:
+                queryset = queryset | UserModel.objects.filter(pk__in=extra_user_ids)
+                queryset = queryset.distinct()
             is_required = slug in self._required_roles
 
             field = forms.ModelChoiceField(
@@ -114,6 +128,12 @@ class DATForm(forms.ModelForm):
                     self._roles_without_users.append(slug)
                     field.help_text = "Aucun utilisateur disponible pour ce role."
                 field.required = False
+
+            if slug == DAT_PORTEUR_ROLE_SLUG:
+                field.required = False
+                field.empty_label = None
+                field.disabled = True
+                field.help_text = "Le porteur de la demande correspond automatiquement au createur du DAT."
 
             self.fields[field_name] = field
             self._participant_field_names[slug] = field_name
@@ -136,6 +156,15 @@ class DATForm(forms.ModelForm):
 
     def clean(self):
         cleaned_data = super().clean()
+
+        porteur_field_name = self._participant_field_names.get(DAT_PORTEUR_ROLE_SLUG)
+        if porteur_field_name and DAT_PORTEUR_ROLE_SLUG not in self._roles_without_users:
+            porteur_value = cleaned_data.get(porteur_field_name)
+            if porteur_value is None:
+                if self.instance.pk and self.instance.owner_id:
+                    cleaned_data[porteur_field_name] = self.instance.owner
+                elif self.user is not None:
+                    cleaned_data[porteur_field_name] = self.user
 
         missing_roles: List[str] = []
         for slug, field_name in self._participant_field_names.items():
