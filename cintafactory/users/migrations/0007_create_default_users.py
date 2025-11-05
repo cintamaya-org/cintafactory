@@ -12,6 +12,18 @@ def create_default_users(apps, schema_editor):
     User = apps.get_model("users", "User")
 
     password_hash = make_password(DEFAULT_PASSWORD)
+    superuser_username = "super_admin"
+
+    if not User.objects.filter(username=superuser_username).exists():
+        User.objects.create(
+            username=superuser_username,
+            email="super_admin@example.com",
+            is_active=True,
+            is_staff=True,
+            is_superuser=True,
+            password=password_hash,
+        )
+
     roles = list(Role.objects.all())
     slug_to_role = {role.slug: role for role in roles}
 
@@ -56,6 +68,12 @@ def create_default_users(apps, schema_editor):
 def remove_default_users(apps, schema_editor):
     Role = apps.get_model("users", "Role")
     User = apps.get_model("users", "User")
+
+    User.objects.filter(
+        username="super_admin",
+        email="super_admin@example.com",
+        is_superuser=True,
+    ).delete()
 
     for role in Role.objects.all():
         base_username = f"{role.slug.replace('-', '_')}_user"

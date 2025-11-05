@@ -7,6 +7,7 @@ from django.views.generic import TemplateView
 
 from dat.models import DATStatus
 from dat.permissions import filter_dat_queryset_for_user
+from dat.views import get_current_responsibles, get_next_status, user_can_progress_dat
 
 from .models import Workflow
 
@@ -84,6 +85,7 @@ class WorkflowBoardView(LoginRequiredMixin, TemplateView):
         order_by = "-updated_at" if "updated_at" in field_names else "-pk"
         dat_queryset = model.objects.all().order_by(order_by)
         dat_queryset = filter_dat_queryset_for_user(dat_queryset, self.request.user)
+        dat_queryset = dat_queryset.prefetch_related("participants__role", "participants__user")
 
         relation_field_names = {
             field.name
@@ -96,6 +98,31 @@ class WorkflowBoardView(LoginRequiredMixin, TemplateView):
             dat_queryset = dat_queryset.select_related("owner")
 
         dat_items = list(dat_queryset)
+
+        for dat in dat_items:
+            dat.can_progress = user_can_progress_dat(dat, self.request.user)
+            next_status = get_next_status(dat.status)
+            dat.next_status = next_status
+            if next_status:
+                try:
+                    dat.next_status_label = DATStatus(next_status).label
+                except ValueError:
+                    dat.next_status_label = ""
+            else:
+                dat.next_status_label = ""
+            responsibles = get_current_responsibles(dat)
+            dat.current_responsibles = responsibles
+            assigned_labels = [
+                item["user_display"] for item in responsibles if item["is_assigned"]
+            ]
+            missing_roles = [
+                item["role_label"] for item in responsibles if not item["is_assigned"]
+            ]
+            if assigned_labels:
+                dat.current_responsibles_display = ", ".join(assigned_labels)
+            else:
+                dat.current_responsibles_display = ""
+            dat.current_responsibles_missing = missing_roles
 
         if "application" in relation_field_names and dat_items:
             application_field = model._meta.get_field("application")
@@ -215,6 +242,15 @@ class MyTasksBoardView(WorkflowBoardView):
         user_step_indices.sort()
         user_step_index_set = set(user_step_indices)
 
+        validation_statuses = {
+            DATStatus.VALIDATION_FINALE,
+            DATStatus.VALIDATION_RESERVE,
+        }
+        final_statuses = {
+            DATStatus.DAT_REFUSE,
+            DATStatus.DAT_VALIDE,
+        }
+
         columns = {
             "blocked": [],
             "in_progress": [],
@@ -231,18 +267,28 @@ class MyTasksBoardView(WorkflowBoardView):
                 if current_index is None:
                     continue
 
-                if current_index in user_step_index_set:
+                if dat.status in final_statuses:
+                    # Nothing to do once the DAT is accepted or refused.
+                    continue
+
+                has_future_assignment = any(idx > current_index for idx in user_step_indices)
+                has_past_assignment = any(idx < current_index for idx in user_step_indices)
+                is_current_step = current_index in user_step_index_set
+
+                if not (has_future_assignment or has_past_assignment or is_current_step):
+                    # Skip DAT items unrelated to the user's responsibilities.
+                    continue
+
+                if getattr(dat, "can_progress", False):
                     columns["in_progress"].append(dat)
                     continue
 
-                future_assignments = [idx for idx in user_step_indices if idx > current_index]
-                if future_assignments:
-                    columns["blocked"].append(dat)
+                next_status = getattr(dat, "next_status", None)
+                if dat.status in validation_statuses or next_status in final_statuses:
+                    columns["validation"].append(dat)
                     continue
 
-                past_assignments = [idx for idx in user_step_indices if idx < current_index]
-                if past_assignments:
-                    columns["validation"].append(dat)
+                columns["blocked"].append(dat)
 
         ordered_keys = ["blocked", "in_progress", "validation"]
         return [

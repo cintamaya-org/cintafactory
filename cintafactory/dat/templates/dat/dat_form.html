@@ -98,6 +98,21 @@
 
 <div class="card cinta-card">
   <div class="card-content">
+    {% if form.errors %}
+      <div class="card-panel red lighten-4 red-text text-darken-4" role="alert">
+        <p class="no-margin"><strong>Impossible d'enregistrer le DAT.</strong></p>
+        <ul class="browser-default" style="margin: 0;">
+          {% for error in form.non_field_errors %}
+            <li>{{ error }}</li>
+          {% endfor %}
+          {% for field in form %}
+            {% for error in field.errors %}
+              <li>{{ field.label }} : {{ error }}</li>
+            {% endfor %}
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
     <form method="post" novalidate>
       {% csrf_token %}
       {% form form=form %}
@@ -107,6 +122,14 @@
         {% part form description %}{% endpart %}
         {% part form status %}{% endpart %}
         {% part form owner %}{% endpart %}
+        {% part form participant_porteur_demande %}{% endpart %}
+        {% part form participant_architecte_referent %}{% endpart %}
+        {% part form participant_architecte_technique %}{% endpart %}
+        {% part form participant_urbaniste %}{% endpart %}
+        {% part form participant_analyste_secu %}{% endpart %}
+        {% part form participant_rssi %}{% endpart %}
+        {% part form participant_comite_validation %}{% endpart %}
+        {% part form participant_infra_exploitation %}{% endpart %}
       {% endform %}
       <div class="right-align">
         <button type="submit" class="btn waves-effect waves-light cinta-btn-primary">Enregistrer</button>

@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from dat.models import DAT, DATStatus
+from dat.models import DAT, DATParticipant, DATStatus
 from users.models import Role
 from .models import Workflow
 from .sync import sync_workflow_definitions
@@ -147,3 +147,43 @@ class WorkflowBoardViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "DAT-ADMIN-1")
         self.assertContains(response, "DAT-ADMIN-2")
+
+    def test_progress_button_visible_for_current_actor(self):
+        referent_role = self.roles["architecte-referent"]
+        porteur_role = self.roles["porteur-demande"]
+        porteur = get_user_model().objects.create_user(username="board-porteur", password="pwd")
+        dat = DAT.objects.create(
+            reference="DAT-BOARD-REF",
+            title="Board Referent",
+            status=DATStatus.VALIDATION_REFERENT,
+            owner=porteur,
+        )
+        DATParticipant.objects.create(dat=dat, role=porteur_role, user=porteur)
+        self.user.role = referent_role
+        self.user.save(update_fields=["role"])
+        DATParticipant.objects.create(dat=dat, role=referent_role, user=self.user)
+
+        response = self.client.get(reverse("workflows:index"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Passer a l'etape suivante")
+        self.assertContains(response, self.user.username)
+
+    def test_progress_button_hidden_for_unassigned_actor(self):
+        referent_role = self.roles["architecte-referent"]
+        porteur_role = self.roles["porteur-demande"]
+        porteur = get_user_model().objects.create_user(username="board-porteur-2", password="pwd")
+        dat = DAT.objects.create(
+            reference="DAT-BOARD-HIDDEN",
+            title="Board Hidden",
+            status=DATStatus.VALIDATION_REFERENT,
+            owner=porteur,
+        )
+        DATParticipant.objects.create(dat=dat, role=porteur_role, user=porteur)
+        DATParticipant.objects.create(dat=dat, role=referent_role, user=self.other_user)
+
+        outsider = get_user_model().objects.create_user(username="board-outsider", password="pwd")
+        self.client.force_login(outsider)
+        response = self.client.get(reverse("workflows:index"))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "Passer a l'etape suivante")
+        self.assertContains(response, self.other_user.username)

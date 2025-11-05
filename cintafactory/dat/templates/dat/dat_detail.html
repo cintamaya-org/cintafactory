@@ -2,6 +2,57 @@
 
 {% block right-panel %}
 <div class="right-panel">
+  {% if participant_overview %}
+  <div class="card">
+    <div class="card-content">
+      <span class="card-title" style="display:flex; align-items:center; gap:0.5rem;">
+        <i class="material-icons" aria-hidden="true">group</i>
+        Participants
+      </span>
+      {% if current_responsibles %}
+        <p style="margin-top:0.5rem; margin-bottom:0.5rem; color:#424242;">
+          Validation actuelle :
+          {% for item in current_responsibles %}
+            <strong>{{ item.role_label }}</strong>
+            {% if item.is_assigned %}
+              &nbsp;→ {{ item.user_display }}
+            {% else %}
+              &nbsp;→ <span style="color:#c62828;">Non affecte</span>
+            {% endif %}
+            {% if not forloop.last %}&nbsp;| {% endif %}
+          {% endfor %}
+        </p>
+      {% endif %}
+      <div class="responsive-table" style="margin-top:1rem;">
+        <table class="highlight">
+          <thead>
+            <tr>
+              <th>Role</th>
+              <th>Utilisateur</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in participant_overview %}
+              <tr>
+                <th scope="row">{{ item.role_label }}</th>
+                <td>
+                  {% if item.user %}
+                    {{ item.user_display }}
+                    {% if item.is_responsible %}
+                      <span class="chip green lighten-4" title="Acteur attendu" style="margin-left:0.5rem;">Responsable</span>
+                    {% endif %}
+                  {% else %}
+                    <span class="chip red lighten-4" title="Affectation requise">Non affecte</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
   <div class="card">
     <div class="card-content">
       <span class="card-title" style="display:flex; align-items:center; gap:0.5rem;">

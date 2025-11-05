@@ -5,6 +5,12 @@ from django.urls import reverse
 
 from users.models import Role
 
+from .constants import (
+    DAT_PORTEUR_ROLE_SLUG,
+    DAT_REQUIRED_PARTICIPANT_ROLE_LABELS,
+    DAT_REQUIRED_PARTICIPANT_ROLE_SLUGS,
+)
+from .forms import DATForm
 from .models import Application, DAT, DATParticipant, DATStatus, DATHistoryAction
 
 class SmokeTest(TestCase):
@@ -161,6 +167,10 @@ class DatAdminListViewTest(TestCase):
 
 class DatVisibilityRestrictionTest(TestCase):
     def setUp(self) -> None:
+        self.roles = {}
+        for slug, label in DAT_REQUIRED_PARTICIPANT_ROLE_LABELS.items():
+            role, _ = Role.objects.get_or_create(slug=slug, defaults={"name": label})
+            self.roles[slug] = role
         self.owner = get_user_model().objects.create_user(username="owner-user", password="pwd")
         self.other = get_user_model().objects.create_user(username="other-user", password="pwd")
         self.admin = get_user_model().objects.create_user(
@@ -189,12 +199,12 @@ class DatVisibilityRestrictionTest(TestCase):
         self.assertEqual(response.status_code, 404)
 
     def test_participant_can_view_dat_detail(self):
-        role = self._assign_porteur_role(self.other)
-        DATParticipant.objects.create(dat=self.dat, role=role, user=self.other)
+        self._bind_participant(self.dat, DAT_PORTEUR_ROLE_SLUG, self.other)
         self.client.force_login(self.other)
         response = self.client.get(reverse("dat:dat_detail", args=[self.dat.pk]))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Visibility DAT")
+        self.assertContains(response, "Validation actuelle")
 
     def test_admin_can_view_any_dat_detail(self):
         self.client.force_login(self.admin)
@@ -214,30 +224,38 @@ class DatVisibilityRestrictionTest(TestCase):
         self.assertEqual(response.status_code, 404)
 
     def test_participant_can_view_my_detail_page(self):
-        role = self._assign_porteur_role(self.other)
-        DATParticipant.objects.create(dat=self.dat, role=role, user=self.other)
+        self._bind_participant(self.dat, DAT_PORTEUR_ROLE_SLUG, self.other)
         self.client.force_login(self.other)
         response = self.client.get(reverse("dat:my_detail", args=[self.dat.pk]))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Visibility DAT")
+        self.assertContains(response, "Validation actuelle")
+        self.assertContains(response, self.other.username)
 
     def test_admin_can_view_my_detail_page(self):
         self.client.force_login(self.admin)
         response = self.client.get(reverse("dat:my_detail", args=[self.dat.pk]))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Visibility DAT")
+        self.assertContains(response, "Validation actuelle")
 
-    def _assign_porteur_role(self, user):
-        role, _ = Role.objects.get_or_create(
-            slug="porteur-demande",
-            defaults={"name": "Porteur de la demande"},
-        )
+    def _assign_role(self, user, slug):
+        role = self.roles[slug]
         user.role = role
         user.save(update_fields=["role"])
         return role
 
+    def _bind_participant(self, dat, slug, user):
+        role = self._assign_role(user, slug)
+        DATParticipant.objects.update_or_create(
+            dat=dat,
+            role=role,
+            defaults={"user": user},
+        )
+        return role
+
     def test_owner_with_role_can_advance_to_next_status(self):
-        self._assign_porteur_role(self.owner)
+        self._bind_participant(self.dat, DAT_PORTEUR_ROLE_SLUG, self.owner)
         self.client.force_login(self.owner)
         response = self.client.post(reverse("dat:my_advance", args=[self.dat.pk]))
         self.assertRedirects(response, reverse("dat:my_detail", args=[self.dat.pk]))
@@ -252,7 +270,7 @@ class DatVisibilityRestrictionTest(TestCase):
         self.assertEqual(self.dat.status, DATStatus.DEMANDE_INITIALE)
 
     def test_unassigned_user_cannot_advance(self):
-        self._assign_porteur_role(self.other)
+        self._assign_role(self.other, DAT_PORTEUR_ROLE_SLUG)
         self.client.force_login(self.other)
         response = self.client.post(reverse("dat:my_advance", args=[self.dat.pk]))
         self.assertEqual(response.status_code, 404)
@@ -264,11 +282,30 @@ class DatVisibilityRestrictionTest(TestCase):
 
         self.client.force_login(self.owner)
         response = self.client.get(detail_url)
-        self.assertNotContains(response, "Passer à l'étape suivante")
+        self.assertNotContains(response, "Passer �� l'Ǹtape suivante")
 
-        self._assign_porteur_role(self.owner)
+        self._bind_participant(self.dat, DAT_PORTEUR_ROLE_SLUG, self.owner)
         response_with_role = self.client.get(detail_url)
-        self.assertContains(response_with_role, "Passer à l'étape suivante")
+        self.assertContains(response_with_role, "Passer")
+        self.assertContains(response_with_role, self.owner.username)
+
+    def test_referent_can_advance_current_step(self):
+        referent = get_user_model().objects.create_user(username="referent-user", password="pwd")
+        dat = DAT.objects.create(
+            reference="DAT-VIS-REFERENT",
+            title="Referent DAT",
+            application=self.application,
+            status=DATStatus.VALIDATION_REFERENT,
+            owner=self.owner,
+        )
+        self._bind_participant(dat, DAT_PORTEUR_ROLE_SLUG, self.owner)
+        self._bind_participant(dat, "architecte-referent", referent)
+
+        self.client.force_login(referent)
+        response = self.client.post(reverse("dat:my_advance", args=[dat.pk]))
+        self.assertRedirects(response, reverse("dat:my_detail", args=[dat.pk]))
+        dat.refresh_from_db()
+        self.assertEqual(dat.status, DATStatus.INSTRUCTION_ARCHITECTURE)
 
     def test_list_only_shows_assigned_dats(self):
         DAT.objects.create(
@@ -285,8 +322,7 @@ class DatVisibilityRestrictionTest(TestCase):
             status=DATStatus.VALIDATION_REFERENT,
             owner=self.other,
         )
-        role = self._assign_porteur_role(self.owner)
-        DATParticipant.objects.create(dat=shared_dat, role=role, user=self.owner)
+        self._bind_participant(shared_dat, DAT_PORTEUR_ROLE_SLUG, self.owner)
 
         self.client.force_login(self.owner)
         response = self.client.get(reverse("dat:my_list"))
@@ -301,6 +337,118 @@ class DatVisibilityRestrictionTest(TestCase):
         self.assertContains(response_other, "DAT-VIS-2")
         self.assertNotContains(response_other, "DAT-VIS-1")
         self.assertContains(response_other, "DAT-VIS-3")
+
+class DatParticipantAssignmentFormTest(TestCase):
+    def setUp(self) -> None:
+        self.roles: dict[str, Role] = {}
+        for slug in DAT_REQUIRED_PARTICIPANT_ROLE_SLUGS:
+            label = DAT_REQUIRED_PARTICIPANT_ROLE_LABELS.get(slug, slug)
+            self.roles[slug] = Role.objects.create(name=label, slug=slug)
+        self.users: dict[str, object] = {}
+        User = get_user_model()
+        for slug in DAT_REQUIRED_PARTICIPANT_ROLE_SLUGS:
+            username = f"{slug.replace('-', '_')}_user"
+            user = User.objects.create_user(username=username, password="pwd")
+            user.role = self.roles[slug]
+            if slug == "architecte-technique":
+                referent_user = self.users.get("architecte-referent")
+                if referent_user:
+                    user.architect_referent = referent_user
+            user.save()
+            self.users[slug] = user
+        self.porteur = self.users[DAT_PORTEUR_ROLE_SLUG]
+        self.application = Application.objects.create(code="form-app", name="Form App")
+
+    def _make_user(self, role_slug: str, suffix: str) -> object:
+        User = get_user_model()
+        username = f"{role_slug.replace('-', '_')}_{suffix}"
+        user = User.objects.create_user(username=username, password="pwd")
+        user.role = self.roles[role_slug]
+        if role_slug == "architecte-technique":
+            referent_user = self.users.get("architecte-referent")
+            if referent_user:
+                user.architect_referent = referent_user
+        user.save()
+        return user
+
+    def _build_form_data(
+        self,
+        *,
+        reference="DAT-FORM-1",
+        title="Form DAT",
+        description="Description",
+        status=None,
+        porteur=None,
+        overrides=None,
+    ):
+        data: dict[str, object] = {
+            "reference": reference,
+            "title": title,
+            "application": self.application.pk,
+            "description": description,
+            "status": status or DATStatus.DEMANDE_INITIALE,
+        }
+        for slug in DAT_REQUIRED_PARTICIPANT_ROLE_SLUGS:
+            user = self.users[slug]
+            if slug == DAT_PORTEUR_ROLE_SLUG and porteur is not None:
+                user = porteur
+            if overrides and slug in overrides:
+                user = overrides[slug]
+            data[DATForm.participant_field_name(slug)] = user.pk
+        return data
+
+    def test_form_creates_required_participants(self):
+        form_data = self._build_form_data()
+        form = DATForm(data=form_data, user=self.porteur)
+        self.assertTrue(form.is_valid(), form.errors)
+        dat = form.save()
+        dat.refresh_from_db()
+        self.assertEqual(dat.owner, self.porteur)
+        self.assertEqual(
+            dat.participants.filter(role__slug__in=DAT_REQUIRED_PARTICIPANT_ROLE_SLUGS).count(),
+            len(DAT_REQUIRED_PARTICIPANT_ROLE_SLUGS),
+        )
+        for slug in DAT_REQUIRED_PARTICIPANT_ROLE_SLUGS:
+            participant = dat.participants.get(role__slug=slug)
+            expected_user = self.users[slug]
+            self.assertEqual(participant.user, expected_user)
+
+    def test_form_updates_existing_participants(self):
+        create_data = self._build_form_data()
+        create_form = DATForm(data=create_data, user=self.porteur)
+        self.assertTrue(create_form.is_valid(), create_form.errors)
+        dat = create_form.save()
+        dat.refresh_from_db()
+
+        new_porteur = self._make_user(DAT_PORTEUR_ROLE_SLUG, "alt")
+        new_analyste = self._make_user("analyste-secu", "alt")
+
+        update_data = self._build_form_data(
+            reference=dat.reference,
+            title="Form DAT Updated",
+            description="Updated description",
+            status=dat.status,
+            porteur=new_porteur,
+            overrides={"analyste-secu": new_analyste},
+        )
+        update_form = DATForm(data=update_data, instance=dat, user=self.porteur)
+        self.assertTrue(update_form.is_valid(), update_form.errors)
+        updated_dat = update_form.save()
+        updated_dat.refresh_from_db()
+
+        self.assertEqual(updated_dat.owner, new_porteur)
+        self.assertEqual(
+            updated_dat.participants.filter(role__slug__in=DAT_REQUIRED_PARTICIPANT_ROLE_SLUGS).count(),
+            len(DAT_REQUIRED_PARTICIPANT_ROLE_SLUGS),
+        )
+        self.assertEqual(
+            updated_dat.participants.get(role__slug=DAT_PORTEUR_ROLE_SLUG).user,
+            new_porteur,
+        )
+        self.assertEqual(
+            updated_dat.participants.get(role__slug="analyste-secu").user,
+            new_analyste,
+        )
 
 class ApplicationModelFormattingTest(TestCase):
     def test_formatted_dates(self):

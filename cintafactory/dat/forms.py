@@ -1,52 +1,267 @@
+from __future__ import annotations
+
+from typing import Dict, List, Optional, Set
+
 from django import forms
+from django.contrib.auth import get_user_model
 from django.urls import reverse_lazy
 from django.utils.safestring import mark_safe
 
-from .models import DAT, DATStatus
+from users.models import Role
+
+from .constants import (
+    DAT_PORTEUR_ROLE_SLUG,
+    DAT_REQUIRED_PARTICIPANT_ROLE_LABELS,
+    DAT_REQUIRED_PARTICIPANT_ROLE_SLUGS,
+    DAT_STATUS_REQUIRED_ROLES,
+)
+from .models import DAT, DATParticipant, DATStatus
 
 
 class DATForm(forms.ModelForm):
+    participant_field_prefix = "participant_"
+
     def __init__(self, *args, **kwargs):
         self.user = kwargs.pop("user", None)
         super().__init__(*args, **kwargs)
+
+        self._participant_roles: Dict[str, Role] = {}
+        self._participant_field_names: Dict[str, str] = {}
+        self._participant_labels: Dict[str, str] = {}
+        self._participant_field_order: List[str] = []
+        self._pending_participant_assignments: Optional[Dict[str, object]] = None
+        self._roles_without_users: List[str] = []
+        self._required_roles: Set[str] = self._determine_required_roles()
+
         if "application" in self.fields:
             refresh_url = reverse_lazy("dat:application_options")
             self.fields["application"].help_text = mark_safe(
                 '<div class="application-field-actions">'
                 '<a class="btn waves-effect waves-light cinta-btn-primary" '
                 'href="/dat/manage/applications/crud/add/" target="_blank" rel="noopener">'
-                '<i class="material-icons left" aria-hidden="true">add_circle</i>Créer une application</a>'
+                '<i class="material-icons left" aria-hidden="true">add_circle</i>Creer une application</a>'
                 f'<button type="button" '
                 f'class="btn waves-effect waves-light cinta-btn-primary application-refresh-btn" '
                 f'data-refresh-url="{refresh_url}">'
                 '<i class="material-icons left" aria-hidden="true">refresh</i>Actualiser la liste</button>'
                 "</div>"
             )
+
+        self._initialise_participant_fields()
+
         if "owner" in self.fields:
-            if not self.instance.pk:
-                # During creation, show owner as read-only and avoid user selection
-                self.fields["owner"].required = False
-                self.fields["owner"].disabled = True
-                if self.user is not None:
-                    self.initial["owner"] = self.user
+            self.fields["owner"].required = False
+            self.fields["owner"].disabled = True
+            self.fields["owner"].help_text = (
+                "(TMP) Le porteur de la demande determine automatiquement le responsable."
+            )
+            porteur_initial = None
+            porteur_field_name = self._participant_field_names.get(DAT_PORTEUR_ROLE_SLUG)
+            if porteur_field_name and porteur_field_name in self.initial:
+                porteur_initial = self.initial[porteur_field_name]
+            elif self.instance.pk and self.instance.owner_id:
+                porteur_initial = self.instance.owner
+            elif self.user is not None:
+                porteur_initial = self.user
+            if porteur_initial is not None:
+                self.initial.setdefault("owner", porteur_initial)
+        if "status" in self.fields:
+            self.fields["status"].disabled = True
+            self.fields["status"].help_text = "(TMP) Le statut est defini automatiquement en fonction de l'avancement."
+
+    @classmethod
+    def participant_field_name(cls, role_slug: str) -> str:
+        safe_slug = role_slug.replace("-", "_")
+        return f"{cls.participant_field_prefix}{safe_slug}"
+
+    def _determine_required_roles(self) -> Set[str]:
+        current_status = getattr(self.instance, "status", None)
+        if not current_status:
+            current_status = DATStatus.DEMANDE_INITIALE
+        required = set(DAT_STATUS_REQUIRED_ROLES.get(current_status, ()))
+        required.add(DAT_PORTEUR_ROLE_SLUG)
+        return required
+
+    def _initialise_participant_fields(self) -> None:
+        UserModel = get_user_model()
+        roles = Role.objects.filter(slug__in=DAT_REQUIRED_PARTICIPANT_ROLE_SLUGS)
+        role_map = {role.slug: role for role in roles}
+
+        existing_participants: Dict[str, DATParticipant] = {}
+        if self.instance.pk:
+            for participant in self.instance.participants.select_related("role", "user"):
+                role = participant.role
+                if role and role.slug in DAT_REQUIRED_PARTICIPANT_ROLE_SLUGS:
+                    existing_participants.setdefault(role.slug, participant)
+
+        for slug in DAT_REQUIRED_PARTICIPANT_ROLE_SLUGS:
+            field_name = self.participant_field_name(slug)
+            role = role_map.get(slug)
+            label = role.name if role else DAT_REQUIRED_PARTICIPANT_ROLE_LABELS.get(slug, slug)
+            queryset = UserModel.objects.filter(role__slug=slug).order_by("username")
+            extra_user_ids = set()
+            if slug == DAT_PORTEUR_ROLE_SLUG and self.user is not None:
+                extra_user_ids.add(self.user.pk)
+            existing = existing_participants.get(slug)
+            if existing and existing.user_id:
+                extra_user_ids.add(existing.user_id)
+            if slug == DAT_PORTEUR_ROLE_SLUG and self.instance.pk and self.instance.owner_id:
+                extra_user_ids.add(self.instance.owner_id)
+            if extra_user_ids:
+                queryset = queryset | UserModel.objects.filter(pk__in=extra_user_ids)
+                queryset = queryset.distinct()
+            is_required = slug in self._required_roles
+
+            field = forms.ModelChoiceField(
+                queryset=queryset,
+                required=is_required,
+                label=label,
+                help_text="Selectionnez l'utilisateur responsable pour ce role.",
+            )
+            if not is_required:
+                field.empty_label = "---------"
             else:
-                # Allow editing owner later if needed
-                self.fields["owner"].disabled = False
+                field.empty_label = None
+
+            if not queryset.exists():
+                if is_required:
+                    self._roles_without_users.append(slug)
+                    field.help_text = "Aucun utilisateur disponible pour ce role."
+                field.required = False
+
+            if slug == DAT_PORTEUR_ROLE_SLUG:
+                field.required = False
+                field.empty_label = None
+                field.disabled = True
+                field.help_text = "Le porteur de la demande correspond automatiquement au createur du DAT."
+
+            self.fields[field_name] = field
+            self._participant_field_names[slug] = field_name
+            self._participant_labels[slug] = label
+            self._participant_field_order.append(field_name)
+            if role:
+                self._participant_roles[slug] = role
+
+            participant = existing_participants.get(slug)
+            if participant:
+                self.initial[field_name] = participant.user
+            elif slug == DAT_PORTEUR_ROLE_SLUG:
+                if self.instance.pk and self.instance.owner_id:
+                    self.initial[field_name] = self.instance.owner
+                elif self.user is not None:
+                    self.initial[field_name] = self.user
+
+    def participant_field_names(self) -> List[str]:
+        return list(self._participant_field_order)
+
+    def clean(self):
+        cleaned_data = super().clean()
+
+        porteur_field_name = self._participant_field_names.get(DAT_PORTEUR_ROLE_SLUG)
+        if porteur_field_name and DAT_PORTEUR_ROLE_SLUG not in self._roles_without_users:
+            porteur_value = cleaned_data.get(porteur_field_name)
+            if porteur_value is None:
+                if self.instance.pk and self.instance.owner_id:
+                    cleaned_data[porteur_field_name] = self.instance.owner
+                elif self.user is not None:
+                    cleaned_data[porteur_field_name] = self.user
+
+        missing_roles: List[str] = []
+        for slug, field_name in self._participant_field_names.items():
+            if slug not in self._required_roles:
+                continue
+            if slug in self._roles_without_users:
+                continue
+            if field_name in self.errors:
+                continue
+            if cleaned_data.get(field_name) is None:
+                missing_roles.append(slug)
+
+        for slug in missing_roles:
+            field_name = self._participant_field_names[slug]
+            label = self._participant_labels.get(slug, slug)
+            self.add_error(
+                field_name,
+                f"Selectionnez un utilisateur pour le role {label}.",
+            )
+
+        if self._roles_without_users:
+            labels = [self._participant_labels.get(slug, slug) for slug in self._roles_without_users]
+            self.add_error(
+                None,
+                "Aucun utilisateur n'est disponible pour les roles suivants : "
+                + ", ".join(labels),
+            )
+
+        return cleaned_data
+
+    def _collect_participant_assignments(self) -> Dict[str, object]:
+        assignments: Dict[str, object] = {}
+        for slug, field_name in self._participant_field_names.items():
+            user = self.cleaned_data.get(field_name)
+            if user is not None:
+                assignments[slug] = user
+        return assignments
 
     def save(self, commit=True):
         instance = super().save(commit=False)
+        assignments = self._collect_participant_assignments()
+
+        porteur_user = assignments.get(DAT_PORTEUR_ROLE_SLUG)
+
         if self.user is not None:
             instance._history_actor = self.user  # type: ignore[attr-defined]
         if not instance.pk:
-            # on create: set creator + force start step
             if self.user is not None and not getattr(instance, "created_by_id", None):
                 instance.created_by = self.user
-            if self.user is not None:
+            if porteur_user is not None:
+                instance.owner = porteur_user
+            elif self.user is not None:
                 instance.owner = self.user
             instance.status = DATStatus.DEMANDE_INITIALE
+        else:
+            if porteur_user is not None and porteur_user != instance.owner:
+                instance.owner = porteur_user
+
         if commit:
             instance.save()
+            self._save_participants(instance, assignments)
+        else:
+            self._pending_participant_assignments = assignments
         return instance
+
+    def save_m2m(self):
+        super().save_m2m()
+        if self._pending_participant_assignments is not None:
+            self._save_participants(self.instance, self._pending_participant_assignments)
+            self._pending_participant_assignments = None
+
+    def _save_participants(self, instance: DAT, assignments: Dict[str, object]) -> None:
+        if not assignments:
+            return
+
+        existing_participants = {
+            participant.role.slug: participant
+            for participant in instance.participants.select_related("role")
+            if participant.role and participant.role.slug in self._participant_field_names
+        }
+
+        for slug, user in assignments.items():
+            role = self._participant_roles.get(slug)
+            if role is None:
+                continue
+            participant = existing_participants.get(slug)
+            user_id = getattr(user, "id", None)
+            if participant:
+                if participant.user_id != user_id:
+                    participant.user = user
+                    participant.save(update_fields=["user"])
+            else:
+                DATParticipant.objects.create(dat=instance, role=role, user=user)
+
+        removable_slugs = set(existing_participants) - set(assignments)
+        if removable_slugs:
+            instance.participants.filter(role__slug__in=removable_slugs).delete()
 
     class Meta:
         model = DAT

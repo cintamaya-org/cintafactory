@@ -32,6 +32,53 @@
       </div>
     </div>
 
+    {% if participant_overview %}
+    <div class="section" style="margin-top:1.5rem;">
+      <h6 style="margin-top:0;">Participants</h6>
+      {% if current_responsibles %}
+        <p style="margin:0 0 0.75rem 0; color:#424242;">
+          Validation actuelle :
+          {% for item in current_responsibles %}
+            <strong>{{ item.role_label }}</strong>
+            {% if item.is_assigned %}
+              &nbsp;→ {{ item.user_display }}
+            {% else %}
+              &nbsp;→ <span style="color:#c62828;">Non affecte</span>
+            {% endif %}
+            {% if not forloop.last %}&nbsp;| {% endif %}
+          {% endfor %}
+        </p>
+      {% endif %}
+      <div class="responsive-table">
+        <table class="highlight">
+          <thead>
+            <tr>
+              <th>Role</th>
+              <th>Utilisateur</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in participant_overview %}
+              <tr>
+                <th scope="row">{{ item.role_label }}</th>
+                <td>
+                  {% if item.user %}
+                    {{ item.user_display }}
+                    {% if item.is_responsible %}
+                      <span class="chip green lighten-4" title="Acteur attendu" style="margin-left:0.5rem;">Responsable</span>
+                    {% endif %}
+                  {% else %}
+                    <span class="chip red lighten-4" title="Affectation requise">Non affecte</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
     <div class="section" style="margin-top:1.5rem;">
       <h6 style="margin-top:0;">Informations principales</h6>
       <div class="responsive-table">
@@ -65,7 +112,7 @@
 
     <div class="section" style="margin-top:1.5rem;">
       <h6 style="margin-top:0;">Informations complémentaires</h6>
-      <p style="margin:0; color:#616161;">Cette section accueillera prochainement des actions supplémentaires pour compléter le dossier.</p>
+      <p style="margin:0; color:#616161;">LOREM</p>
     </div>
   </div>
 </div>

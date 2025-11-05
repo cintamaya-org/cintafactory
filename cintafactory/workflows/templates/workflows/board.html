@@ -145,6 +145,21 @@ img {
                             </span>
                           </div>
                         {% endif %}
+                        <div class="vf-dashboard__card-detail" style="display:flex; flex-direction:column; gap:0.25rem;">
+                          <label style="margin:0;">Validation actuelle</label>
+                          {% if dat.current_responsibles_display %}
+                            <span class="chip" style="margin:0; background:#ede7f6; color:#4527a0; font-weight:600;">
+                              {{ dat.current_responsibles_display }}
+                            </span>
+                          {% else %}
+                            <span class="chip" style="margin:0; background:#ffebee; color:#b71c1c; font-weight:600;">
+                              Aucun utilisateur affecte
+                            </span>
+                          {% endif %}
+                          {% if dat.current_responsibles_missing %}
+                            <small style="color:#b71c1c;">Roles en attente : {{ dat.current_responsibles_missing|join:", " }}</small>
+                          {% endif %}
+                        </div>
                         {% if dat.description %}
                           <p class="flow-text" style="margin:0;color: rgba(0,0,0,.54);">
                             {{ dat.description|truncatewords:24 }}
@@ -167,18 +182,36 @@ img {
                               {{ dat.updated_at|date:"d/m/Y" }} {{ dat.updated_at|time:"H\\hi" }}
                             </span>
                           </div>
-                          {% if dat.owner %}
-                            <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
-                              <label style="margin:0;">Assigne</label>
-                              <span class="chip" style="margin:0; background:#e8eaf6; color:#1a237e; font-weight:600;">
-                                {{ dat.owner.get_full_name|default:dat.owner.get_username }}
-                              </span>
-                            </div>
-                          {% endif %}
-                        </div>
+                        {% if dat.owner %}
+                          <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                            <label style="margin:0;">Assigne</label>
+                            <span class="chip" style="margin:0; background:#e8eaf6; color:#1a237e; font-weight:600;">
+                              {{ dat.owner.get_full_name|default:dat.owner.get_username }}
+                            </span>
+                          </div>
+                        {% endif %}
+                      </div>
+                      <div style="margin-top:0.5rem; display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                        {% if dat.can_progress and dat.next_status %}
+                          <form method="post" action="{% url 'dat:my_advance' dat.pk %}" style="margin:0;">
+                            {% csrf_token %}
+                            <button type="submit" class="btn waves-effect waves-light cinta-btn-primary">
+                              Passer a l'etape suivante
+                              {% if dat.next_status_label %}
+                                <span style="margin-left:0.35rem; font-size:0.85em;">({{ dat.next_status_label }})</span>
+                              {% endif %}
+                            </button>
+                          </form>
+                        {% endif %}
+                        <a href="{% url 'dat:my_detail' dat.pk %}"
+                           class="btn waves-effect waves-light cinta-btn-primary"
+                           target="_blank" rel="noopener noreferrer">
+                          Voir le DAT
+                        </a>
                       </div>
                     </div>
-                  {% empty %}
+                  </div>
+                {% empty %}
                     <div class="mdc-card" style="padding:15px;margin-top:10px;margin-bottom:5px;">
                       <p style="margin:0;color: rgba(0,0,0,.54);">
                         Aucun dossier à cette étape.
