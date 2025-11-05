@@ -65,6 +65,16 @@ python manage.py runserver
 Now open:
 -> [http://127.0.0.1:8050/admin/](http://127.0.0.1:8050/admin/) to access the Django admin interface.
 
+### Optional: Embedded draw.io editor
+
+If you deploy the bundled draw.io container, configure the application with:
+
+- `DRAWIO_BASE_URL`: address the Django backend should use to talk to the draw.io service on the Docker network (defaults to `http://drawio:8080`).
+- `DRAWIO_PUBLIC_URL`: URL exposed to browsers that should be used inside the iframe (defaults to the same value as `DRAWIO_BASE_URL`; override it for public hosts, e.g. `https://drawio.example.com`).
+- `DRAWIO_LIBRARY_BASE_URL`: base URL from which draw.io should fetch custom libraries (set it when draw.io needs a different hostname to reach Django, e.g. `http://web:8000`; if omitted, the application falls back to the host handling the current HTTP request so the feature continues to work).
+
+The docker-compose stacks already pass reasonable defaults; adjust them to match your reverse-proxy/hostnames in production.
+
 ---
 
 ## CI/CD

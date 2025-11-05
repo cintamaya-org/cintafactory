@@ -17,6 +17,14 @@ You can access the app locally at:
 
  [http://localhost:8101](http://localhost:8101)
 
+The bundled draw.io editor is exposed via the `drawio` service:
+
+- Web UI / embed endpoint: [http://localhost:8102](http://localhost:8102)
+- Django consumes it through `DRAWIO_PUBLIC_URL` (defaults to `http://localhost:8102` in this compose file).
+  When deploying elsewhere, point `DRAWIO_PUBLIC_URL` to whatever host/port you expose the draw.io container on.
+- Set `DRAWIO_BASE_URL` to the internal address the Django backend should use to reach draw.io on the Docker network (defaults to `http://drawio:8080`).
+- Set `DRAWIO_LIBRARY_BASE_URL` to the address draw.io should use to fetch static libraries from this app (defaults to `http://web:8000` in this compose). If unset or unreachable, Django automatically falls back to the current request host, so the feature works even when the environment variables are omitted.
+
 ---
 
 ##  Rebuild When Dependencies Change (rare)
@@ -33,7 +41,7 @@ docker compose -f docker-compose.dev.yml up -d --build
 
 ##  Create a Superuser (Admin Account)
 
-If this is your first run and you need an admin account for Django: 
+If this is your first run and you need an admin account for Django:
 
 ```bash
 docker compose -f docker-compose.dev.yml exec web python manage.py createsuperuser

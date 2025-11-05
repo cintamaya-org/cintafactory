@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 import os
 from pathlib import Path
+from urllib.parse import urlsplit
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -189,9 +190,33 @@ STATIC_ROOT = Path(os.getenv("DJANGO_STATIC_ROOT", BASE_DIR / "staticfiles"))
 MEDIA_URL = "/media/"
 MEDIA_ROOT = Path(os.getenv("DJANGO_MEDIA_ROOT", BASE_DIR / "media"))
 
+DRAWIO_BASE_URL = os.getenv("DRAWIO_BASE_URL", "http://drawio:8080").rstrip("/")
+if not DRAWIO_BASE_URL:
+    DRAWIO_BASE_URL = "http://drawio:8080"
+
+DRAWIO_PUBLIC_URL = os.getenv("DRAWIO_PUBLIC_URL", DRAWIO_BASE_URL).rstrip("/")
+if not DRAWIO_PUBLIC_URL:
+    DRAWIO_PUBLIC_URL = DRAWIO_BASE_URL
+
+_drawio_library_env = os.getenv("DRAWIO_LIBRARY_BASE_URL", "").strip()
+if _drawio_library_env:
+    DRAWIO_LIBRARY_BASE_URL = _drawio_library_env.rstrip("/")
+else:
+    DRAWIO_LIBRARY_BASE_URL = ""
+
+
+def _origin_from_url(url: str) -> str:
+    parts = urlsplit(url)
+    if parts.scheme and parts.netloc:
+        return f"{parts.scheme}://{parts.netloc}"
+    return url
+
+
+DRAWIO_PUBLIC_ORIGIN = _origin_from_url(DRAWIO_PUBLIC_URL)
+
 # Content Security Policy (effective when django-csp is installed)
-CSP_FRAME_SRC = ["'self'", "https://embed.diagrams.net"]
-CSP_CONNECT_SRC = ["'self'", "https://embed.diagrams.net"]
+CSP_FRAME_SRC = ["'self'", DRAWIO_PUBLIC_ORIGIN]
+CSP_CONNECT_SRC = ["'self'", DRAWIO_PUBLIC_ORIGIN]
 CSP_IMG_SRC = ["'self'", "data:", "blob:"]
 CSP_SCRIPT_SRC = ["'self'"]
 CSP_STYLE_SRC = ["'self'", "'unsafe-inline'"]

@@ -1,15 +1,42 @@
-{% extends "diagrams/base.html" %}
+{% extends current_module.base_template %}
+
 {% block title %}{{ diagram.title }}{% endblock %}
+{% block page_title %}Diagrammes{% endblock %}
+
+{% block breadcrumbs_items %}
+<a href="{% url 'diagrams:list' %}">Mes diagrammes</a>
+<a class="active">{{ diagram.title }}</a>
+{% endblock %}
+
 {% block content %}
-<h1>{{ diagram.title }}</h1>
-<div class="preview">
-  {% if diagram.thumbnail %}
-    <img src="{{ diagram.thumbnail.url }}" alt="{{ diagram.title }}" />
-  {% else %}
-    <p>Aucun aperçu disponible pour le moment — ouvrez dans l'éditeur et enregistrez une fois.</p>
-  {% endif %}
-</div>
-<div class="actions">
-  <a class="btn" href="{% url 'diagrams:edit' diagram.pk %}">Ouvrir l'éditeur</a>
+<div class="section">
+  <div class="row">
+    <div class="col s12 l8">
+      <div class="card">
+        <div class="card-content">
+          <span class="card-title">{{ diagram.title }}</span>
+          <p class="grey-text">Dernière mise à jour le {{ diagram.updated_at|date:"d/m/Y à H\\hi" }}</p>
+        </div>
+        <div class="card-image" style="padding:1.5rem; background:#fafafa;">
+          {% if diagram.thumbnail %}
+          <img src="{{ diagram.thumbnail.url }}" alt="{{ diagram.title }}" style="width:100%; height:auto; border-radius:8px;">
+          {% else %}
+          <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:260px; color:rgba(0,0,0,0.45); border:2px dashed rgba(0,0,0,0.1); border-radius:8px;">
+            <i class="material-icons" style="font-size:3rem; margin-bottom:0.75rem;">insert_drive_file</i>
+            <p class="center-align" style="margin:0;">Aucun aperçu disponible. Ouvrez le diagramme dans l'éditeur pour en générer un.</p>
+          </div>
+          {% endif %}
+        </div>
+        <div class="card-action" style="display:flex; justify-content:space-between; align-items:center;">
+          <a class="btn-flat waves-effect" href="{% url 'diagrams:list' %}">
+            <i class="material-icons left">arrow_back</i>Retour
+          </a>
+          <a class="btn waves-effect waves-light cinta-btn-primary" href="{% url 'diagrams:edit' diagram.pk %}">
+            <i class="material-icons left">edit</i>Ouvrir l'éditeur
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 {% endblock %}
