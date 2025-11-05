@@ -98,6 +98,18 @@
 
 <div class="card cinta-card">
   <div class="card-content">
+    {% if form.errors %}
+      <div class="card-panel red lighten-4 red-text text-darken-4">
+        <p class="no-margin">Merci de corriger les erreurs ci-dessous.</p>
+      </div>
+    {% endif %}
+    {% if form.non_field_errors %}
+      <div class="card-panel red lighten-4 red-text text-darken-4">
+        {% for error in form.non_field_errors %}
+          <p class="no-margin">{{ error }}</p>
+        {% endfor %}
+      </div>
+    {% endif %}
     <form method="post" novalidate>
       {% csrf_token %}
       {% form form=form %}
@@ -107,6 +119,14 @@
         {% part form description %}{% endpart %}
         {% part form status %}{% endpart %}
         {% part form owner %}{% endpart %}
+        {% part form participant_porteur_demande %}{% endpart %}
+        {% part form participant_architecte_referent %}{% endpart %}
+        {% part form participant_architecte_technique %}{% endpart %}
+        {% part form participant_urbaniste %}{% endpart %}
+        {% part form participant_analyste_secu %}{% endpart %}
+        {% part form participant_rssi %}{% endpart %}
+        {% part form participant_comite_validation %}{% endpart %}
+        {% part form participant_infra_exploitation %}{% endpart %}
       {% endform %}
       <div class="right-align">
         <button type="submit" class="btn waves-effect waves-light cinta-btn-primary">Enregistrer</button>

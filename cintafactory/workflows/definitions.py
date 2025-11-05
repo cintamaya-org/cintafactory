@@ -3,6 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Sequence, Tuple
 
+from dat.constants import (
+    DAT_REQUIRED_PARTICIPANT_ROLE_SLUGS,
+    DAT_STATUS_REQUIRED_ROLES,
+)
+
 
 @dataclass(frozen=True)
 class StepPermissionDefinition:
@@ -37,6 +42,22 @@ class WorkflowDefinition:
     steps: Sequence[WorkflowStepDefinition] = field(default_factory=tuple)
 
 
+# --- Shared role helpers ---------------------------------------------------------
+
+COMITE_VALIDATION_ROLE_SLUG = "comite-validation"
+ALL_DAT_ROLES: Tuple[str, ...] = DAT_REQUIRED_PARTICIPANT_ROLE_SLUGS
+DAT_ROLES_WITHOUT_COMITE: Tuple[str, ...] = tuple(
+    slug for slug in DAT_REQUIRED_PARTICIPANT_ROLE_SLUGS if slug != COMITE_VALIDATION_ROLE_SLUG
+)
+
+
+def required_roles(status: str) -> Tuple[str, ...]:
+    try:
+        return DAT_STATUS_REQUIRED_ROLES[status]
+    except KeyError as exc:
+        raise KeyError(f"Unknown DAT status '{status}' in workflow definitions") from exc
+
+
 # --- Default workflow definitions -------------------------------------------------
 
 WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
@@ -60,19 +81,13 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
                     "demande avec reprise automatique des informations applicatives connues."
                 ),
                 permissions=(
-                    StepPermissionDefinition(permission="write", roles=("porteur-demande",)),
+                    StepPermissionDefinition(
+                        permission="write",
+                        roles=required_roles("demande_initiale"),
+                    ),
                     StepPermissionDefinition(
                         permission="read",
-                        roles=(
-                            "porteur-demande",
-                            "architecte-referent",
-                            "architecte-technique",
-                            "urbaniste",
-                            "analyste-secu",
-                            "rssi",
-                            "infra-exploitation",
-                            "comite-validation",
-                        ),
+                        roles=ALL_DAT_ROLES,
                     ),
                 ),
             ),
@@ -86,19 +101,13 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
                     "architecte technique (validation ou renvoi au porteur avec commentaire)."
                 ),
                 permissions=(
-                    StepPermissionDefinition(permission="write", roles=("architecte-referent",)),
+                    StepPermissionDefinition(
+                        permission="write",
+                        roles=required_roles("validation_referent"),
+                    ),
                     StepPermissionDefinition(
                         permission="read",
-                        roles=(
-                            "porteur-demande",
-                            "architecte-referent",
-                            "architecte-technique",
-                            "urbaniste",
-                            "analyste-secu",
-                            "rssi",
-                            "infra-exploitation",
-                            "comite-validation",
-                        ),
+                        roles=ALL_DAT_ROLES,
                     ),
                 ),
             ),
@@ -112,18 +121,13 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
                     "arbitrages demandes avant passage a la securite."
                 ),
                 permissions=(
-                    StepPermissionDefinition(permission="write", roles=("architecte-technique",)),
+                    StepPermissionDefinition(
+                        permission="write",
+                        roles=required_roles("instruction_architecture"),
+                    ),
                     StepPermissionDefinition(
                         permission="read",
-                        roles=(
-                            "porteur-demande",
-                            "architecte-referent",
-                            "architecte-technique",
-                            "urbaniste",
-                            "analyste-secu",
-                            "rssi",
-                            "infra-exploitation",
-                        ),
+                        roles=DAT_ROLES_WITHOUT_COMITE,
                     ),
                 ),
             ),
@@ -137,18 +141,13 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
                     "l'urbaniste en parallele de l'instruction technique."
                 ),
                 permissions=(
-                    StepPermissionDefinition(permission="write", roles=("urbaniste",)),
+                    StepPermissionDefinition(
+                        permission="write",
+                        roles=required_roles("instruction_urbanisme"),
+                    ),
                     StepPermissionDefinition(
                         permission="read",
-                        roles=(
-                            "porteur-demande",
-                            "architecte-referent",
-                            "architecte-technique",
-                            "urbaniste",
-                            "analyste-secu",
-                            "rssi",
-                            "infra-exploitation",
-                        ),
+                        roles=DAT_ROLES_WITHOUT_COMITE,
                     ),
                 ),
             ),
@@ -163,18 +162,13 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
                     "demande de derogation."
                 ),
                 permissions=(
-                    StepPermissionDefinition(permission="write", roles=("analyste-secu",)),
+                    StepPermissionDefinition(
+                        permission="write",
+                        roles=required_roles("analyse_securite"),
+                    ),
                     StepPermissionDefinition(
                         permission="read",
-                        roles=(
-                            "porteur-demande",
-                            "architecte-referent",
-                            "architecte-technique",
-                            "urbaniste",
-                            "analyste-secu",
-                            "rssi",
-                            "infra-exploitation",
-                        ),
+                        roles=DAT_ROLES_WITHOUT_COMITE,
                     ),
                 ),
             ),
@@ -188,18 +182,13 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
                     "mise a jour de l'inventaire (assets, capacites, consommations)."
                 ),
                 permissions=(
-                    StepPermissionDefinition(permission="write", roles=("architecte-technique",)),
+                    StepPermissionDefinition(
+                        permission="write",
+                        roles=required_roles("generation_cartographie"),
+                    ),
                     StepPermissionDefinition(
                         permission="read",
-                        roles=(
-                            "porteur-demande",
-                            "architecte-referent",
-                            "architecte-technique",
-                            "urbaniste",
-                            "analyste-secu",
-                            "rssi",
-                            "infra-exploitation",
-                        ),
+                        roles=DAT_ROLES_WITHOUT_COMITE,
                     ),
                 ),
             ),
@@ -213,18 +202,13 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
                     "par l'equipe infra / exploitation."
                 ),
                 permissions=(
-                    StepPermissionDefinition(permission="write", roles=("infra-exploitation",)),
+                    StepPermissionDefinition(
+                        permission="write",
+                        roles=required_roles("revue_infra_exploitation"),
+                    ),
                     StepPermissionDefinition(
                         permission="read",
-                        roles=(
-                            "porteur-demande",
-                            "architecte-referent",
-                            "architecte-technique",
-                            "urbaniste",
-                            "analyste-secu",
-                            "rssi",
-                            "infra-exploitation",
-                        ),
+                        roles=DAT_ROLES_WITHOUT_COMITE,
                     ),
                 ),
             ),
@@ -240,25 +224,11 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
                 permissions=(
                     StepPermissionDefinition(
                         permission="write",
-                        roles=(
-                            "architecte-referent",
-                            "urbaniste",
-                            "rssi",
-                            "infra-exploitation",
-                        ),
+                        roles=required_roles("validation_finale"),
                     ),
                     StepPermissionDefinition(
                         permission="read",
-                        roles=(
-                            "porteur-demande",
-                            "architecte-referent",
-                            "architecte-technique",
-                            "urbaniste",
-                            "analyste-secu",
-                            "rssi",
-                            "infra-exploitation",
-                            "comite-validation",
-                        ),
+                        roles=ALL_DAT_ROLES,
                     ),
                 ),
             ),
@@ -274,27 +244,11 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
                 permissions=(
                     StepPermissionDefinition(
                         permission="write",
-                        roles=(
-                            "architecte-technique",
-                            "architecte-referent",
-                            "urbaniste",
-                            "analyste-secu",
-                            "rssi",
-                            "infra-exploitation",
-                        ),
+                        roles=required_roles("validation_reserve"),
                     ),
                     StepPermissionDefinition(
                         permission="read",
-                        roles=(
-                            "porteur-demande",
-                            "architecte-referent",
-                            "architecte-technique",
-                            "urbaniste",
-                            "analyste-secu",
-                            "rssi",
-                            "infra-exploitation",
-                            "comite-validation",
-                        ),
+                        roles=ALL_DAT_ROLES,
                     ),
                 ),
             ),
@@ -308,19 +262,13 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
                     "etat est archive."
                 ),
                 permissions=(
-                    StepPermissionDefinition(permission="write", roles=("architecte-referent",)),
+                    StepPermissionDefinition(
+                        permission="write",
+                        roles=required_roles("dat_refuse"),
+                    ),
                     StepPermissionDefinition(
                         permission="read",
-                        roles=(
-                            "porteur-demande",
-                            "architecte-referent",
-                            "architecte-technique",
-                            "urbaniste",
-                            "analyste-secu",
-                            "rssi",
-                            "infra-exploitation",
-                            "comite-validation",
-                        ),
+                        roles=ALL_DAT_ROLES,
                     ),
                 ),
             ),
@@ -334,19 +282,13 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
                     "intervenants sont notifies."
                 ),
                 permissions=(
-                    StepPermissionDefinition(permission="write", roles=("architecte-referent",)),
+                    StepPermissionDefinition(
+                        permission="write",
+                        roles=required_roles("dat_valide"),
+                    ),
                     StepPermissionDefinition(
                         permission="read",
-                        roles=(
-                            "porteur-demande",
-                            "architecte-referent",
-                            "architecte-technique",
-                            "urbaniste",
-                            "analyste-secu",
-                            "rssi",
-                            "infra-exploitation",
-                            "comite-validation",
-                        ),
+                        roles=ALL_DAT_ROLES,
                     ),
                 ),
             ),

@@ -37,11 +37,11 @@
                             <a href="#"><img class="circle" src="{% static 'material/imgs/user.png' %}"></a>
                             {% endif %}
                             {% endblock %} {% endcomment %}
-                            <a href="#"><span class="white-text name">{{ request.user.get_username|title }}</span></a>
-                            <a href="#"><span class="white-text email">{{ request.user.email }}</span></a>
+                            <a href="#"><span class="black-text name" style="color:#000;">{{ request.user.get_username|title }}</span></a>
+                            <a href="#"><span class="black-text email" style="color:#000;">{{ request.user.email }}</span></a>
                             <a href="{% url 'account:profile' %}"
-                               class="btn-flat waves-effect my-account__link"
-                               style="margin-top:0.75rem;">
+                               class="btn waves-effect waves-light cinta-btn-primary my-account__link"
+                               style="margin-top:0.75rem; min-width:170px; text-align:center;">
                                 <i class="material-icons left">person</i>Mon compte
                             </a>
                         </div>
@@ -84,7 +84,14 @@
                     <ul id="nav-mobile" class="right hide-on-med-and-down">
                         {% block topbar_links %}
                         {% if user.is_authenticated %}
-                        <li><a href="{% url 'logout' %}" data-turbolinks="false"><i class="material-icons right">exit_to_app</i>Deconnexion</a></li>
+                         <li>
+                             <a href="{% url 'logout' %}"
+                                class="btn waves-effect waves-light cinta-btn-primary"
+                                data-turbolinks="false"
+                                style="display:inline-flex; align-items:center; gap:0.35rem;">
+                                 <i class="material-icons right" style="margin-left:0;">exit_to_app</i>Deconnexion
+                             </a>
+                         </li>
                         {% else %}
                         <li><a href="{% url 'login' %}" data-turbolinks="false"><i class="material-icons right">lock_open</i>Connexion</a></li>
                         {% endif %}

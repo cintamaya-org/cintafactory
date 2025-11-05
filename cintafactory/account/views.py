@@ -5,6 +5,8 @@ from django.urls import reverse_lazy
 from django.views import View
 from django.views.generic import TemplateView
 
+from .forms import AccountPasswordChangeForm
+
 
 class AccountProfileView(LoginRequiredMixin, TemplateView):
     template_name = "account/profile.html"
@@ -24,6 +26,7 @@ class AccountProfileView(LoginRequiredMixin, TemplateView):
 class AccountPasswordChangeView(LoginRequiredMixin, PasswordChangeView):
     template_name = "account/password_change.html"
     success_url = reverse_lazy("account:password_change_done")
+    form_class = AccountPasswordChangeForm
 
 
 class AccountPasswordChangeDoneView(LoginRequiredMixin, PasswordChangeDoneView):
