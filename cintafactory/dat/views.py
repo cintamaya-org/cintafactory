@@ -17,7 +17,7 @@ from django.views.generic import DetailView, ListView, TemplateView
 
 from material import Fieldset, Layout, Row
 from material.frontend.registry import modules as module_registry
-from material.frontend.views import CreateModelView, DetailModelView, ModelViewSet, UpdateModelView
+from material.frontend.views import CreateModelView, DetailModelView, ListModelView, ModelViewSet, UpdateModelView
 
 from .constants import (
     DAT_PORTEUR_ROLE_SLUG,
@@ -72,6 +72,10 @@ class ModuleContextMixin:
         elif self.default_base_template:
             context["current_module"] = SimpleNamespace(base_template=self.default_base_template)
         return context
+
+
+class ModuleAwareListView(ModuleContextMixin, ListModelView):
+    pass
 
 
 def get_required_roles_for_status(status: str) -> tuple[str, ...]:
@@ -207,6 +211,7 @@ def user_can_progress_dat(dat: DAT, user) -> bool:
 
 
 class BaseSecuredViewSet(LoginRequiredMixin, ModelViewSet):
+    list_view_class = ModuleAwareListView
     def has_view_permission(self, request, obj=None):
         return request.user.is_authenticated
 
