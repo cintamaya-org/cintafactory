@@ -6,3 +6,5 @@ class UsersConfig(ModuleMixin, AppConfig):
     verbose_name = "Gestion des utilisateurs"
     icon = "<i class='material-icons'>supervisor_account</i>"
     default_auto_field = "django.db.models.BigAutoField"
+    order = 10
+    base_template = "material/frontend/base_module.html"
