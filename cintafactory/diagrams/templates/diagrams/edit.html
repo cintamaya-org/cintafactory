@@ -74,7 +74,7 @@
             </div>
             <iframe
               id="dio"
-              src="{{ drawio_iframe_src }}">
+              src="{{ drawio_embed_url }}">
             </iframe>
           </div>
           <div class="diagram-editor__actions">
@@ -135,8 +135,8 @@ window.addEventListener("message", (evt) => {
   if (typeof msg !== "object") return;
 
   if (msg.event === "init") {
-    sendToDrawio({ action: "load", xml: DIAGRAM_XML || "<mxGraphModel/>" });
     sendToDrawio({ action: "configure", config: { autosave: 1 } });
+    sendToDrawio({ action: "load", xml: DIAGRAM_XML || "<mxGraphModel/>" });
     hideLoader();
   }
 

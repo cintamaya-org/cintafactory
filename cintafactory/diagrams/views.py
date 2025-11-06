@@ -2,7 +2,7 @@ import base64
 import json
 from io import BytesIO
 from pathlib import Path
-from urllib.parse import quote, urlsplit, urlunsplit, urljoin
+from urllib.parse import quote, urlsplit, urlunsplit
 
 from django.apps import apps as django_apps
 from django.conf import settings
@@ -23,7 +23,7 @@ from .forms import DiagramForm
 from .models import Diagram
 
 
-DRAWIO_DEFAULT_LIBS = "general;uml;bpmn;flowchart;er;network;aws2;azure2;gcp;cisco;mockups;charts;business;tables;signs;ios"
+DRAWIO_DEFAULT_LIBS = "general"
 
 
 class ModuleContextMixin:
@@ -96,9 +96,48 @@ class DiagramEditView(ModuleContextMixin, LoginRequiredMixin, TemplateView):
         context = super().get_context_data(**kwargs)
         diagram = get_object_or_404(Diagram, pk=kwargs["pk"], owner=self.request.user)
         context["diagram"] = diagram
-        custom_libraries = self._get_custom_libraries()
-        context["custom_libraries"] = custom_libraries
+        library_urls = self._get_custom_library_urls()
+        clibs_param = self._encode_custom_libraries(library_urls)
+        context["drawio_embed_url"] = self._build_embed_url(clibs_param)
+        context["drawio_origin"] = settings.DRAWIO_PUBLIC_ORIGIN
+        return context
 
+    def _get_custom_library_urls(self) -> list[str]:
+        """Build absolute URLs for custom draw.io XML libraries."""
+        candidate_dirs = [
+            Path(settings.BASE_DIR) / "cintafactory" / "static" / "diagrams",
+            Path(settings.BASE_DIR) / "static" / "diagrams",
+        ]
+        static_root = next((path for path in candidate_dirs if path.exists()), None)
+        if static_root is None:
+            return []
+        libraries: list[str] = []
+        request = self.request
+        base_url = ""
+        if request is None:
+            base_url = settings.DRAWIO_LIBRARY_BASE_URL or settings.DRAWIO_PUBLIC_URL
+        for entry in sorted(static_root.iterdir()):
+            if not entry.is_file():
+                continue
+            if entry.name.endswith(":Zone.Identifier"):
+                continue
+            if entry.suffix.lower() != ".xml":
+                continue
+            relative_url = static(f"diagrams/{entry.name}")
+            if request is not None:
+                absolute_url = request.build_absolute_uri(relative_url)
+            else:
+                absolute_url = f"{base_url.rstrip('/')}/{relative_url.lstrip('/')}"
+            libraries.append(absolute_url)
+        return libraries
+
+    def _encode_custom_libraries(self, urls: list[str]) -> str:
+        if not urls:
+            return ""
+        encoded = ["U" + quote(url, safe="") for url in urls]
+        return ";".join(encoded)
+
+    def _build_embed_url(self, clibs_param: str) -> str:
         base_parts = urlsplit(settings.DRAWIO_PUBLIC_URL)
         base_path = base_parts.path or "/"
         base_query = base_parts.query
@@ -106,11 +145,11 @@ class DiagramEditView(ModuleContextMixin, LoginRequiredMixin, TemplateView):
             "embed=1&ui=min&spin=0&proto=json&lang=fr&autosave=1&tabs=0&libs="
             + DRAWIO_DEFAULT_LIBS
         )
-        if custom_libraries:
-            query += f"&clibs={custom_libraries}"
+        if clibs_param:
+            query += f"&clibs={clibs_param}"
         if base_query:
             query = f"{base_query}&{query}"
-        iframe_src = urlunsplit(
+        return urlunsplit(
             (
                 base_parts.scheme or "https",
                 base_parts.netloc,
@@ -119,58 +158,6 @@ class DiagramEditView(ModuleContextMixin, LoginRequiredMixin, TemplateView):
                 base_parts.fragment,
             )
         )
-        context["drawio_iframe_src"] = iframe_src
-        context["drawio_origin"] = settings.DRAWIO_PUBLIC_ORIGIN
-        return context
-
-    def _get_custom_libraries(self):
-        """Return URL-encoded absolute locations for custom draw.io libraries."""
-        candidate_dirs = [
-            Path(settings.BASE_DIR) / "cintafactory" / "static" / "diagrams",
-            Path(settings.BASE_DIR) / "static" / "diagrams",
-        ]
-        static_root = next((path for path in candidate_dirs if path.exists()), None)
-        if static_root is None:
-            return ""
-        libs = []
-        request = self.request
-        if settings.DRAWIO_LIBRARY_BASE_URL:
-            base_urls = [settings.DRAWIO_LIBRARY_BASE_URL.rstrip("/")]
-        else:
-            base_urls = []
-            if request:
-                base_urls.append(request.build_absolute_uri("/").rstrip("/"))
-            base_urls.append(settings.DRAWIO_PUBLIC_URL.rstrip("/"))
-
-        # Deduplicate while preserving order and pick the first available base URL
-        deduped_base_urls = []
-        seen = set()
-        for url in base_urls:
-            if not url:
-                continue
-            if url in seen:
-                continue
-            seen.add(url)
-            deduped_base_urls.append(url)
-
-        if deduped_base_urls:
-            chosen_base_url = deduped_base_urls[0]
-        else:
-            chosen_base_url = ""
-
-        for entry in sorted(static_root.iterdir()):
-            if not entry.is_file():
-                continue
-            if entry.name.endswith(":Zone.Identifier"):
-                continue
-            if entry.suffix.lower() not in {".drawio", ".xml"}:
-                continue
-            if not chosen_base_url:
-                continue
-            relative_path = static(f"diagrams/{entry.name}").lstrip("/")
-            absolute_url = urljoin(chosen_base_url.rstrip("/") + "/", relative_path)
-            libs.append("U" + quote(absolute_url, safe=""))
-        return ";".join(libs)
 
 
 @login_required

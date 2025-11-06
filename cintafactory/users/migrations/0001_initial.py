@@ -42,7 +42,7 @@ class Migration(migrations.Migration):
                 ('email', models.EmailField(blank=True, max_length=254, verbose_name='adresse email')),
                 ('is_staff', models.BooleanField(default=False, help_text="Indique si l'utilisateur peut se connecter a ce site d'administration.", verbose_name='statut personnel')),
                 ('is_active', models.BooleanField(default=True, help_text="Indique si cet utilisateur doit etre considere comme actif. Deselectionnez cette option plutot que de supprimer les comptes.", verbose_name='actif')),
-                ('date_joined', models.DateTimeField(default=django.utils.timezone.now, verbose_name="date d'inscription")),
+                ('date_joined', models.DateTimeField(default=django.utils.timezone.now, verbose_name="date de creation")),
                 ('groups', models.ManyToManyField(blank=True, help_text="Groupes auxquels appartient cet utilisateur. Il herite des permissions accordees a chacun de ses groupes.", related_name='user_set', related_query_name='user', to='auth.group', verbose_name='groupes')),
                 ('user_permissions', models.ManyToManyField(blank=True, help_text='Permissions specifiques pour cet utilisateur.', related_name='user_set', related_query_name='user', to='auth.permission', verbose_name='permissions utilisateur')),
                 ('role', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='users', to='users.role')),
