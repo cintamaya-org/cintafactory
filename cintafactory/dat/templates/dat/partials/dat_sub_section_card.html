@@ -1,0 +1,141 @@
+{% load dat_extras %}
+<div class="section dat-sub-section" data-sub-section-slug="{{ part.section_part.slug }}" id="sub-section-{{ part.section_part.slug }}" style="margin-top:1.5rem;">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.75rem; flex-wrap:wrap;">
+    <div style="flex:1; min-width:200px;">
+      {% with part_icon=container_section.slug|section_part_icon:part.section_part.slug %}
+      <h6 style="margin-top:0; display:flex; align-items:center; gap:0.5rem;">
+        {% if part_icon %}
+          <span class="{{ part_icon.variant }} dat-section-part-icon" aria-hidden="true">{{ part_icon.name }}</span>
+        {% endif %}
+        {{ part.section_part.title }}
+      </h6>
+      {% endwith %}
+      {% if part.section_part.description %}
+        <p style="margin:0 0 0.5rem 0; color:#757575; white-space:pre-wrap;">{{ part.section_part.description }}</p>
+      {% endif %}
+    </div>
+    {% if part.can_edit %}
+      <a
+        href="{% url 'dat:sub_section_edit' dat.pk container_section.slug part.section_part.slug %}"
+        class="btn waves-effect waves-light cinta-btn-primary dat-subsection-edit-btn"
+        data-edit-url="{% url 'dat:sub_section_edit' dat.pk container_section.slug part.section_part.slug %}"
+        data-sub-section-slug="{{ part.section_part.slug }}"
+        data-sub-section-title="{{ part.section_part.title }}"
+      >
+        <i class="material-icons left" aria-hidden="true">edit</i>
+        Modifier
+      </a>
+    {% endif %}
+  </div>
+  {% if part.entries %}
+    <div class="responsive-table">
+      <table class="highlight">
+        <tbody>
+          {% for entry in part.entries %}
+            <tr>
+              <th scope="row" style="width:260px;">
+                {{ entry.label }}
+                {% if entry.required %}
+                  <span class="chip amber lighten-4" style="margin-left:0.5rem;">Obligatoire</span>
+                {% endif %}
+              </th>
+              <td>
+                {% with value=entry.formatted_value %}
+                  {% if entry.data_type == "repeater" %}
+                    {% with columns=entry.config|dat_columns %}
+                      {% if value %}
+                        <div class="responsive-table">
+                          <table class="highlight">
+                            <thead>
+                              <tr>
+                                {% for column in columns %}
+                                  <th>{{ column.label }}</th>
+                                {% endfor %}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {% for row in value %}
+                                <tr>
+                                  {% for column in columns %}
+                                    <td>
+                                      {% with cell=row|get_item:column.key %}
+                                        {% if column.render == "link" %}
+                                          {% if cell %}
+                                            <a href="{{ cell }}" class="btn-flat waves-effect cinta-btn-secondary" target="_blank" rel="noopener">
+                                              {% if column.icon %}<i class="material-icons left" aria-hidden="true">{{ column.icon }}</i>{% endif %}
+                                              {{ column.button_label|default:column.label }}
+                                            </a>
+                                          {% else %}
+                                            <span class="chip grey lighten-3">—</span>
+                                          {% endif %}
+                                        {% elif column.render == "drawio_diagram" %}
+                                          {% if cell %}
+                                            {% diagram_links cell as drawio %}
+                                            {% if drawio %}
+                                              <div style="display:flex; flex-wrap:wrap; gap:0.5rem; align-items:center;">
+                                                <span class="chip blue lighten-5 blue-text text-darken-4" style="margin:0;">
+                                                  {{ drawio.title|default:"Diagramme" }} (#{{ drawio.pk }})
+                                                </span>
+                                                <button type="button" class="btn-flat waves-effect cinta-btn-secondary dat-drawio-view-button dat-drawio-action-button dat-viewer-trigger"
+                                                        data-diagram-id="{{ drawio.pk }}">
+                                                  <i class="material-icons left" aria-hidden="true">visibility</i>Voir
+                                                </button>
+                                                {% if part.can_edit %}
+                                                  <button type="button"
+                                                          class="btn-flat waves-effect cinta-btn-secondary dat-drawio-import-button dat-drawio-action-button"
+                                                          data-diagram-id="{{ drawio.pk }}"
+                                                          data-import-url="{{ drawio.import_url }}"
+                                                          data-diagram-title="{{ drawio.title|default_if_none:'Diagramme' }}">
+                                                    <i class="material-icons left" aria-hidden="true">file_upload</i>
+                                                    <span class="dat-drawio-button-label">Importer</span>
+                                                  </button>
+                                                  <button type="button"
+                                                          class="btn-flat waves-effect cinta-btn-secondary dat-drawio-export-button dat-drawio-action-button"
+                                                          data-diagram-id="{{ drawio.pk }}"
+                                                          data-export-url="{{ drawio.export_url }}"
+                                                          data-diagram-title="{{ drawio.title|default_if_none:'Diagramme' }}">
+                                                    <i class="material-icons left" aria-hidden="true">file_download</i>Exporter
+                                                  </button>
+                                                {% endif %}
+                                              </div>
+                                            {% else %}
+                                              <span class="chip red lighten-5 red-text text-darken-2">ID de diagramme invalide</span>
+                                            {% endif %}
+                                          {% else %}
+                                            <span class="chip grey lighten-3">Aucun diagramme</span>
+                                          {% endif %}
+                                        {% elif column.type == "textarea" %}
+                                          <p style="margin:0; white-space:pre-wrap;">{{ cell|default:"—" }}</p>
+                                        {% else %}
+                                          <span>{{ cell|default:"—" }}</span>
+                                        {% endif %}
+                                      {% endwith %}
+                                    </td>
+                                  {% endfor %}
+                                </tr>
+                              {% endfor %}
+                            </tbody>
+                          </table>
+                        </div>
+                      {% else %}
+                        <span class="chip grey lighten-3">Aucune ligne</span>
+                      {% endif %}
+                    {% endwith %}
+                  {% elif entry.data_type == "json" %}
+                    <pre style="margin:0; white-space:pre-wrap;">{{ value }}</pre>
+                  {% elif entry.data_type == "long_text" %}
+                    <p style="margin:0; white-space:pre-wrap;">{{ value }}</p>
+                  {% else %}
+                    <span>{{ value|default:"—" }}</span>
+                  {% endif %}
+                {% endwith %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p style="margin:0; color:#9e9e9e;">Aucune donnée pour cette sous-section.</p>
+  {% endif %}
+</div>

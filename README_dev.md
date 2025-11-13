@@ -17,13 +17,16 @@ You can access the app locally at:
 
  [http://localhost:8101](http://localhost:8101)
 
-The bundled draw.io editor is exposed via the `drawio` service:
+The bundled draw.io editor is exposed via the `drawio` service, and previews export locally through the companion `drawio-export` service:
 
 - Web UI / embed endpoint: [http://localhost:8102](http://localhost:8102)
-- Django consumes it through `DRAWIO_PUBLIC_URL` (defaults to `http://localhost:8102` in this compose file).
-  When deploying elsewhere, point `DRAWIO_PUBLIC_URL` to whatever host/port you expose the draw.io container on.
-- Set `DRAWIO_BASE_URL` to the internal address the Django backend should use to reach draw.io on the Docker network (defaults to `http://drawio:8080`).
-- Set `DRAWIO_LIBRARY_BASE_URL` to the address draw.io should use to fetch static libraries from this app (defaults to `http://web:8000` in this compose). If unset or unreachable, Django automatically falls back to the current request host, so the feature works even when the environment variables are omitted.
+- Export server health check: [http://localhost:8103](http://localhost:8103)
+- Optional environment variables:
+  - `DRAWIO_LIBS` to tweak the built-in palettes (defaults to `general`).
+  - `DRAWIO_CLIBS` with a comma-separated list of HTTP URLs pointing to custom XML libraries (for example `http://web:8000/static/drawio/mes-formes.xml` served by Django). Leave it unset to auto-load any XML files bundled in `static/diagrams`.
+- If you expose draw.io under a different hostname, override `DRAWIO_PUBLIC_URL`; otherwise, the defaults work out of the box.
+
+To ship a local library, copy the XML file into the Django static directory (e.g. `cintafactory/static/drawio/mes-formes.xml`), make sure the file is included in your Docker image or mounted as a volume, then set `DRAWIO_CLIBS` accordingly in your `.env` or compose overrides. The application handles the `clibs` URL-encoding automatically when building the iframe.
 
 ---
 

@@ -1,0 +1,115 @@
+<div id="dat-details">
+  <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:1rem;">
+    <div style="display:flex; flex-direction:column; gap:0.5rem;">
+      <a href="{% url 'dat:my_list' %}" class="btn-flat waves-effect" style="padding-left:0;">
+        <i class="material-icons left" aria-hidden="true">arrow_back</i>
+        Retour à la liste
+      </a>
+      <h5 style="margin:0; display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+        <span>{{ dat.reference }}</span>
+        <span style="color:#9e9e9e;">·</span>
+        <span>{{ dat.title }}</span>
+      </h5>
+    </div>
+    <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+      <span class="chip blue lighten-4" title="Statut actuel">{{ dat.get_status_display }}</span>
+      {% if can_progress_dat and next_status %}
+        <form method="post" action="{% url 'dat:my_advance' dat.pk %}">
+          {% csrf_token %}
+          <button type="submit" class="btn waves-effect waves-light cinta-btn-primary">
+            Passer à l'étape suivante
+            {% if next_status_label %}
+              <span style="margin-left:0.5rem; font-size:0.85em;">({{ next_status_label }})</span>
+            {% endif %}
+          </button>
+        </form>
+        {% endif %}
+        <a
+          href="#dat-history-modal"
+          class="btn waves-effect waves-light cinta-btn-primary dat-modal-trigger"
+          data-modal-target="dat-history-modal"
+        >
+          <i class="material-icons left" aria-hidden="true">history</i>
+          Historique du dossier
+        </a>
+      </div>
+    </div>
+
+  {% if participant_overview %}
+  <div class="section" style="margin-top:1.5rem;">
+    <h6 style="margin-top:0;">Participants</h6>
+    {% if current_responsibles %}
+      <p style="margin:0 0 0.75rem 0; color:#424242;">
+        Validation actuelle :
+        {% for item in current_responsibles %}
+          <strong>{{ item.role_label }}</strong>
+          {% if item.is_assigned %}
+            &nbsp;→ {{ item.user_display }}
+          {% else %}
+            &nbsp;→ <span style="color:#c62828;">Non affecté</span>
+          {% endif %}
+          {% if not forloop.last %}&nbsp;| {% endif %}
+        {% endfor %}
+      </p>
+    {% endif %}
+    <div class="responsive-table">
+      <table class="highlight">
+        <thead>
+          <tr>
+            <th>Rôle</th>
+            <th>Utilisateur</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in participant_overview %}
+            <tr>
+              <th scope="row">{{ item.role_label }}</th>
+              <td>
+                {% if item.user %}
+                  {{ item.user_display }}
+                  {% if item.is_responsible %}
+                    <span class="chip green lighten-4" title="Acteur attendu" style="margin-left:0.5rem;">Responsable</span>
+                  {% endif %}
+                {% else %}
+                  <span class="chip red lighten-4" title="Affectation requise">Non affecté</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="section" style="margin-top:1.5rem;">
+    <h6 style="margin-top:0;">Informations principales</h6>
+    <div class="responsive-table">
+      <table class="highlight">
+        <tbody>
+          <tr>
+            <th scope="row" style="width:220px;">Application</th>
+            <td>{{ dat.application|default:"—" }}</td>
+          </tr>
+          <tr>
+            <th scope="row">Responsable</th>
+            <td>{{ dat.owner|default:"—" }}</td>
+          </tr>
+          <tr>
+            <th scope="row">Créé le</th>
+            <td>{{ dat.created_at|date:"d/m/Y \\à H\\hi" }}</td>
+          </tr>
+          <tr>
+            <th scope="row">Mis à jour le</th>
+            <td>{{ dat.updated_at|date:"d/m/Y \\à H\\hi" }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section" style="margin-top:1.5rem;">
+    <h6 style="margin-top:0;">Description</h6>
+    <p style="white-space:pre-wrap;">{{ dat.description|default:"Aucune description renseignée." }}</p>
+  </div>
+</div>

@@ -1,0 +1,70 @@
+{% load material_frontend dat_extras %}
+{% with part_icon=section.slug|section_part_icon:sub_section.slug %}
+<div class="dat-sub-section-form">
+  <div class="dat-sub-section-edit-header" style="display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; flex-wrap:wrap;">
+    <div style="flex:1 1 auto; min-width:220px;">
+      <h6 style="margin:0; display:flex; align-items:center; gap:0.5rem;">
+        {% if part_icon %}
+          <span class="{{ part_icon.variant }} dat-section-part-icon" aria-hidden="true">{{ part_icon.name }}</span>
+        {% endif %}
+        {{ sub_section.title }}
+      </h6>
+      {% if sub_section.description %}
+        <p style="margin:0.35rem 0 0; color:#616161;">{{ sub_section.description }}</p>
+      {% endif %}
+    </div>
+    <span class="chip amber lighten-4" style="margin:0;">Mode édition</span>
+  </div>
+  <form method="post" action="{{ form_action }}" novalidate class="dat-sub-section-edit-form" data-sub-section-form="{{ sub_section.slug }}">
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="card-panel red lighten-4" style="padding:1rem; margin-bottom:1rem;">
+        {% for error in form.non_field_errors %}
+          <p style="margin:0; color:#c62828;">{{ error }}</p>
+        {% endfor %}
+      </div>
+    {% endif %}
+    {% for item in form.iter_entries %}
+      {% with entry=item.entry field=item.field %}
+        <div class="input-field dat-sub-section-input" style="margin-bottom:1.25rem;">
+          {% if entry.data_type == "boolean" %}
+            <label style="display:block; margin-bottom:0.5rem;">{{ entry.label }}</label>
+            <div class="switch" style="display:inline-flex; align-items:center; gap:0.75rem;">
+              <label style="display:flex; align-items:center; gap:0.75rem;">
+                Non
+                {{ field }}
+                <span class="lever"></span>
+                Oui
+              </label>
+            </div>
+          {% else %}
+            <label for="{{ field.id_for_label }}" class="active" style="display:block; margin-bottom:0.5rem;">
+              {{ field.label }}
+            </label>
+            {{ field }}
+          {% endif %}
+          {% if field.help_text %}
+            <span class="helper-text" style="display:block; color:#757575;">{{ field.help_text }}</span>
+          {% endif %}
+          {% if field.errors %}
+            {% for error in field.errors %}
+              <span class="helper-text" style="display:block; color:#c62828;">{{ error }}</span>
+            {% endfor %}
+          {% endif %}
+        </div>
+      {% endwith %}
+    {% empty %}
+      <p style="margin:0;">Aucun champ à éditer.</p>
+    {% endfor %}
+    <div style="display:flex; flex-wrap:wrap; gap:0.75rem; justify-content:flex-end; margin-top:1.5rem;">
+      <button type="submit" class="btn waves-effect waves-light cinta-btn-primary">
+        <i class="material-icons left" aria-hidden="true">save</i>
+        Enregistrer
+      </button>
+      <button type="button" class="btn-flat waves-effect dat-sub-section-cancel-btn">
+        Annuler
+      </button>
+    </div>
+  </form>
+</div>
+{% endwith %}

@@ -14,7 +14,8 @@ services:
       RUN_MIGRATIONS: 1
       DRAWIO_BASE_URL: ${DRAWIO_BASE_URL:-http://drawio:8080}
       DRAWIO_PUBLIC_URL: ${DRAWIO_PUBLIC_URL:-http://localhost:8102}
-      DRAWIO_LIBRARY_BASE_URL: ${DRAWIO_LIBRARY_BASE_URL:-http://web:8000}
+      DRAWIO_LIBS: ${DRAWIO_LIBS:-general}
+      DRAWIO_CLIBS: ${DRAWIO_CLIBS:-}
     volumes:
       # IMPORTANT: mount your app folder (which contains manage.py AND templates/)
       - ./cintafactory:/app
@@ -37,8 +38,18 @@ services:
   drawio:
     image: jgraph/drawio
     container_name: test_factory_drawio
+    environment:
+      EXPORT_URL: http://drawio-export:8000/export
     ports:
       - "${DRAWIO_HOST_PORT:-8102}:8080"
+    depends_on:
+      - drawio-export
+
+  drawio-export:
+    image: jgraph/export-server
+    container_name: test_factory_drawio_export
+    ports:
+      - "${DRAWIO_EXPORT_HOST_PORT:-8103}:8000"
 
 volumes:
   pgdata_dev:

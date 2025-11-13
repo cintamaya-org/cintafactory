@@ -9,6 +9,7 @@ from django.dispatch import receiver
 from cintafactory.logging_utils import get_request_context, log_info
 
 from .models import DAT, DATHistory, DATHistoryAction
+from .sections import ensure_default_sections
 
 TRACKED_FIELDS = ("title", "description", "status", "owner_id")
 
@@ -126,6 +127,7 @@ def log_dat_save(sender, instance: DAT, created: bool, **kwargs) -> None:
     actor, actor_display = _resolve_history_actor(instance)
 
     if created:
+        ensure_default_sections(instance)
         log_info("DAT created", **base_fields)
         _create_history_entry(
             instance=instance,

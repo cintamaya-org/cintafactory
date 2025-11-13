@@ -113,12 +113,14 @@ TEMPLATES = [
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
         'DIRS': [
                 BASE_DIR / "templates",
-                 PROJECT_DIR / "templates",
+                PROJECT_DIR / "templates",
+                BASE_DIR / "cintafactory" / "templates",
                  ],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
                 'django.template.context_processors.request',
+                'django.template.context_processors.csrf',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 "material.frontend.context_processors.modules",
@@ -198,12 +200,13 @@ DRAWIO_PUBLIC_URL = os.getenv("DRAWIO_PUBLIC_URL", DRAWIO_BASE_URL).rstrip("/")
 if not DRAWIO_PUBLIC_URL:
     DRAWIO_PUBLIC_URL = DRAWIO_BASE_URL
 
-_drawio_library_env = os.getenv("DRAWIO_LIBRARY_BASE_URL", "").strip()
-if _drawio_library_env:
-    DRAWIO_LIBRARY_BASE_URL = _drawio_library_env.rstrip("/")
-else:
-    DRAWIO_LIBRARY_BASE_URL = ""
-
+DRAWIO_LIBS = os.getenv("DRAWIO_LIBS", "general").strip() or "general"
+DRAWIO_CLIBS = tuple(
+    item.strip()
+    for item in os.getenv("DRAWIO_CLIBS", "").split(",")
+    if item.strip()
+)
+DRAWIO_EXPORT_URL = "http://drawio-export:8000/export"
 
 def _origin_from_url(url: str) -> str:
     parts = urlsplit(url)

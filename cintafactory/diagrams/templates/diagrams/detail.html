@@ -19,7 +19,7 @@
         </div>
         <div class="card-image" style="padding:1.5rem; background:#fafafa;">
           {% if diagram.thumbnail %}
-          <img src="{{ diagram.thumbnail.url }}" alt="{{ diagram.title }}" style="width:100%; height:auto; border-radius:8px;">
+          <img src="{{ diagram.thumbnail.url }}" alt="{{ diagram.title }}" style="width:100%; height:auto; border-radius:8px;" data-diagram-preview-id="{{ diagram.pk }}">
           {% else %}
           <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:260px; color:rgba(0,0,0,0.45); border:2px dashed rgba(0,0,0,0.1); border-radius:8px;">
             <i class="material-icons" style="font-size:3rem; margin-bottom:0.75rem;">insert_drive_file</i>

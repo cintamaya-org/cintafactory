@@ -67,11 +67,15 @@ Now open:
 
 ### Optional: Embedded draw.io editor
 
-If you deploy the bundled draw.io container, configure the application with:
+If you deploy the bundled draw.io containers, configure the application with:
 
-- `DRAWIO_BASE_URL`: address the Django backend should use to talk to the draw.io service on the Docker network (defaults to `http://drawio:8080`).
+- `DRAWIO_BASE_URL`: address the Django backend should use to talk to the draw.io editor service on the Docker network (defaults to `http://drawio:8080`).
 - `DRAWIO_PUBLIC_URL`: URL exposed to browsers that should be used inside the iframe (defaults to the same value as `DRAWIO_BASE_URL`; override it for public hosts, e.g. `https://drawio.example.com`).
-- `DRAWIO_LIBRARY_BASE_URL`: base URL from which draw.io should fetch custom libraries (set it when draw.io needs a different hostname to reach Django, e.g. `http://web:8000`; if omitted, the application falls back to the host handling the current HTTP request so the feature continues to work).
+- `DRAWIO_LIBS` (optional): built-in diagrams.net palettes to expose (defaults to `general`); use a comma-separated list such as `general,uml`.
+- `DRAWIO_CLIBS` (optional): comma-separated list of HTTP(S) URLs that point to custom library XML files. Each entry is transformed into the `clibs` parameter so the iframe loads the libraries automatically. When unset, the application still loads any XML libraries found under `static/diagrams`.
+- The `drawio-export` service (added to the Compose files) handles PNG generation locally; the application reaches it through the internal hostname `drawio-export:8000`.
+
+To host custom libraries locally, serve the XML file from any container reachable by draw.io. A simple option is to drop the file under Django’s static directory (for example `cintafactory/static/drawio/mes-formes.xml`, mounted read-only in production) so it becomes available at `https://your-app/static/drawio/mes-formes.xml`. Then set `DRAWIO_CLIBS` to the internal URL exposed within your Docker network, e.g. `http://web:8000/static/drawio/mes-formes.xml`. The embedder automatically URL-encodes the parameter for draw.io.
 
 The docker-compose stacks already pass reasonable defaults; adjust them to match your reverse-proxy/hostnames in production.
 
@@ -111,5 +115,5 @@ See the [LICENSE](./LICENSE) file for full details.
 
 ### Notes
 
-* Default database: `SQLite` for local development (TODO switch to PostgreSQL).
+* Default database: `PostgreSQL`
 * Future features: SSO integration, role-based access control, external file storage....

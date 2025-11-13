@@ -37,8 +37,10 @@
                             <a href="#"><img class="circle" src="{% static 'material/imgs/user.png' %}"></a>
                             {% endif %}
                             {% endblock %} {% endcomment %}
-                            <a href="#"><span class="black-text name" style="color:#000;">{{ request.user.get_username|title }}</span></a>
-                            <a href="#"><span class="black-text email" style="color:#000;">{{ request.user.email }}</span></a>
+                            <div class="chip user-identity-chip light-blue lighten-5">
+                                <span class="user-identity-chip__name">{{ request.user.get_username|title }}</span>
+                                <span class="user-identity-chip__email">{{ request.user.email }}</span>
+                            </div>
                             <a href="{% url 'account:profile' %}"
                                class="btn waves-effect waves-light cinta-btn-primary my-account__link"
                                style="margin-top:0.75rem; min-width:170px; text-align:center;">
@@ -89,7 +91,7 @@
                                 class="btn waves-effect waves-light cinta-btn-primary"
                                 data-turbolinks="false"
                                 style="display:inline-flex; align-items:center; gap:0.35rem;">
-                                 <i class="material-icons right" style="margin-left:0;">exit_to_app</i>Deconnexion
+                                 <i class="material-icons" style="margin:0;">exit_to_app</i>Deconnexion
                              </a>
                          </li>
                         {% else %}
