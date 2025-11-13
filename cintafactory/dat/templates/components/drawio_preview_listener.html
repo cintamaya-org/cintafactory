@@ -1,0 +1,49 @@
+<script>
+(function () {
+  if (window.CintaDrawioPreview) {
+    return;
+  }
+
+  function withCacheBuster(url) {
+    if (!url) {
+      return url;
+    }
+    const separator = url.includes("?") ? "&" : "?";
+    return `${url}${separator}_=${Date.now()}`;
+  }
+
+  function updateElements(diagramId, thumbnailUrl) {
+    if (!diagramId || !thumbnailUrl) {
+      return;
+    }
+    const selector = `[data-diagram-preview-id="${diagramId}"]`;
+    const targets = document.querySelectorAll(selector);
+    if (!targets.length) {
+      return;
+    }
+    const refreshedUrl = withCacheBuster(thumbnailUrl);
+    targets.forEach((element) => {
+      if (element.tagName === "IMG") {
+        element.src = refreshedUrl;
+      } else {
+        element.style.backgroundImage = `url("${refreshedUrl}")`;
+      }
+      element.dataset.previewRefreshedAt = String(Date.now());
+    });
+  }
+
+  function handleDiagramImported(event) {
+    const detail = (event && event.detail) || {};
+    const diagramId = detail.diagramId || detail.diagram_id;
+    const thumbnailUrl = detail.thumbnailUrl || detail.thumbnail_url;
+    updateElements(diagramId, thumbnailUrl);
+  }
+
+  window.CintaDrawioPreview = {
+    withCacheBuster,
+    updateElements,
+  };
+
+  document.addEventListener("dat:diagram-imported", handleDiagramImported);
+})();
+</script>
