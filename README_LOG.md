@@ -57,6 +57,6 @@ def sync_order(request, order_id: str):
 
 ## 4. Where the logs end up
 
-In development `docker compose logs web` shows the colourised console handler, while structured lines go to `cintafactory/logs/application.jsonl`. In containerised environments you can set `DJANGO_LOG_TO_STDOUT=1` (or rely on `RUNNING_IN_DOCKER=1`) to send JSON straight to stdout instead of the rotating file.
+In development `docker compose logs web` shows both the colourised console handler and the structured JSON lines because they now stream to stdout/stderr by default. If you still need on-disk rotation (for example when debugging locally), set `DJANGO_LOG_TO_STDOUT=0` and the JSON handler will write to `cintafactory/logs/application.jsonl`.
 
 Following these patterns keeps our log streams searchable and makes alerts, dashboards, and support workflows much easier.

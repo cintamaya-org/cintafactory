@@ -64,10 +64,14 @@ class BaseSecuredViewSet(LoginRequiredMixin, ModelViewSet):
         return request.user.is_authenticated
 
     def _can_mutate(self, request):
+        user = getattr(request, "user", None)
+        if user is None:
+            return False
+        is_role = getattr(user, "is_role", None)
         return (
-            request.user.is_superuser
-            or request.user.is_staff
-            or (hasattr(request.user, "is_role") and request.user.is_role("comite-validation"))
+            getattr(user, "is_superuser", False)
+            or getattr(user, "is_staff", False)
+            or (callable(is_role) and is_role("comite-validation"))
         )
 
     def has_add_permission(self, request): return self._can_mutate(request)

@@ -3,6 +3,7 @@
 <div class="dat-repeater"
      data-columns="{{ widget.columns_json|escape }}"
      data-field-id="{{ widget.attrs.id }}"
+     {% if widget.attrs.data_schema_repeater %}data-schema-repeater="{{ widget.attrs.data_schema_repeater }}"{% endif %}
      {% if widget.attrs.data_drawio_create_url %}data-drawio-create-url="{{ widget.attrs.data_drawio_create_url }}"{% endif %}
      {% if widget.attrs.data_drawio_edit_template %}data-drawio-edit-template="{{ widget.attrs.data_drawio_edit_template }}"{% endif %}
      {% if widget.attrs.data_drawio_detail_template %}data-drawio-detail-template="{{ widget.attrs.data_drawio_detail_template }}"{% endif %}
@@ -318,6 +319,7 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
   function createInput(column, value, container, columns) {
     let element;
     const baseValue = value ?? "";
+    const initialDiagramId = baseValue ? String(baseValue).trim() : "";
     const isEditMode = container.closest("form") !== null;
     if (column.drawio) {
       element = document.createElement("div");
@@ -344,7 +346,9 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
       viewBtn.type = "button";
       viewBtn.className = "btn-flat waves-effect cinta-btn-secondary dat-repeater-drawio-view";
       viewBtn.innerHTML = '<i class="material-icons left" aria-hidden="true">visibility</i>Voir';
-      if (!baseValue) {
+      if (initialDiagramId) {
+        viewBtn.dataset.diagramId = initialDiagramId;
+      } else {
         viewBtn.classList.add("disabled");
         viewBtn.disabled = true;
       }
@@ -360,13 +364,19 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
 
         importBtn = document.createElement("button");
         importBtn.type = "button";
-        importBtn.className = "btn-flat waves-effect cinta-btn-secondary dat-drawio-import-button";
+        importBtn.className = "btn waves-effect waves-light cinta-btn-primary dat-drawio-import-button dat-repeater-drawio-button";
         importBtn.innerHTML = '<i class="material-icons left" aria-hidden="true">file_upload</i><span class="dat-drawio-button-label">Importer</span>';
+        if (initialDiagramId) {
+          importBtn.dataset.diagramId = initialDiagramId;
+        }
 
         exportBtn = document.createElement("button");
         exportBtn.type = "button";
-        exportBtn.className = "btn-flat waves-effect cinta-btn-secondary dat-drawio-export-button";
+        exportBtn.className = "btn-flat waves-effect cinta-btn-secondary dat-drawio-export-button dat-repeater-drawio-view";
         exportBtn.innerHTML = '<i class="material-icons left" aria-hidden="true">file_download</i>Exporter';
+        if (initialDiagramId) {
+          exportBtn.dataset.diagramId = initialDiagramId;
+        }
       }
 
       element.appendChild(hidden);
@@ -410,6 +420,8 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
         element.className = "materialize-textarea";
         element.rows = column.rows || 2;
         element.style.minHeight = `${column.minHeight || 160}px`;
+        element.value = baseValue;
+        element.textContent = baseValue;
         break;
       case "select":
         element = document.createElement("select");
@@ -475,6 +487,7 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
     }
     tbody.appendChild(row);
     updateRowDrawioActions(row);
+    return row;
   }
 
   function initialise(container) {
@@ -483,6 +496,7 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
     }
     container.dataset.initialised = "true";
     const columns = parseJSON(container.getAttribute("data-columns") || "[]");
+    container.__datRepeaterColumns = columns;
     const input = container.querySelector("input[type=hidden]");
     const tbody = container.querySelector("tbody");
     const existingRows = parseJSON(input.value);
@@ -871,7 +885,29 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
       });
   }
 
-  return { init: initialise, scan: scanAndInit };
+  function getContainerColumns(container) {
+    if (!container) {
+      return [];
+    }
+    if (Array.isArray(container.__datRepeaterColumns)) {
+      return container.__datRepeaterColumns;
+    }
+    const columns = parseJSON(container.getAttribute("data-columns") || "[]");
+    container.__datRepeaterColumns = columns;
+    return columns;
+  }
+
+  function appendRowWithValues(container, initialValues) {
+    if (!container) {
+      return null;
+    }
+    const columns = getContainerColumns(container);
+    const row = addRow(container, columns, initialValues);
+    syncHiddenInput(container, columns);
+    return row;
+  }
+
+  return { init: initialise, scan: scanAndInit, appendRow: appendRowWithValues, updateDrawioChip };
 })();
 
 (function () {

@@ -14,6 +14,8 @@ import os
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from .logging_utils import build_logging_dict
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 PROJECT_DIR = Path(__file__).resolve().parent
@@ -230,17 +232,5 @@ CSP_STYLE_SRC = ["'self'", "'unsafe-inline'"]
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Observability / logging
-LOGGING_CONFIG = "logging.config.dictConfig"
-LOGGING = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "handlers": {
-        "console": {
-            "class": "logging.StreamHandler",
-        },
-    },
-    "root": {
-        "handlers": ["console"],
-        "level": os.getenv("DJANGO_LOG_LEVEL", "INFO").upper(),
-    },
-}
+LOGGING_CONFIG = "cintafactory.logging_utils.configure_logging"
+LOGGING = build_logging_dict(BASE_DIR)

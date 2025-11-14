@@ -342,15 +342,18 @@
   }
 
   function uploadDiagramFile(button, file) {
+    if (!button) {
+      return Promise.reject(new Error("missing_button"));
+    }
     const importUrl = button.dataset.importUrl;
     if (!importUrl) {
       showToast("Import indisponible pour ce diagramme.", true);
-      return;
+      return Promise.reject(new Error("missing_import_url"));
     }
     const formData = new FormData();
     formData.append("file", file, file.name || "diagram.drawio");
     setButtonBusy(button, true);
-    fetch(importUrl, {
+    const request = fetch(importUrl, {
       method: "POST",
       body: formData,
       credentials: "same-origin",
@@ -370,7 +373,7 @@
             });
         }
         return response.json().catch(() => ({}));
-      })
+    })
       .then((payload) => {
         const diagramData = payload && payload.diagram ? payload.diagram : {};
         const thumbnailUrl = diagramData.thumbnail_url || diagramData.thumbnailUrl || null;
@@ -388,10 +391,16 @@
         showToast(message, true);
       })
       .finally(() => setButtonBusy(button, false));
+    return request;
   }
 
   function handleImport(button, event) {
     if (!button || button.disabled || button.classList.contains("disabled")) {
+      return;
+    }
+    const editForm = button.closest(".dat-sub-section-edit-form");
+    if (!editForm) {
+      showToast("L'import est disponible uniquement en mode édition.", true);
       return;
     }
     if (event) {
@@ -440,6 +449,12 @@
     },
     triggerExport(button) {
       handleExport(button);
+    },
+    importFileForButton(button, file) {
+      if (!button || !file) {
+        return Promise.reject(new Error("missing_import_parameters"));
+      }
+      return uploadDiagramFile(button, file);
     },
   };
 })();

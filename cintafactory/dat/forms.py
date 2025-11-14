@@ -66,6 +66,7 @@ def _attach_drawio_support(entry: DATPart, widget: RepeatableTableWidget) -> Non
     export_template = reverse("diagrams:export_xml", args=[0]).replace("/0/", "/{id}/")
     attrs["data_drawio_import_template"] = import_template
     attrs["data_drawio_export_template"] = export_template
+    attrs["data_schema_repeater"] = "true"
     widget.attrs = attrs
 
 

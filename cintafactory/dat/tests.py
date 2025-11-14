@@ -5,6 +5,8 @@ from django.db.models import ProtectedError
 from django.test import TestCase
 from django.urls import reverse
 
+from cintafactory.logging_utils import bind_request_context, clear_request_context
+
 from diagrams.models import Diagram
 from users.models import Role
 
@@ -472,6 +474,7 @@ class DatHistoryTest(TestCase):
             is_staff=True,
         )
         self.application = Application.objects.create(code="hist-app", name="History App")
+        self.addCleanup(clear_request_context)
 
     def _create_dat(self) -> DAT:
         dat = DAT(
@@ -528,6 +531,23 @@ class DatHistoryTest(TestCase):
         self.assertIn("Historique du dossier", content)
         self.assertIn(self.manager.username, content)
         self.assertIn(DATStatus.VALIDATION_REFERENT.label, content)
+        self.assertIn("Passage de", content)
+
+    def test_history_uses_request_context_when_actor_not_set(self):
+        bind_request_context(user_id=self.manager.id, username=self.manager.username)
+        dat = DAT.objects.create(
+            reference="DAT-HIST-CTX",
+            title="Request Context Actor",
+            application=self.application,
+            status=DATStatus.DEMANDE_INITIALE,
+        )
+        entry = dat.history_entries.first()
+        self.assertIsNotNone(entry)
+        if entry:
+            self.assertEqual(entry.action, DATHistoryAction.CREATED)
+            self.assertEqual(entry.performed_by_id, self.manager.id)
+            self.assertEqual(entry.performed_by_display, self.manager.username)
+            self.assertEqual(entry.actor_name(), self.manager.username)
 
 
 class DatSectionIntegrationTest(TestCase):
@@ -599,6 +619,13 @@ class DatSectionIntegrationTest(TestCase):
         if history_entry and history_entry.details:
             changes = history_entry.details.get("changes", {})
             self.assertIn("besoin_description", changes)
+
+        detail_url = reverse("dat:my_detail", args=[self.dat.pk])
+        response = self.client.get(detail_url)
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertIn("Description du besoin", content)
+        self.assertIn("Nouveau besoin prioritaire", content)
 
     def _prepare_sub_section_with_entry(self):
         section = self.dat.sections.get(slug="besoins")

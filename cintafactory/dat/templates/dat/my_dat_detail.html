@@ -25,6 +25,9 @@
 {% include "dat/components/drawio_viewer_loader.html" %}
 <style>
 .dat-section-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 .dat-section-link.active-section {
@@ -132,6 +135,10 @@ body.dat-modal-open {
 .dat-subsection-edit-btn.editing {
   cursor: progress;
 }
+.dat-section-status-icon {
+  font-size: 1.15rem;
+  line-height: 1;
+}
 </style>
 
 <div class="card cinta-card">
@@ -142,10 +149,14 @@ body.dat-modal-open {
       <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; flex-wrap:wrap;">
         <div class="dat-section-nav" style="display:flex; flex-wrap:wrap; gap:0.5rem; align-items:center;">
           {% for entry in section_nav %}
+            {% random_section_status_icon as section_status_icon %}
             <a
               href="?section={{ entry.slug }}"
               class="chip dat-section-link {% if selected_section_slug == entry.slug %}active-section{% else %}grey lighten-4{% endif %}"
             >
+              <span class="material-symbols-outlined dat-section-status-icon" aria-hidden="true">
+                {{ section_status_icon }}
+              </span>
               {{ entry.title }}
             </a>
           {% endfor %}
@@ -209,11 +220,11 @@ body.dat-modal-open {
                   </td>
                   <td>{{ entry.actor_name }}</td>
                   <td>
-                    {% if entry.action == entry.action.STATUS_CHANGED %}
+                    {% if entry.action == history_actions.STATUS_CHANGED %}
                       Passage de <strong>{{ entry.details.from|default:"-" }}</strong> à <strong>{{ entry.details.to|default:"-" }}</strong>.
-                    {% elif entry.action == entry.action.OWNER_CHANGED %}
+                    {% elif entry.action == history_actions.OWNER_CHANGED %}
                       Responsable : <strong>{{ entry.details.from_username|default:"-" }}</strong> -> <strong>{{ entry.details.to_username|default:"-" }}</strong>.
-                    {% elif entry.action == entry.action.UPDATED %}
+                    {% elif entry.action == history_actions.UPDATED %}
                       {% if entry.details.changes %}
                         <ul style="margin:0; padding-left:1.2rem;">
                           {% for field, data in entry.details.changes.items %}
@@ -226,7 +237,7 @@ body.dat-modal-open {
                       {% else %}
                         —
                       {% endif %}
-                    {% elif entry.action == entry.action.SECTION_UPDATED %}
+                    {% elif entry.action == history_actions.SECTION_UPDATED %}
                       {% with details=entry.details %}
                         {% if details.section %}
                           Section <strong>{{ details.section.title|default:details.section.slug }}</strong>

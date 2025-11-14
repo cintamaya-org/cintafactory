@@ -51,23 +51,34 @@ def _display_name(user) -> str:
     return str(user)
 
 
-def _resolve_history_actor(instance: DAT) -> Tuple[Optional[Any], str]:
+def _resolve_history_actor(instance: DAT) -> Tuple[Optional[Any], Optional[int], str]:
     explicit_actor = getattr(instance, "_history_actor", None)
     if hasattr(instance, "_history_actor"):
         delattr(instance, "_history_actor")
     if explicit_actor is not None:
-        return explicit_actor, _display_name(explicit_actor)
+        return explicit_actor, getattr(explicit_actor, "pk", None), _display_name(explicit_actor)
 
     context = get_request_context()
     user_id = context.get("user_id")
     username = context.get("username")
+    if user_id and username:
+        return None, user_id, username
+
     actor = None
+    actor_id = None
+    actor_display = username or ""
+
     if user_id:
         UserModel = get_user_model()
-        actor = UserModel._default_manager.filter(pk=user_id).first()
-        if not username and actor is not None:
-            username = _display_name(actor)
-    return actor, username or ""
+        actor = (
+            UserModel._default_manager.only("id", "username", "first_name", "last_name")
+            .filter(pk=user_id)
+            .first()
+        )
+        if actor is not None:
+            actor_id = actor.pk
+            actor_display = actor_display or _display_name(actor)
+    return actor, actor_id, actor_display
 
 
 def _create_history_entry(
@@ -75,6 +86,7 @@ def _create_history_entry(
     instance: DAT,
     action: DATHistoryAction,
     actor,
+    actor_id: Optional[int],
     actor_display: str,
     status_before: Optional[str] = None,
     status_after: Optional[str] = None,
@@ -87,6 +99,7 @@ def _create_history_entry(
         status_before=status_before,
         status_after=status_after,
         performed_by=actor if actor is not None else None,
+        performed_by_id=None if actor is not None else actor_id,
         performed_by_display=actor_display or "",
         details=payload,
     )
@@ -124,7 +137,7 @@ def log_dat_save(sender, instance: DAT, created: bool, **kwargs) -> None:
     if snapshot["description_preview"]:
         base_fields["description_preview"] = snapshot["description_preview"]
 
-    actor, actor_display = _resolve_history_actor(instance)
+    actor, actor_id, actor_display = _resolve_history_actor(instance)
 
     if created:
         ensure_default_sections(instance)
@@ -133,6 +146,7 @@ def log_dat_save(sender, instance: DAT, created: bool, **kwargs) -> None:
             instance=instance,
             action=DATHistoryAction.CREATED,
             actor=actor,
+            actor_id=actor_id,
             actor_display=actor_display,
             status_after=snapshot["status"],
         )
@@ -189,6 +203,7 @@ def log_dat_save(sender, instance: DAT, created: bool, **kwargs) -> None:
             instance=instance,
             action=DATHistoryAction.STATUS_CHANGED,
             actor=actor,
+            actor_id=actor_id,
             actor_display=actor_display,
             status_before=original.get("status"),
             status_after=snapshot["status"],
@@ -200,6 +215,7 @@ def log_dat_save(sender, instance: DAT, created: bool, **kwargs) -> None:
             instance=instance,
             action=DATHistoryAction.OWNER_CHANGED,
             actor=actor,
+            actor_id=actor_id,
             actor_display=actor_display,
             status_before=original.get("status"),
             status_after=snapshot["status"],
@@ -211,6 +227,7 @@ def log_dat_save(sender, instance: DAT, created: bool, **kwargs) -> None:
             instance=instance,
             action=DATHistoryAction.UPDATED,
             actor=actor,
+            actor_id=actor_id,
             actor_display=actor_display,
             status_before=original.get("status"),
             status_after=snapshot["status"],

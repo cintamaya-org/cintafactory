@@ -225,29 +225,29 @@
                 </td>
                 <td>{{ entry.actor_name }}</td>
                 <td>
-                  {% if entry.action == entry.action.STATUS_CHANGED %}
-                    Passage de <strong>{{ entry.details.from|default:"-" }}</strong> à <strong>{{ entry.details.to|default:"-" }}</strong>.
-                  {% elif entry.action == entry.action.OWNER_CHANGED %}
-                    Responsable : <strong>{{ entry.details.from_username|default:"-" }}</strong> -> <strong>{{ entry.details.to_username|default:"-" }}</strong>.
-                  {% elif entry.action == entry.action.UPDATED %}
-                    {% if entry.details.changes %}
-                      <ul style="margin:0; padding-left:1.2rem;">
-                        {% for field, data in entry.details.changes.items %}
-                          <li>
-                            <strong>{{ field|capfirst }}</strong> :
-                            <span>{{ data.from|default:"-" }}</span> -> <span>{{ data.to|default:"-" }}</span>
-                          </li>
-                        {% endfor %}
-                      </ul>
-                    {% else %}
-                      -
-                    {% endif %}
-                  {% elif entry.action == entry.action.SECTION_UPDATED %}
-                    {% with details=entry.details %}
-                      {% if details.section %}
-                        Section <strong>{{ details.section.title|default:details.section.slug }}</strong>
-                        {% if details.section.slug %}
-                          (<code>{{ details.section.slug }}</code>)
+                    {% if entry.action == history_actions.STATUS_CHANGED %}
+                      Passage de <strong>{{ entry.details.from|default:"-" }}</strong> à <strong>{{ entry.details.to|default:"-" }}</strong>.
+                    {% elif entry.action == history_actions.OWNER_CHANGED %}
+                      Responsable : <strong>{{ entry.details.from_username|default:"-" }}</strong> -> <strong>{{ entry.details.to_username|default:"-" }}</strong>.
+                    {% elif entry.action == history_actions.UPDATED %}
+                      {% if entry.details.changes %}
+                        <ul style="margin:0; padding-left:1.2rem;">
+                          {% for field, data in entry.details.changes.items %}
+                            <li>
+                              <strong>{{ field|capfirst }}</strong> :
+                              <span>{{ data.from|default:"-" }}</span> -> <span>{{ data.to|default:"-" }}</span>
+                            </li>
+                          {% endfor %}
+                        </ul>
+                      {% else %}
+                        —
+                      {% endif %}
+                    {% elif entry.action == history_actions.SECTION_UPDATED %}
+                      {% with details=entry.details %}
+                        {% if details.section %}
+                          Section <strong>{{ details.section.title|default:details.section.slug }}</strong>
+                          {% if details.section.slug %}
+                            (<code>{{ details.section.slug }}</code>)
                         {% endif %}
                         :
                       {% endif %}

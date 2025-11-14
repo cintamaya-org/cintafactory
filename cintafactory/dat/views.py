@@ -54,6 +54,10 @@ OWNER_EDITABLE_STATUSES = {
 }
 PROGRESSABLE_STATUSES = set(DAT_STATUS_REQUIRED_ROLES.keys())
 STATUS_SEQUENCE = [choice.value for choice in DATStatus]
+HISTORY_ENTRIES_PREFETCH = Prefetch(
+    "history_entries",
+    queryset=DATHistory.objects.select_related("performed_by").order_by("-performed_at", "-id"),
+)
 
 
 class ModuleContextMixin:
@@ -168,6 +172,18 @@ def get_current_responsibles(dat: DAT):
     return responsibles
 
 
+def get_dat_history_entries(dat: DAT):
+    """
+    Return ordered history entries, using any prefetched cache if available to avoid extra queries.
+    """
+    cache = getattr(dat, "_prefetched_objects_cache", None)
+    if cache and "history_entries" in cache:
+        return list(cache["history_entries"])
+    return list(
+        dat.history_entries.select_related("performed_by").order_by("-performed_at", "-id")
+    )
+
+
 def build_dat_overview_context(dat: DAT, user):
     next_status = get_next_status(dat.status)
     return {
@@ -253,18 +269,23 @@ def render_sub_section_snippet(dat: DAT, user, section_slug: str, sub_section_sl
 
 
 def user_is_porteur_demande(user):
-    return bool(getattr(user, "is_role", None) and user.is_role(PORTEUR_ROLE_SLUG))
+    is_role = getattr(user, "is_role", None)
+    return bool(callable(is_role) and is_role(PORTEUR_ROLE_SLUG))
 
 
 def user_can_create_dat_entities(user):
-    return bool(user.is_authenticated and user_is_porteur_demande(user))
+    is_authenticated = getattr(user, "is_authenticated", False)
+    return bool(is_authenticated and user_is_porteur_demande(user))
 
 
 def user_can_manage_dat(user):
+    if user is None:
+        return False
+    is_role = getattr(user, "is_role", None)
     return (
-        user.is_superuser
-        or user.is_staff
-        or (hasattr(user, "is_role") and user.is_role("admin"))
+        getattr(user, "is_superuser", False)
+        or getattr(user, "is_staff", False)
+        or (callable(is_role) and is_role("admin"))
     )
 
 
@@ -372,17 +393,18 @@ class DATDetailView(ModuleContextMixin, DetailModelView):
     def get_queryset(self):
         base_queryset = (
             DAT.objects.select_related("application", "owner")
-            .prefetch_related("participants__role", "participants__user")
+            .prefetch_related(
+                HISTORY_ENTRIES_PREFETCH,
+                "participants__role",
+                "participants__user",
+            )
         )
         return filter_dat_queryset_for_user(base_queryset, self.request.user)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        history_qs = (
-            self.object.history_entries.select_related("performed_by")
-            .order_by("-performed_at", "-id")
-        )
-        context["history_entries"] = list(history_qs)
+        context["history_entries"] = get_dat_history_entries(self.object)
+        context["history_actions"] = DATHistoryAction
         context["participant_overview"] = build_participant_overview(self.object)
         context["current_responsibles"] = get_current_responsibles(self.object)
         context["sections_payload"] = build_section_payload(self.object, self.request.user)
@@ -501,7 +523,7 @@ class DatDetail(ModuleContextMixin, LoginRequiredMixin, DetailView):
         base_queryset = (
             DAT.objects.select_related("application", "owner")
             .prefetch_related(
-                "history_entries__performed_by",
+                HISTORY_ENTRIES_PREFETCH,
                 "participants__role",
                 "participants__user",
             )
@@ -510,11 +532,8 @@ class DatDetail(ModuleContextMixin, LoginRequiredMixin, DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        history_qs = (
-            self.object.history_entries.select_related("performed_by")
-            .order_by("-performed_at", "-id")
-        )
-        context["history_entries"] = list(history_qs)
+        context["history_entries"] = get_dat_history_entries(self.object)
+        context["history_actions"] = DATHistoryAction
         context["owner_editable_statuses"] = {status.value for status in OWNER_EDITABLE_STATUSES}
         context["owner_can_edit"] = user_is_dat_admin(self.request.user)
         context["can_create_dat"] = user_can_create_dat_entities(self.request.user)

@@ -80,10 +80,10 @@ docker compose -f docker-compose.dev.yml exec web python manage.py migrate
 ## Logging & Observability
 
 - Django routes every log through `cintafactory.logging_utils`, enriching records with request identifiers and user data when available. Prefer the helpers (`log_info`, `log_warning`, etc.) over raw `logging` calls to keep structured extras aligned.
-- Console output stays human-readable; JSON lines land in `logs/application.jsonl` with rotation unless `RUNNING_IN_DOCKER=1` or `DJANGO_LOG_TO_STDOUT=1`, in which case only stdout/stderr are used so containers remain stateless.
+- Console output stays human-readable and structured JSON now streams to stdout/stderr by default so `docker compose logs` shows everything. If you prefer on-disk rotation locally, set `DJANGO_LOG_TO_STDOUT=0` to reactivate `logs/application.jsonl`.
 - Attach a webhook with `LOG_CRITICAL_WEBHOOK=https://hooks/...` to receive critical alerts; if unset, the handler falls back to stderr so nothing is lost.
 - Keep sensitive payloads out of log messages. The sanitiser masks common keys but cannot protect secrets accidentally written into the message text—log identifiers instead of raw data.
-- Sampling reduces noisy subsystems (`django.db.backends` defaults to 10% of INFO-level events). Override with `LOG_SAMPLING_RATES=module.name:rate,module2:rate`.
+- All events flow through the queue with no sampling so you can rely on complete traces; adjust `DJANGO_LOG_LEVEL` or specific logger levels if noise creeps in.
 - After deploys, run `python manage.py shell -c "from cintafactory.logging_utils import log_info; log_info('log-pipeline-check')"` to verify the pipeline end-to-end.
 
 ---

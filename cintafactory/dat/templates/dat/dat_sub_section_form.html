@@ -3,11 +3,20 @@
 <div class="dat-sub-section-form">
   <div class="dat-sub-section-edit-header" style="display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; flex-wrap:wrap;">
     <div style="flex:1 1 auto; min-width:220px;">
-      <h6 style="margin:0; display:flex; align-items:center; gap:0.5rem;">
+      <h6 style="margin:0; display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
         {% if part_icon %}
           <span class="{{ part_icon.variant }} dat-section-part-icon" aria-hidden="true">{{ part_icon.name }}</span>
         {% endif %}
         {{ sub_section.title }}
+        {% if sub_section.slug == "schemas" %}
+          <button type="button"
+                  class="btn waves-effect waves-light cinta-btn-primary dat-schema-import-trigger"
+                  style="margin-left:auto;"
+                  data-schema-import="true">
+            <i class="material-icons left" aria-hidden="true">file_upload</i>
+            Importer un schéma
+          </button>
+        {% endif %}
       </h6>
       {% if sub_section.description %}
         <p style="margin:0.35rem 0 0; color:#616161;">{{ sub_section.description }}</p>
@@ -68,3 +77,238 @@
   </form>
 </div>
 {% endwith %}
+
+{% if sub_section.slug == "schemas" %}
+<script>
+(function () {
+  if (window.CintaDatSchemaBulkImport) {
+    return;
+  }
+
+  const runtime = {
+    fileInput: null,
+    pending: null,
+  };
+  const BUTTON_SELECTOR = ".dat-schema-import-trigger";
+  const ACCEPTED_TYPES = ".drawio,.xml,text/xml";
+
+  function showToast(message, isError) {
+    if (window.M && M.toast) {
+      M.toast({
+        html: message,
+        displayLength: 4000,
+        classes: isError ? "red darken-2" : "green darken-2",
+      });
+    } else {
+      window.alert(message);
+    }
+  }
+
+  function setButtonBusy(button, isBusy) {
+    if (!button) {
+      return;
+    }
+    if (isBusy) {
+      button.dataset.schemaBusy = "1";
+      button.disabled = true;
+      button.classList.add("disabled");
+      button.setAttribute("aria-busy", "true");
+    } else {
+      button.disabled = false;
+      button.classList.remove("disabled");
+      button.removeAttribute("aria-busy");
+      delete button.dataset.schemaBusy;
+    }
+  }
+
+  function ensureFileInput() {
+    if (runtime.fileInput) {
+      return runtime.fileInput;
+    }
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ACCEPTED_TYPES;
+    input.style.display = "none";
+    input.addEventListener("change", (event) => {
+      const file = event.target.files && event.target.files[0];
+      event.target.value = "";
+      const context = runtime.pending;
+      runtime.pending = null;
+      if (!context) {
+        return;
+      }
+      if (!file) {
+        setButtonBusy(context.button, false);
+        return;
+      }
+      importSchemaFile(context, file);
+    });
+    document.body.appendChild(input);
+    runtime.fileInput = input;
+    return input;
+  }
+
+  function getRepeater(button) {
+    const form = button.closest(".dat-sub-section-form");
+    if (!form) {
+      return null;
+    }
+    return form.querySelector('.dat-repeater[data-schema-repeater="true"]');
+  }
+
+  function guessTitle(file) {
+    if (!file || !file.name) {
+      return "";
+    }
+    const name = file.name.replace(/\.[^.]+$/, "");
+    return name.trim();
+  }
+
+  function getCsrfToken() {
+    const match = document.cookie
+      .split(";")
+      .map((entry) => entry.trim())
+      .find((entry) => entry.startsWith("csrftoken="));
+    return match ? decodeURIComponent(match.split("=", 2)[1]) : "";
+  }
+
+  function createDiagram(createUrl, requestedTitle) {
+    const headers = {
+      "Content-Type": "application/json",
+      "X-Requested-With": "XMLHttpRequest",
+    };
+    const csrfToken = getCsrfToken();
+    if (csrfToken) {
+      headers["X-CSRFToken"] = csrfToken;
+    }
+    const payload = requestedTitle ? { title: requestedTitle } : {};
+    return fetch(createUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+    })
+      .then((response) => {
+        if (!response.ok) {
+          return response
+            .json()
+            .catch(() => ({}))
+            .then((data) => {
+              const detail = data && (data.message || data.error);
+              const message = detail || `Erreur ${response.status}`;
+              throw new Error(message);
+            });
+        }
+        return response.json();
+      })
+      .then((data) => {
+        const diagram = data && data.diagram ? data.diagram : null;
+        if (!diagram || !diagram.id) {
+          throw new Error("Réponse invalide du serveur.");
+        }
+        return diagram;
+      });
+  }
+
+  function appendSchemaRow(repeater, diagram) {
+    if (!repeater || !diagram) {
+      return null;
+    }
+    if (!window.CintaDatRepeater || typeof window.CintaDatRepeater.appendRow !== "function") {
+      showToast("Le tableau des schémas n'est pas prêt.", true);
+      return null;
+    }
+    const initialValues = {
+      nom_schema: diagram.title || "",
+      diagramme_id: String(diagram.id),
+    };
+    const row = window.CintaDatRepeater.appendRow(repeater, initialValues);
+    if (!row) {
+      return null;
+    }
+    const drawioWrapper = row.querySelector("[data-drawio-control=\"true\"]");
+    if (drawioWrapper && typeof window.CintaDatRepeater.updateDrawioChip === "function") {
+      window.CintaDatRepeater.updateDrawioChip(drawioWrapper, { id: diagram.id, title: diagram.title }, { container: repeater });
+    }
+    row.classList.add("dat-schema-import-row");
+    requestAnimationFrame(() => {
+      row.classList.add("dat-schema-import-row--visible");
+      setTimeout(() => row.classList.remove("dat-schema-import-row--visible"), 2000);
+    });
+    row.scrollIntoView({ behavior: "smooth", block: "center" });
+    return row;
+  }
+
+  function importSchemaFile(context, file) {
+    const { button, repeater, createUrl } = context;
+    if (!createUrl) {
+      showToast("Création de diagramme indisponible pour ce DAT.", true);
+      setButtonBusy(button, false);
+      return;
+    }
+    const requestedTitle = guessTitle(file);
+    createDiagram(createUrl, requestedTitle)
+      .then((diagram) => {
+        const row = appendSchemaRow(repeater, diagram);
+        if (!row) {
+          throw new Error("Impossible d'ajouter la ligne correspondant au schéma importé.");
+        }
+        const importBtn = row.querySelector(".dat-drawio-import-button");
+        if (
+          importBtn &&
+          window.CintaDatDrawioFileActions &&
+          typeof window.CintaDatDrawioFileActions.importFileForButton === "function"
+        ) {
+          return window.CintaDatDrawioFileActions.importFileForButton(importBtn, file);
+        }
+        throw new Error("Le module d'import Draw.io est indisponible.");
+      })
+      .catch((error) => {
+        const message = error && error.message ? error.message : "L'import du schéma a échoué.";
+        showToast(message, true);
+      })
+      .finally(() => setButtonBusy(button, false));
+  }
+
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest(BUTTON_SELECTOR);
+    if (!button) {
+      return;
+    }
+    event.preventDefault();
+    if (button.dataset.schemaBusy === "1") {
+      return;
+    }
+    const repeater = getRepeater(button);
+    if (!repeater) {
+      showToast("Impossible de trouver le tableau des schémas.", true);
+      return;
+    }
+    const createUrl = repeater.getAttribute("data-drawio-create-url");
+    if (!createUrl) {
+      showToast("Création de diagramme indisponible pour ce DAT.", true);
+      return;
+    }
+    runtime.pending = { button, repeater, createUrl };
+    setButtonBusy(button, true);
+    ensureFileInput().click();
+  });
+
+  const highlightStyleId = "dat-schema-import-style";
+  if (!document.getElementById(highlightStyleId)) {
+    const style = document.createElement("style");
+    style.id = highlightStyleId;
+    style.textContent = `
+      .dat-schema-import-row {
+        transition: background-color 0.3s ease;
+      }
+      .dat-schema-import-row--visible {
+        background-color: rgba(63, 81, 181, 0.08);
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  window.CintaDatSchemaBulkImport = true;
+})();
+</script>
+{% endif %}

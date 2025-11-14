@@ -31,6 +31,34 @@ DRAWIO_DEFAULT_LIBS = "general"
 logger = logging.getLogger(__name__)
 
 
+def _build_import_log_context(request, diagram, uploaded_file=None) -> dict:
+    user = getattr(request, "user", None)
+    username = None
+    if user is not None:
+        if hasattr(user, "get_username"):
+            try:
+                username = user.get_username()
+            except Exception:
+                username = getattr(user, "username", None)
+        else:
+            username = getattr(user, "username", None)
+    context = {
+        "diagram_id": getattr(diagram, "pk", None),
+        "diagram_title": getattr(diagram, "title", None),
+        "user_id": getattr(user, "id", None),
+        "username": username,
+    }
+    if uploaded_file is not None:
+        context.update(
+            {
+                "file_name": getattr(uploaded_file, "name", None),
+                "file_size": getattr(uploaded_file, "size", None),
+                "content_type": getattr(uploaded_file, "content_type", None),
+            }
+        )
+    return context
+
+
 class ModuleContextMixin:
     """Ensure Material templates always have a base layout to extend."""
 
@@ -208,7 +236,7 @@ def _generate_thumbnail_data_uri_from_drawio(xml_payload: str) -> str | None:
             logger.warning("Impossible de générer la miniature Draw.io via %s: %s", export_url, exc)
             continue
         if payload_base64:
-            return f"data:image/png;base64,{payload_base64}"
+            return "data:image/png;base64," + payload_base64
     return None
 
 
@@ -306,24 +334,65 @@ def diagram_viewer_context(request, pk: int):
 @login_required
 @require_POST
 def diagram_import_xml(request, pk: int):
+    logger.info("TEST")
     diagram = get_object_or_404(Diagram, pk=pk, owner=request.user)
+    base_context = _build_import_log_context(request, diagram)
+    logger.info(
+        "diagram_import_xml: request received diagram_id=%s user_id=%s username=%s",
+        base_context["diagram_id"],
+        base_context["user_id"],
+        base_context["username"],
+    )
     uploaded_file = request.FILES.get("file") or request.FILES.get("diagram")
     if uploaded_file is None:
+        logger.warning(
+            "diagram_import_xml: missing file diagram_id=%s user_id=%s",
+            base_context["diagram_id"],
+            base_context["user_id"],
+        )
         return JsonResponse({"ok": False, "error": "missing_file"}, status=400)
+    log_context = _build_import_log_context(request, diagram, uploaded_file)
+    logger.info(
+        "diagram_import_xml: file received diagram_id=%s user_id=%s filename=%s size=%s content_type=%s",
+        log_context["diagram_id"],
+        log_context["user_id"],
+        log_context.get("file_name"),
+        log_context.get("file_size"),
+        log_context.get("content_type"),
+    )
 
     raw = uploaded_file.read()
     if not raw:
+        logger.warning(
+            "diagram_import_xml: empty file diagram_id=%s user_id=%s filename=%s",
+            log_context["diagram_id"],
+            log_context["user_id"],
+            log_context.get("file_name"),
+        )
         return JsonResponse({"ok": False, "error": "empty_file"}, status=400)
 
     try:
         xml_payload = raw.decode("utf-8")
     except UnicodeDecodeError:
+        logger.exception(
+            "diagram_import_xml: utf-8 decode error diagram_id=%s user_id=%s filename=%s",
+            log_context["diagram_id"],
+            log_context["user_id"],
+            log_context.get("file_name"),
+        )
         xml_payload = raw.decode("utf-8", errors="ignore")
 
     try:
         normalized_xml = validate_drawio_xml(xml_payload)
     except ValidationError as exc:
         message = exc.messages[0] if getattr(exc, "messages", None) else str(exc)
+        logger.warning(
+            "diagram_import_xml: validation error diagram_id=%s user_id=%s filename=%s error=%s",
+            log_context["diagram_id"],
+            log_context["user_id"],
+            log_context.get("file_name"),
+            message,
+        )
         return JsonResponse({"ok": False, "error": "invalid_diagram", "message": message}, status=400)
 
     diagram.xml = normalized_xml
@@ -333,10 +402,23 @@ def diagram_import_xml(request, pk: int):
         diagram.thumbnail = None
     diagram.save(update_fields=["xml", "thumbnail", "updated_at"])
     regenerated = _regenerate_drawio_thumbnail(diagram, normalized_xml)
+    logger.info(
+        "diagram_import_xml: thumbnail regeneration diagram_id=%s user_id=%s regenerated=%s",
+        log_context["diagram_id"],
+        log_context["user_id"],
+        regenerated,
+    )
     thumbnail_url = diagram.thumbnail.url if diagram.thumbnail and regenerated else None
     if thumbnail_url:
         thumbnail_url = request.build_absolute_uri(thumbnail_url)
 
+    logger.info(
+        "diagram_import_xml: success diagram_id=%s user_id=%s filename=%s thumbnail=%s",
+        log_context["diagram_id"],
+        log_context["user_id"],
+        log_context.get("file_name"),
+        bool(thumbnail_url),
+    )
     return JsonResponse(
         {
             "ok": True,

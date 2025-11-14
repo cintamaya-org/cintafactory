@@ -7,11 +7,10 @@ import logging
 import logging.config
 import os
 from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
-import random
 import sys
 from pathlib import Path
 from queue import Queue
-from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple, Union
 
 
 # ---------------------------------------------------------------------------
@@ -26,8 +25,28 @@ DEFAULT_LOG_DIR_NAME = "logs"
 DEFAULT_LOG_FILE_NAME = "application.jsonl"
 DEFAULT_LOG_MAX_BYTES = 5 * 1024 * 1024
 DEFAULT_LOG_BACKUP_COUNT = 5
-DEFAULT_LOG_LEVEL = "INFO"
-DEFAULT_SAMPLING_MAP: Dict[str, float] = {"django.db.backends": 0.1}
+DEFAULT_LOG_LEVEL = os.getenv("DJANGO_LOG_LEVEL", "INFO").upper()
+LISTENER_CONFIG_KEY = "_listener_configs"
+
+_TRUE_VALUES = {"1", "true", "yes", "on"}
+
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in _TRUE_VALUES
+
+
+def _env_int(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
 
 
 def get_request_context() -> Dict[str, Any]:
@@ -86,21 +105,6 @@ class SensitiveDataFilter(logging.Filter):
             if isinstance(value, str) and any(secret in value.lower() for secret in SENSITIVE_KEYS):
                 data[key] = "***"
         return data
-
-
-class SamplingFilter(logging.Filter):
-    """Drop a portion of low-value log events based on configured sampling rates."""
-
-    def __init__(self, name: str = "", sample_map: Optional[Mapping[str, float]] = None) -> None:
-        super().__init__(name)
-        self.sample_map = sample_map or {}
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        for logger_name, rate in self.sample_map.items():
-            if record.name.startswith(logger_name) and 0.0 <= rate < 1.0:
-                if random.random() > rate:
-                    return False
-        return True
 
 
 class JSONFormatter(logging.Formatter):
@@ -313,22 +317,20 @@ def log_exception(message: str, **fields: Any) -> None:
 # Logging configuration assembly
 # ---------------------------------------------------------------------------
 
-def build_logging_dict(base_dir: Path) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
-    """Construct the LOGGING dictConfig payload and listener wiring."""
+def build_logging_dict(base_dir: Path) -> Dict[str, Any]:
+    """Construct the LOGGING dictConfig payload with listener wiring metadata."""
+
     log_dir_override = os.getenv("DJANGO_LOG_DIR")
     log_dir = Path(log_dir_override) if log_dir_override else base_dir.parent / DEFAULT_LOG_DIR_NAME
     log_file = log_dir / DEFAULT_LOG_FILE_NAME
-    max_bytes = DEFAULT_LOG_MAX_BYTES
-    backup_count = DEFAULT_LOG_BACKUP_COUNT
-    sampling_map = dict(DEFAULT_SAMPLING_MAP)
-
+    max_bytes = _env_int("DJANGO_LOG_MAX_BYTES", DEFAULT_LOG_MAX_BYTES)
+    backup_count = _env_int("DJANGO_LOG_BACKUP_COUNT", DEFAULT_LOG_BACKUP_COUNT)
+    log_level = os.getenv("DJANGO_LOG_LEVEL", DEFAULT_LOG_LEVEL).upper()
+    # Print structured logs to stdout by default; opt-out with DJANGO_LOG_TO_STDOUT=0.
+    log_to_stdout = _env_flag("DJANGO_LOG_TO_STDOUT", True)
     filters = {
         "request_context": {"()": "cintafactory.logging_utils.RequestContextFilter"},
         "sensitive_data": {"()": "cintafactory.logging_utils.SensitiveDataFilter"},
-        "sampling": {
-            "()": "cintafactory.logging_utils.SamplingFilter",
-            "sample_map": sampling_map,
-        },
     }
 
     formatters = {
@@ -339,15 +341,15 @@ def build_logging_dict(base_dir: Path) -> Tuple[Dict[str, Any], List[Dict[str, A
         },
     }
 
-    handlers = {
+    handlers: Dict[str, Dict[str, Any]] = {
         "queue": {
             "class": "cintafactory.logging_utils.AsyncQueueHandler",
             "level": "DEBUG",
-            "filters": ["sampling", "request_context", "sensitive_data"],
+            "filters": ["request_context", "sensitive_data"],
         },
         "console": {
             "class": "cintafactory.logging_utils.StructuredStreamHandler",
-            "level": "INFO",
+            "level": log_level,
             "formatter": "color",
             "filters": ["request_context", "sensitive_data"],
             "stream": "ext://sys.stdout",
@@ -357,9 +359,21 @@ def build_logging_dict(base_dir: Path) -> Tuple[Dict[str, Any], List[Dict[str, A
             "class": "cintafactory.logging_utils.CriticalNotificationHandler",
             "level": "ERROR",
             "handler_name": "critical",
-            "webhook_url": None,
+            "webhook_url": os.getenv("LOG_CRITICAL_WEBHOOK"),
         },
-        "json_file": {
+    }
+
+    if log_to_stdout:
+        handlers["json_file"] = {
+            "class": "cintafactory.logging_utils.StructuredStreamHandler",
+            "level": "DEBUG",
+            "formatter": "json",
+            "filters": ["request_context", "sensitive_data"],
+            "stream": "ext://sys.stderr",
+            "handler_name": "json_file",
+        }
+    else:
+        handlers["json_file"] = {
             "class": "cintafactory.logging_utils.StructuredRotatingFileHandler",
             "level": "DEBUG",
             "formatter": "json",
@@ -368,8 +382,7 @@ def build_logging_dict(base_dir: Path) -> Tuple[Dict[str, Any], List[Dict[str, A
             "maxBytes": max_bytes,
             "backupCount": backup_count,
             "handler_name": "json_file",
-        },
-    }
+        }
 
     listener_configs: List[Dict[str, Any]] = [
         {"queue_name": "default", "handlers": ["console", "critical", "json_file"]},
@@ -382,7 +395,7 @@ def build_logging_dict(base_dir: Path) -> Tuple[Dict[str, Any], List[Dict[str, A
         "formatters": formatters,
         "handlers": handlers,
         "root": {
-            "level": DEFAULT_LOG_LEVEL,
+            "level": log_level,
             "handlers": ["queue"],
         },
         "loggers": {
@@ -391,14 +404,22 @@ def build_logging_dict(base_dir: Path) -> Tuple[Dict[str, Any], List[Dict[str, A
         },
     }
 
-    return logging_config, listener_configs
+    logging_config[LISTENER_CONFIG_KEY] = listener_configs
+    return logging_config
 
 
-def configure_logging(base_dir: Path) -> Dict[str, Any]:
-    """Apply the logging configuration and start background listeners."""
-    logging_config, listener_configs = build_logging_dict(base_dir)
+def configure_logging(config: Union[Path, Mapping[str, Any]]) -> Dict[str, Any]:
+    """Apply logging configuration and wire up queue listeners."""
+
+    if isinstance(config, Path):
+        logging_config = build_logging_dict(config)
+    else:
+        logging_config = dict(config)
+
+    listener_configs = logging_config.pop(LISTENER_CONFIG_KEY, None)
     logging.config.dictConfig(logging_config)
-    start_queue_listeners(listener_configs)
+    if listener_configs:
+        start_queue_listeners(listener_configs)
     return logging_config
 
 

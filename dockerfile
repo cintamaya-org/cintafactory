@@ -25,6 +25,14 @@ COPY . /app
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
+# Switch to a non-root user for runtime safety
+RUN useradd --create-home --shell /bin/bash appuser \
+    && mkdir -p /logs \
+    && chown -R appuser:appuser /app /logs /entrypoint.sh \
+    && chmod -R ug+rwX /app /logs \
+    && chmod +x /entrypoint.sh
+USER appuser
+
 # Gunicorn par défaut ; override possible via docker-compose
 ENV PORT=8000
 EXPOSE 8000

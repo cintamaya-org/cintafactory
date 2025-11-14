@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import random
+
 from django import template
 from django.urls import NoReverseMatch, reverse
 
@@ -28,6 +30,23 @@ SECTION_PART_ICON_MAP = {
         "plan-traitement-risques": {"name": "shield", "variant": MATERIAL_SYMBOLS_VARIANT},
     },
 }
+
+# TODO later: switch to conditional icons when section status tracking becomes available.
+# Proposed mapping:
+#   validated -> check_circle
+#   in_progress -> border_color
+#   pending_prereq -> timer
+#   awaiting_review -> plagiarism
+#   blocked -> error
+#   refused -> cancel
+SECTION_STATUS_ICON_CHOICES = (
+    "check_circle",
+    "border_color",
+    "timer",
+    "plagiarism",
+    "error",
+    "cancel",
+)
 
 
 @register.filter
@@ -66,6 +85,11 @@ def section_part_icon(section_slug, part_slug):
         return None
     icon = SECTION_PART_ICON_MAP.get(str(section_slug), {}).get(str(part_slug))
     return _normalise_icon_config(icon)
+
+
+@register.simple_tag
+def random_section_status_icon():
+    return random.choice(SECTION_STATUS_ICON_CHOICES)
 
 
 @register.simple_tag

@@ -22,6 +22,8 @@ COPY . /app
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
+
+
 # Gunicorn par défaut
 ENV PORT=8000
 EXPOSE 8000

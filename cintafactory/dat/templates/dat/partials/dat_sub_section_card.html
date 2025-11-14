@@ -81,14 +81,16 @@
                                                   <i class="material-icons left" aria-hidden="true">visibility</i>Voir
                                                 </button>
                                                 {% if part.can_edit %}
-                                                  <button type="button"
-                                                          class="btn-flat waves-effect cinta-btn-secondary dat-drawio-import-button dat-drawio-action-button"
-                                                          data-diagram-id="{{ drawio.pk }}"
-                                                          data-import-url="{{ drawio.import_url }}"
-                                                          data-diagram-title="{{ drawio.title|default_if_none:'Diagramme' }}">
-                                                    <i class="material-icons left" aria-hidden="true">file_upload</i>
-                                                    <span class="dat-drawio-button-label">Importer</span>
-                                                  </button>
+                                                  {% if part.section_part.slug != "schemas" %}
+                                                    <button type="button"
+                                                            class="btn-flat waves-effect cinta-btn-secondary dat-drawio-view-button dat-drawio-action-button dat-viewer-trigger"
+                                                            data-diagram-id="{{ drawio.pk }}"
+                                                            data-import-url="{{ drawio.import_url }}"
+                                                            data-diagram-title="{{ drawio.title|default_if_none:'Diagramme' }}">
+                                                      <i class="material-icons left" aria-hidden="true">file_upload</i>
+                                                      <span class="dat-drawio-button-label">Importer</span>
+                                                    </button>
+                                                  {% endif %}
                                                   <button type="button"
                                                           class="btn-flat waves-effect cinta-btn-secondary dat-drawio-export-button dat-drawio-action-button"
                                                           data-diagram-id="{{ drawio.pk }}"
