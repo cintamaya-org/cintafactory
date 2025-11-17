@@ -634,10 +634,12 @@ class DatSubSectionUpdateView(ModuleContextMixin, LoginRequiredMixin, FormView):
                 },
             )
             message = f"La sous-section « {self.sub_section.title} » a été mise à jour."
-            messages.success(self.request, message)
+            if not self.is_ajax():
+                messages.success(self.request, message)
         else:
             message = "Aucune modification détectée sur cette sous-section."
-            messages.info(self.request, message)
+            if not self.is_ajax():
+                messages.info(self.request, message)
         if self.is_ajax():
             html = render_sub_section_snippet(
                 dat,

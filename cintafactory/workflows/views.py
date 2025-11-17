@@ -12,6 +12,12 @@ from dat.views import get_current_responsibles, get_next_status, user_can_progre
 from .models import Workflow
 
 
+class WorkflowOverviewView(LoginRequiredMixin, TemplateView):
+    """Static overview describing the workflow journey."""
+
+    template_name = "workflows/overview.html"
+
+
 class WorkflowBoardView(LoginRequiredMixin, TemplateView):
     """Display the DAT validation workflow as a Kanban board."""
 

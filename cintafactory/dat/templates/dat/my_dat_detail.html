@@ -154,8 +154,12 @@ body.dat-modal-open {
               href="?section={{ entry.slug }}"
               class="chip dat-section-link {% if selected_section_slug == entry.slug %}active-section{% else %}grey lighten-4{% endif %}"
             >
-              <span class="material-symbols-outlined dat-section-status-icon" aria-hidden="true">
-                {{ section_status_icon }}
+              <span
+                class="material-symbols-outlined dat-section-status-icon"
+                aria-hidden="true"
+                style="color: {{ section_status_icon.color|default:'#546e7a' }};"
+              >
+                {{ section_status_icon.name|default:section_status_icon }}
               </span>
               {{ entry.title }}
             </a>

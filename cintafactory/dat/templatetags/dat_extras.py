@@ -31,21 +31,16 @@ SECTION_PART_ICON_MAP = {
     },
 }
 
+DEFAULT_STATUS_ICON_COLOR = "#546e7a"
+
 # TODO later: switch to conditional icons when section status tracking becomes available.
-# Proposed mapping:
-#   validated -> check_circle
-#   in_progress -> border_color
-#   pending_prereq -> timer
-#   awaiting_review -> plagiarism
-#   blocked -> error
-#   refused -> cancel
 SECTION_STATUS_ICON_CHOICES = (
-    "check_circle",
-    "border_color",
-    "timer",
-    "plagiarism",
-    "error",
-    "cancel",
+    {"name": "check_circle", "color": "#2c8f31"},
+    {"name": "border_color", "color": "#1565c0"},
+    {"name": "timer", "color": "#0097ef"},
+    {"name": "plagiarism", "color": "#6a1b9a"},
+    {"name": "error", "color": "#000000"},
+    {"name": "cancel", "color": "#FF0000"},
 )
 
 
@@ -89,7 +84,13 @@ def section_part_icon(section_slug, part_slug):
 
 @register.simple_tag
 def random_section_status_icon():
-    return random.choice(SECTION_STATUS_ICON_CHOICES)
+    choice = random.choice(SECTION_STATUS_ICON_CHOICES)
+    if isinstance(choice, dict):
+        return {
+            "name": choice.get("name"),
+            "color": choice.get("color") or DEFAULT_STATUS_ICON_COLOR,
+        }
+    return {"name": choice, "color": DEFAULT_STATUS_ICON_COLOR}
 
 
 @register.simple_tag
