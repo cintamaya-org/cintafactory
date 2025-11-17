@@ -1,4 +1,5 @@
 import json
+import logging
 from collections import OrderedDict
 from types import SimpleNamespace
 from urllib.parse import urlencode
@@ -10,8 +11,9 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db.models import Count, Prefetch
 from django.db.models.functions import TruncMonth
-from django.http import JsonResponse
+from django.http import FileResponse, HttpResponse, JsonResponse
 from django.utils import timezone
+from django.utils.text import slugify
 from django.shortcuts import get_object_or_404, redirect
 from django.template.loader import render_to_string
 from django.urls import reverse, reverse_lazy
@@ -31,6 +33,7 @@ from .constants import (
     DAT_REQUIRED_PARTICIPANT_ROLE_SLUGS,
     DAT_STATUS_REQUIRED_ROLES,
 )
+from .exporters import get_dat_export_model_builder
 from .forms import DATForm, DATSubSectionForm
 from .models import (
     Application,
@@ -43,9 +46,22 @@ from .models import (
     DATHistory,
     DATHistoryAction,
 )
+from .pdf import generate_dat_pdf
 from .permissions import filter_dat_queryset_for_user, user_is_dat_admin
 from .sections import sync_dat_sections_if_needed
+from .tasks import schedule_dat_pdf_generation
+from .utils import (
+    dat_pdf_export_exists,
+    dat_pdf_export_modified_at,
+    format_user_display,
+    isoformat_datetime,
+    localize_datetime,
+    open_dat_pdf_export,
+    store_dat_pdf_export,
+)
 
+
+logger = logging.getLogger(__name__)
 
 PORTEUR_ROLE_SLUG = DAT_PORTEUR_ROLE_SLUG
 OWNER_EDITABLE_STATUSES = {
@@ -103,18 +119,6 @@ def get_required_roles_for_status(status: str) -> tuple[str, ...]:
     return DAT_STATUS_REQUIRED_ROLES.get(status, ())
 
 
-def _format_user_display(user) -> str:
-    if user is None:
-        return "-"
-    if hasattr(user, "get_full_name"):
-        full_name = user.get_full_name()
-        if full_name:
-            return full_name
-    if hasattr(user, "get_username"):
-        return user.get_username()
-    return str(user)
-
-
 def build_participant_overview(dat: DAT):
     participant_map = {}
     for participant in dat.participants.all():
@@ -136,7 +140,7 @@ def build_participant_overview(dat: DAT):
                 "role_slug": slug,
                 "role_label": role_label,
                 "user": user,
-                "user_display": _format_user_display(user),
+                "user_display": format_user_display(user),
                 "participant": participant,
                 "is_porteur": slug == DAT_PORTEUR_ROLE_SLUG,
                 "is_missing": user is None,
@@ -165,7 +169,7 @@ def get_current_responsibles(dat: DAT):
                 "role_slug": slug,
                 "role_label": role_label,
                 "user": user,
-                "user_display": _format_user_display(user),
+                "user_display": format_user_display(user),
                 "is_assigned": user is not None,
             }
         )
@@ -541,6 +545,17 @@ class DatDetail(ModuleContextMixin, LoginRequiredMixin, DetailView):
         context["next_status"] = next_status
         context["next_status_label"] = DATStatus(next_status).label if next_status else None
         context["can_progress_dat"] = user_can_progress_dat(self.object, self.request.user)
+        context["export_urls"] = {
+            "pdf_trigger": reverse("dat:my_export_pdf_trigger", args=[self.object.pk]),
+            "pdf_download": reverse("dat:my_export_pdf_download", args=[self.object.pk]),
+            "json": reverse("dat:my_export_json", args=[self.object.pk]),
+            "status": reverse("dat:my_export_pdf_status", args=[self.object.pk]),
+        }
+        context["pdf_export_available"] = dat_pdf_export_exists(self.object)
+        context["pdf_export_generated_at"] = dat_pdf_export_modified_at(self.object)
+        context["pdf_export_in_progress"] = self.object.pdf_export_in_progress
+        context["pdf_export_requested_at"] = self.object.pdf_export_requested_at
+        context["pdf_export_requested_by_display"] = self.object.pdf_export_requested_by_display
         context.update(build_dat_overview_context(self.object, self.request.user))
         section_nav = [{"slug": "overview", "title": "DETAILS DU DAT"}]
         section_nav.extend(
@@ -561,6 +576,108 @@ class DatDetail(ModuleContextMixin, LoginRequiredMixin, DetailView):
         return context
 
 
+class DatExportBaseView(LoginRequiredMixin, View):
+    http_method_names = ["get"]
+    template_name = "dat/exports/dat_export_pdf.html"
+
+    def get_queryset(self):
+        base_queryset = (
+            DAT.objects.select_related("application", "owner")
+            .prefetch_related("participants__role", "participants__user")
+        )
+        return filter_dat_queryset_for_user(base_queryset, self.request.user)
+
+    def get_object(self):
+        queryset = self.get_queryset()
+        return get_object_or_404(queryset, pk=self.kwargs.get("pk"))
+
+    def build_filename(self, dat: DAT, extension: str) -> str:
+        base = slugify(dat.reference or dat.title or "") or f"dat-{dat.pk}"
+        return f"{base}.{extension}"
+
+    def build_pdf_document(self, dat: DAT):
+        base_url = self.request.build_absolute_uri("/")
+        return generate_dat_pdf(dat, base_url=base_url)
+
+
+class DatExportJSONView(DatExportBaseView):
+    def get(self, request, *args, **kwargs):
+        dat = self.get_object()
+        builder = get_dat_export_model_builder()
+        payload = builder.build(dat)
+        response = JsonResponse(
+            payload,
+            json_dumps_params={"ensure_ascii": False, "indent": 2},
+        )
+        response["Content-Disposition"] = f'attachment; filename="{self.build_filename(dat, "json")}"'
+        return response
+
+
+class DatGeneratePDFExportView(DatExportBaseView):
+    def get(self, request, *args, **kwargs):
+        dat = self.get_object()
+        pdf_content, _payload = self.build_pdf_document(dat)
+        try:
+            store_dat_pdf_export(dat, pdf_content)
+        except Exception as exc:  # pragma: no cover - storage failure should be surfaced
+            logger.warning("Impossible d'enregistrer l'export PDF du DAT %s: %s", dat.pk, exc)
+        response = HttpResponse(pdf_content, content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="{self.build_filename(dat, "pdf")}"'
+        return response
+
+
+class DatTriggerPDFExportView(DatExportBaseView):
+    http_method_names = ["post"]
+
+    def post(self, request, *args, **kwargs):
+        dat = self.get_object()
+        base_url = request.build_absolute_uri("/")
+        scheduled = schedule_dat_pdf_generation(dat, request.user, base_url=base_url)
+        if scheduled:
+            requester = format_user_display(request.user) if request.user.is_authenticated else "Système"
+            messages.success(
+                request,
+                f"Une génération PDF a été lancée par {requester}. Vous serez informé lorsque le document sera prêt.",
+            )
+        else:
+            messages.warning(
+                request,
+                "Une génération PDF est déjà en cours pour ce DAT.",
+            )
+        return redirect("dat:my_detail", pk=dat.pk)
+
+
+class DatDownloadCachedPDFView(DatExportBaseView):
+    def get(self, request, *args, **kwargs):
+        dat = self.get_object()
+        file_handle = open_dat_pdf_export(dat)
+        if file_handle is None:
+            messages.warning(
+                request,
+                "Aucun export PDF n'est disponible pour ce DAT. Veuillez en générer un nouveau.",
+            )
+            return redirect("dat:my_detail", pk=dat.pk)
+        response = FileResponse(file_handle, content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="{self.build_filename(dat, "pdf")}"'
+        return response
+
+
+class DatExportStatusView(DatExportBaseView):
+    def get(self, request, *args, **kwargs):
+        dat = self.get_object()
+        generated_at = dat_pdf_export_modified_at(dat)
+        payload = {
+            "in_progress": dat.pdf_export_in_progress,
+            "requested_at": isoformat_datetime(dat.pdf_export_requested_at),
+            "requested_at_display": localize_datetime(dat.pdf_export_requested_at)
+            if dat.pdf_export_requested_at
+            else None,
+            "requested_by": dat.pdf_export_requested_by_display,
+            "available": dat_pdf_export_exists(dat),
+            "generated_at": isoformat_datetime(generated_at),
+            "generated_at_display": localize_datetime(generated_at) if generated_at else None,
+        }
+        return JsonResponse(payload)
 
 
 class DatSubSectionUpdateView(ModuleContextMixin, LoginRequiredMixin, FormView):
@@ -613,7 +730,7 @@ class DatSubSectionUpdateView(ModuleContextMixin, LoginRequiredMixin, FormView):
         dat = self.section.dat
         if changes:
             actor = self.request.user if self.request.user.is_authenticated else None
-            actor_display = _format_user_display(actor) if actor else ""
+            actor_display = format_user_display(actor) if actor else ""
             DATHistory.objects.create(
                 dat=dat,
                 action=DATHistoryAction.SECTION_UPDATED,

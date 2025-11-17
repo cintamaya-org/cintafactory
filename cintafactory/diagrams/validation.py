@@ -44,7 +44,7 @@ def validate_drawio_xml(xml_payload: str | None) -> str:
     if xml_payload is None:
         raise ValidationError(_("Le fichier diagramme est vide ou invalide."))
     if not isinstance(xml_payload, str):
-        raise ValidationError(_("Le diagramme importé doit être du texte UTF-8."))  # pragma: no cover
+        raise ValidationError(_("Le diagramme importé doit être du texte UTF-8."))
     content = xml_payload.strip()
     if not content:
         raise ValidationError(_("Le fichier diagramme est vide ou invalide."))

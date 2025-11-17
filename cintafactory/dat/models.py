@@ -77,6 +77,16 @@ class DAT(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    pdf_export_in_progress = models.BooleanField(default=False)
+    pdf_export_requested_at = models.DateTimeField(blank=True, null=True)
+    pdf_export_requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    pdf_export_requested_by_display = models.CharField(max_length=255, blank=True)
 
     class Meta:
         db_table = "dat_dat"

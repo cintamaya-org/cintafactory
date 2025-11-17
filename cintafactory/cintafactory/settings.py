@@ -126,6 +126,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 "material.frontend.context_processors.modules",
+                "workflows.context_processors.workflow_notifications",
             ],
         },
     },

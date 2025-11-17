@@ -87,3 +87,20 @@ docker compose -f docker-compose.dev.yml exec web python manage.py migrate
 - After deploys, run `python manage.py shell -c "from cintafactory.logging_utils import log_info; log_info('log-pipeline-check')"` to verify the pipeline end-to-end.
 
 ---
+
+## DAT Exports (PDF & JSON)
+
+- The DAT detail page exposes three actions: launch a new PDF export in the background (`dat:my_export_pdf_trigger`), download the last generated PDF (`dat:my_export_pdf_download`), and export JSON (`dat:my_export_json`). Cached PDFs are stored once per DAT under `media/dat_exports/<dat_id>/` so users can re-download without regenerating. While a generation is running, the UI shows who started it and the CTA stays disabled until completion.
+- Both exports share a configurable builder defined in `cintafactory/dat/exporters.py`. Override the structure by subclassing `DATExportModelBuilder` and referencing it through the `DAT_EXPORT_MODEL_BUILDER` Django setting:
+
+```python
+# settings.py
+DAT_EXPORT_MODEL_BUILDER = "myproject.exports.MyCustomDatExportBuilder"
+```
+
+Your subclass can override any method (e.g. `build_sections`, `build_participants`) to add/remove fields. The returned payload feeds both the JSON response and the PDF template.
+- To tweak the PDF rendering, edit `templates/dat/exports/dat_export_pdf.html`. The template receives the computed payload as `export`. For JSON-only adjustments, only change the builder.
+- PDF regeneration overwrites the previous cached file to save space. The download button stays disabled until at least one PDF has been generated.
+- PDF generation uses [WeasyPrint](https://weasyprint.org/); install its OS-level dependencies (Cairo, Pango, etc.) when deploying the new feature.
+
+---

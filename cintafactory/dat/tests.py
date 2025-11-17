@@ -1,4 +1,5 @@
 import json
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.db.models import ProtectedError
@@ -17,6 +18,8 @@ from .constants import (
 )
 from .forms import DATForm
 from .models import Application, DAT, DATParticipant, DATPart, DATPartEntryType, DATStatus, DATHistoryAction
+from .tasks import _run_pdf_generation
+from workflows.models import UserNotification
 
 class SmokeTest(TestCase):
     def test_import(self):
@@ -754,3 +757,48 @@ class CreateSchemaDiagramViewTest(TestCase):
         self.assertIn("DAT-DIAG-1", diagram_payload.get("title", ""))
         diagram = Diagram.objects.get(pk=diagram_payload.get("id"))
         self.assertTrue(diagram.title.startswith("DAT-DIAG-1"))
+
+
+class DatPdfExportNotificationTest(TestCase):
+    def setUp(self) -> None:
+        self.user = get_user_model().objects.create_user(username="pdf-user", password="pwd")
+        self.application = Application.objects.create(code="app-pdf", name="Application PDF")
+        self.dat = DAT.objects.create(
+            reference="DAT-PDF",
+            title="DAT PDF",
+            application=self.application,
+            status=DATStatus.DEMANDE_INITIALE,
+            owner=self.user,
+        )
+        self.client.force_login(self.user)
+
+    @mock.patch("dat.tasks.Thread")
+    def test_trigger_pdf_export_sends_user_notification(self, thread_cls):
+        thread_instance = mock.Mock()
+        thread_cls.return_value = thread_instance
+        url = reverse("dat:my_export_pdf_trigger", args=[self.dat.pk])
+        response = self.client.post(url)
+
+        self.assertEqual(response.status_code, 302)
+        notifications = UserNotification.objects.filter(user=self.user)
+        self.assertEqual(notifications.count(), 0)
+        thread_instance.start.assert_called_once()
+
+    @mock.patch("dat.tasks.store_dat_pdf_export")
+    @mock.patch("dat.tasks.generate_dat_pdf")
+    def test_pdf_generation_completion_creates_notification(self, generate_pdf, store_pdf):
+        generate_pdf.return_value = (b"%PDF", {})
+        store_pdf.return_value = "dat/path.pdf"
+        DAT.objects.filter(pk=self.dat.pk).update(
+            pdf_export_in_progress=True,
+            pdf_export_requested_by=self.user,
+            pdf_export_requested_by_display="PDF User",
+        )
+
+        _run_pdf_generation(self.dat.pk, base_url=None)
+
+        notification = UserNotification.objects.get(user=self.user)
+        self.assertEqual(notification.title, "Export PDF disponible")
+        self.assertEqual(notification.dat, self.dat)
+        self.assertEqual(notification.level, "success")
+        self.assertIn("prêt", notification.message)

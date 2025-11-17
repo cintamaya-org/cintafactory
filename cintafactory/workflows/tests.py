@@ -4,9 +4,10 @@ from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from dat.models import DAT, DATParticipant, DATStatus
+from dat.models import Application, DAT, DATParticipant, DATStatus, DATHistory, DATHistoryAction
 from users.models import Role
-from .models import Workflow
+from .models import Workflow, UserNotification
+from .notifications import SESSION_SEEN_KEY
 from .sync import sync_workflow_definitions
 
 
@@ -187,3 +188,49 @@ class WorkflowBoardViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, "Passer a l'etape suivante")
         self.assertContains(response, self.other_user.username)
+
+
+class WorkflowNotificationsViewTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="notif-user", password="pwd")
+        self.client = Client()
+        self.client.force_login(self.user)
+        self.application = Application.objects.create(code="app-notif", name="Application Notifications")
+        self.dat = DAT.objects.create(
+            reference="DAT-NOTIF",
+            title="DAT Notifications",
+            application=self.application,
+            status=DATStatus.DEMANDE_INITIALE,
+            owner=self.user,
+        )
+        self.history = DATHistory.objects.create(
+            dat=self.dat,
+            action=DATHistoryAction.STATUS_CHANGED,
+            status_before=DATStatus.DEMANDE_INITIALE,
+            status_after=DATStatus.VALIDATION_REFERENT,
+            performed_by=self.user,
+            performed_by_display="Notif User",
+            details={"from": "Demande initiale", "to": "Validation du referent"},
+        )
+        self.user_notification = UserNotification.objects.create(
+            user=self.user,
+            title="Export PDF lancé",
+            message="Votre export PDF est en préparation.",
+            dat=self.dat,
+            target_url="/dat/1/",
+        )
+
+    def test_notifications_view_combines_sources_and_marks_as_viewed(self):
+        response = self.client.get(reverse("workflows:notifications"))
+        self.assertEqual(response.status_code, 200)
+        notifications = response.context["notifications"]
+        self.assertEqual(len(notifications), 2)
+        self.assertContains(response, "Export PDF lancé")
+        self.assertContains(response, "Validation du referent")
+
+        session = self.client.session
+        seen_ids = session.get(SESSION_SEEN_KEY, [])
+        self.assertIn(self.history.id, seen_ids)
+
+        self.user_notification.refresh_from_db()
+        self.assertIsNotNone(self.user_notification.viewed_at)

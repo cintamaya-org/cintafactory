@@ -79,6 +79,12 @@ To host custom libraries locally, serve the XML file from any container reachabl
 
 The docker-compose stacks already pass reasonable defaults; adjust them to match your reverse-proxy/hostnames in production.
 
+### DAT exports (PDF/JSON)
+
+- Depuis la fiche DAT, lancez une nouvelle génération PDF en tâche de fond (action `dat:my_export_pdf_trigger`), téléchargez le dernier export stocké (`dat:my_export_pdf_download`) ou récupérez le JSON (`dat:my_export_json`). Un seul PDF est conservé par DAT pour éviter d'occuper trop d'espace disque et le bouton de génération reste indisponible tant que l'export en cours n'est pas terminé.
+- Les deux formats s'appuient sur `cintafactory/dat/exporters.py`. Surclassez `DAT_EXPORT_MODEL_BUILDER` pour ajuster la structure retournée si besoin.
+- Le gabarit PDF se trouve dans `cintafactory/dat/templates/dat/exports/dat_export_pdf.html` et s'appuie sur WeasyPrint (installez les bibliothèques système requises : Cairo, Pango…).
+
 ---
 
 ## CI/CD

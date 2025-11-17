@@ -1,3 +1,4 @@
+{% load static %}
 <div id="dat-details">
   <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:1rem;">
     <div style="display:flex; flex-direction:column; gap:0.5rem;">
@@ -34,6 +35,126 @@
         </a>
       </div>
     </div>
+
+  {% if export_urls %}
+  <div class="section" style="margin-top:1.5rem;">
+    <div
+      class="card"
+      style="border-radius:16px;"
+      data-pdf-export-card="true"
+      data-status-url="{{ export_urls.status }}"
+      data-in-progress="{{ pdf_export_in_progress|yesno:'true,false' }}"
+    >
+      <div class="card-content">
+        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; flex-wrap:wrap;">
+          <div>
+            <span class="card-title" style="margin:0;">Exports</span>
+            <p style="margin:0.4rem 0 0 0; color:#546e7a;">
+              Téléchargez le dernier PDF généré ou relancez une nouvelle exportation complète. Le JSON reste disponible à tout moment.
+            </p>
+          </div>
+          <div style="display:flex; gap:0.5rem; flex-wrap:wrap; justify-content:flex-end;">
+            <form method="post" action="{{ export_urls.pdf_trigger }}" style="margin:0;">
+              {% csrf_token %}
+              <button
+                type="submit"
+                class="cinta-btn-secondary waves-effect"
+                {% if pdf_export_in_progress %}disabled aria-disabled="true"{% endif %}
+              >
+                {% if pdf_export_in_progress %}
+                  <span class="cinta-spinner" role="status" aria-live="polite">
+                    <img src="{% static 'imgs/cintamaya_logo_100px.png' %}" alt="">
+                  </span>
+                {% else %}
+                  <i class="material-icons left" aria-hidden="true">autorenew</i>
+                {% endif %}
+                Nouveau PDF
+              </button>
+            </form>
+            {% if pdf_export_available %}
+              <a href="{{ export_urls.pdf_download }}" class="cinta-btn-secondary waves-effect" target="_blank" rel="noopener">
+                <i class="material-icons left" aria-hidden="true">download</i>
+                Télécharger PDF
+              </a>
+            {% else %}
+              <span class="cinta-btn-secondary" aria-disabled="true" style="pointer-events:none; opacity:0.6;">
+                <i class="material-icons left" aria-hidden="true">download</i>
+                Télécharger PDF
+              </span>
+            {% endif %}
+            <a href="{{ export_urls.json }}" class="cinta-btn-secondary waves-effect" target="_blank" rel="noopener">
+              <i class="material-icons left" aria-hidden="true">data_object</i>
+              Export JSON
+            </a>
+          </div>
+        </div>
+        <div style="margin:0.75rem 0 0 0; color:#546e7a; text-align:right;">
+          {% if pdf_export_in_progress %}
+            <p style="margin:0;">
+              Une génération de PDF a été lancée
+              {% if pdf_export_requested_by_display %}par {{ pdf_export_requested_by_display }}{% endif %}
+              {% if pdf_export_requested_at %}le {{ pdf_export_requested_at|date:"d/m/Y H:i" }}{% endif %}.
+            </p>
+          {% else %}
+            <p style="margin:0;">
+              {% if pdf_export_generated_at %}
+                Dernier PDF généré le {{ pdf_export_generated_at|date:"d/m/Y H:i" }}.
+              {% else %}
+                Aucun export PDF enregistré pour l'instant.
+              {% endif %}
+            </p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function() {
+      const card = document.querySelector("[data-pdf-export-card]");
+      if (!card) {
+        return;
+      }
+      const statusUrl = card.dataset.statusUrl;
+      if (!statusUrl) {
+        return;
+      }
+      const inProgress = card.dataset.inProgress === "true";
+      if (!inProgress) {
+        return;
+      }
+      const toast = (message) => {
+        if (window.M && M.toast) {
+          M.toast({html: message});
+        } else {
+          console.info(message);
+        }
+      };
+      const pollStatus = (delay) => {
+        setTimeout(() => {
+          fetch(statusUrl, {headers: {"Accept": "application/json"}})
+            .then((response) => {
+              if (!response.ok) {
+                throw new Error("statut HTTP invalide");
+              }
+              return response.json();
+            })
+            .then((data) => {
+              if (!data || data.in_progress) {
+                pollStatus(15000);
+                return;
+              }
+              toast("Le PDF est prêt. Rafraîchissement…");
+              window.location.reload();
+            })
+            .catch(() => {
+              pollStatus(15000);
+            });
+        }, delay);
+      };
+      pollStatus(15000);
+    })();
+  </script>
+  {% endif %}
 
   {% if participant_overview %}
   <div class="section" style="margin-top:1.5rem;">

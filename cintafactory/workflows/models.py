@@ -147,3 +147,76 @@ class WorkflowStepPermission(models.Model):
         if self.user:
             return self.user.get_username()
         return _("Unknown")
+
+
+class UserNotification(models.Model):
+    """Notification explicitly targeted to a single user."""
+
+    LEVEL_INFO = "info"
+    LEVEL_SUCCESS = "success"
+    LEVEL_WARNING = "warning"
+    LEVEL_ERROR = "error"
+    LEVEL_CHOICES = [
+        (LEVEL_INFO, _("Information")),
+        (LEVEL_SUCCESS, _("Succès")),
+        (LEVEL_WARNING, _("Avertissement")),
+        (LEVEL_ERROR, _("Erreur")),
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="workflow_notifications",
+    )
+    title = models.CharField(max_length=255)
+    message = models.TextField(blank=True)
+    level = models.CharField(max_length=16, choices=LEVEL_CHOICES, default=LEVEL_INFO)
+    dat = models.ForeignKey(
+        "dat.DAT",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="user_notifications",
+    )
+    target_url = models.CharField(max_length=500, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    created_by_display = models.CharField(max_length=255, blank=True)
+    extra_data = models.JSONField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    viewed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "workflow_user_notification"
+        ordering = ["-created_at", "-pk"]
+
+    def __str__(self) -> str:  # pragma: no cover - human readable helper
+        return f"{self.title} → {self.user}"
+
+    @property
+    def is_viewed(self) -> bool:
+        return self.viewed_at is not None
+
+    def mark_as_viewed(self) -> None:
+        if self.is_viewed:
+            return
+        from django.utils import timezone
+
+        self.viewed_at = timezone.now()
+        self.save(update_fields=["viewed_at"])
+
+    @property
+    def actor_name(self) -> str:
+        if self.created_by_display:
+            return self.created_by_display
+        if self.created_by:
+            full_name = self.created_by.get_full_name()
+            if full_name:
+                return full_name
+            return self.created_by.get_username()
+        return "Système"
