@@ -79,6 +79,10 @@
                 <td>{{ dat.application|default:"—" }}</td>
               </tr>
               <tr>
+                <th scope="row">Direction métier</th>
+                <td>{{ dat.business_direction|default:"—" }}</td>
+              </tr>
+              <tr>
                 <th scope="row">Responsable</th>
                 <td>{{ dat.owner|default:"—" }}</td>
               </tr>
@@ -285,20 +289,18 @@
   </div>
 </div>
 <script>
-  document.addEventListener('DOMContentLoaded', function () {
-    var modalElement = document.getElementById('dat-history-modal');
-    if (!modalElement) {
-      return;
-    }
-    if (window.M && M.Modal) {
-      M.Modal.init(modalElement, { preventScrolling: true });
-    } else {
-      // Fallback: basic toggle if Materialize JS is unavailable
-      var triggers = document.querySelectorAll('[href=\"#dat-history-modal\"], [data-target=\"dat-history-modal\"]');
+  (function () {
+    function initFallback(modalElement) {
+      if (!modalElement || modalElement.__datHistoryFallbackBound) {
+        return;
+      }
+      modalElement.__datHistoryFallbackBound = true;
+      var triggers = document.querySelectorAll('[href="#dat-history-modal"], [data-target="dat-history-modal"], [data-modal-target="dat-history-modal"]');
       triggers.forEach(function (trigger) {
         trigger.addEventListener('click', function (event) {
           event.preventDefault();
           modalElement.style.display = 'block';
+          modalElement.setAttribute('aria-hidden', 'false');
         });
       });
       var closeButtons = modalElement.querySelectorAll('.modal-close');
@@ -306,10 +308,39 @@
         btn.addEventListener('click', function (event) {
           event.preventDefault();
           modalElement.style.display = 'none';
+          modalElement.setAttribute('aria-hidden', 'true');
         });
       });
     }
-  });
+
+    function initModal() {
+      var modalElement = document.getElementById('dat-history-modal');
+      if (!modalElement) {
+        return;
+      }
+      if (window.M && M.Modal) {
+        var existingInstance = M.Modal.getInstance(modalElement);
+        if (existingInstance && typeof existingInstance.destroy === 'function') {
+          existingInstance.destroy();
+        }
+        M.Modal.init(modalElement, { preventScrolling: true });
+        modalElement.__datHistoryFallbackBound = false;
+      } else {
+        initFallback(modalElement);
+      }
+    }
+
+    function scheduleInit() {
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initModal, { once: true });
+      } else {
+        initModal();
+      }
+    }
+
+    scheduleInit();
+    document.addEventListener('turbolinks:load', initModal);
+  })();
 </script>
 <script>
   document.addEventListener('click', function (event) {

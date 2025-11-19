@@ -46,27 +46,31 @@
                         </div>
                     </li>
                     {% endblock %}
-                    {% block sidenav_items %}
-                    {% for module in modules %}
-                    {% if current_module == module and forloop.last %}
-                    <li class="active last">
-                        {% include module.menu with module=module %}
+                    <li class="sidenav-modules">
+                        <ul class="sidenav-modules__list">
+                            {% block sidenav_items %}
+                            {% for module in modules %}
+                            {% if current_module == module and forloop.last %}
+                            <li class="active last">
+                                {% include module.menu with module=module %}
+                            </li>
+                            {% elif current_module == module %}
+                            <li class="active">
+                                {% include module.menu with module=module %}
+                            </li>
+                            {% elif forloop.last %}
+                            <li class="last">
+                                {% include module.menu with module=module %}
+                            </li>
+                            {% else %}
+                            <li>
+                                {% include module.menu with module=module %}
+                            </li>
+                            {% endif %}
+                            {% endfor %}
+                            {% endblock sidenav_items %}
+                        </ul>
                     </li>
-                    {% elif current_module == module %}
-                    <li class="active">
-                        {% include module.menu with module=module %}
-                    </li>
-                    {% elif forloop.last %}
-                    <li class="last">
-                        {% include module.menu with module=module %}
-                    </li>
-                    {% else %}
-                    <li>
-                        {% include module.menu with module=module %}
-                    </li>
-                    {% endif %}
-                    {% endfor %}
-                    {% endblock sidenav_items %}
                     {% block sidenav_global_actions %}
                     {% if request.user.is_authenticated %}
                     <li class="sidenav-notifications">

@@ -5,10 +5,31 @@
   <td>{{ obj.last_name }}</td>
   <td>{% if obj.role %}{{ obj.role.name }}{% else %}—{% endif %}</td>
   <td>
-    {% if obj.architect_referent %}
-      {% with ref=obj.architect_referent %}
-        {% if ref.get_full_name %}{{ ref.get_full_name }}{% else %}{{ ref.username }}{% endif %}
+    {% if obj.business_group %}
+      {{ obj.business_group.name }}
+    {% else %}
+      —
+    {% endif %}
+  </td>
+  <td>
+    {% if obj.business_group and obj.business_group.responsible %}
+      {% with resp=obj.business_group.responsible %}
+        {% if resp.get_full_name %}{{ resp.get_full_name }}{% else %}{{ resp.username }}{% endif %}
       {% endwith %}
+    {% else %}
+      —
+    {% endif %}
+  </td>
+  <td>
+    {% if obj.business_group and obj.business_group.direction %}
+      {{ obj.business_group.direction.name }}
+    {% else %}
+      —
+    {% endif %}
+  </td>
+  <td>
+    {% if obj.business_group and obj.business_group.business_direction %}
+      {{ obj.business_group.business_direction.name }}
     {% else %}
       —
     {% endif %}

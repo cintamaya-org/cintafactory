@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
-        ("dat", "0017_dat_pdf_export_state"),
+        ("dat", "0001_initial"),
         ("workflows", "0001_initial"),
     ]
 

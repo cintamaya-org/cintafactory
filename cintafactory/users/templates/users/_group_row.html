@@ -1,0 +1,21 @@
+<tr>
+  <td>{{ obj.name }}</td>
+  <td>{% if obj.direction %}{{ obj.direction.name }}{% else %}—{% endif %}</td>
+  <td>{% if obj.business_direction %}{{ obj.business_direction.name }}{% else %}—{% endif %}</td>
+  <td>
+    {% if obj.responsible %}
+      {% if obj.responsible.get_full_name %}{{ obj.responsible.get_full_name }}{% else %}{{ obj.responsible.username }}{% endif %}
+    {% else %}
+      —
+    {% endif %}
+  </td>
+  <td>{% if obj.is_default %}Oui{% else %}Non{% endif %}</td>
+  <td>{{ obj.member_count }}</td>
+  <td>
+    {% if request.user.is_superuser or request.user.is_staff or request.user.role and request.user.role.slug == "comite-validation" %}
+      <a href="{% url 'users:businessgroup_change' pk=obj.pk %}" class="btn-flat waves-effect">Modifier</a>
+    {% else %}
+      <span title="Aucune permission" style="color:#888;">—</span>
+    {% endif %}
+  </td>
+</tr>

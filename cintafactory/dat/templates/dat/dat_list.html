@@ -20,6 +20,7 @@
         <th>Reference</th>
         <th>Titre</th>
         <th>Application</th>
+        <th>Direction métier</th>
         <th>Statut</th>
         <th>Responsable</th>
         <th>Cree le</th>
@@ -30,7 +31,7 @@
       {% for obj in object_list %}
         {% include "dat/_dat_row.html" %}
       {% empty %}
-        <tr><td colspan="7">Aucun DAT pour le moment.</td></tr>
+        <tr><td colspan="8">Aucun DAT pour le moment.</td></tr>
       {% endfor %}
     </tbody>
   </table>

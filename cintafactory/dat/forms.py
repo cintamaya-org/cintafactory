@@ -452,3 +452,29 @@ class DATSubSectionForm(forms.Form):
                 "to": after_display,
             }
         return changes
+
+
+class DATImportForm(forms.Form):
+    data_file = forms.FileField(label="Fichier JSON du DAT")
+
+    def clean_data_file(self):
+        uploaded = self.cleaned_data.get("data_file")
+        if not uploaded:
+            return uploaded
+        try:
+            content = uploaded.read().decode("utf-8")
+        except UnicodeDecodeError:
+            raise forms.ValidationError("Le fichier doit être encodé en UTF-8.")
+        try:
+            payload = json.loads(content or "{}")
+        except json.JSONDecodeError as exc:
+            raise forms.ValidationError(f"Le contenu du fichier n'est pas un JSON valide: {exc}") from exc
+        if not isinstance(payload, dict):
+            raise forms.ValidationError("Le fichier importé doit contenir un objet JSON.")
+        self.cleaned_data["payload"] = payload
+        uploaded.seek(0)
+        return uploaded
+
+    @property
+    def payload(self):
+        return self.cleaned_data.get("payload")

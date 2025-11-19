@@ -1,6 +1,6 @@
 from django import forms
 
-from .models import User
+from .models import BusinessDirection, BusinessGroup, ProjectDirection, User
 
 
 class UserForm(forms.ModelForm):
@@ -24,7 +24,7 @@ class UserForm(forms.ModelForm):
             "first_name",
             "last_name",
             "role",
-            "architect_referent",
+            "business_group",
             "is_active",
             "is_staff",
             "is_superuser",
@@ -60,3 +60,30 @@ class UserForm(forms.ModelForm):
             self.save_m2m()
 
         return user
+
+
+class BusinessGroupForm(forms.ModelForm):
+    class Meta:
+        model = BusinessGroup
+        fields = ["name", "direction", "responsible", "business_direction"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        business_direction = self.fields.get("business_direction")
+        if business_direction:
+            business_direction.required = False
+            business_direction.label = "Direction métier"
+            business_direction.help_text = "Associer au plus un groupe par direction projet."
+            business_direction.queryset = business_direction.queryset.order_by("name")
+
+
+class ProjectDirectionForm(forms.ModelForm):
+    class Meta:
+        model = ProjectDirection
+        fields = ["name", "slug"]
+
+
+class BusinessDirectionForm(forms.ModelForm):
+    class Meta:
+        model = BusinessDirection
+        fields = ["name", "slug"]

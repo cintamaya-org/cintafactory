@@ -13,6 +13,7 @@ from django.db.models import Count, Prefetch
 from django.db.models.functions import TruncMonth
 from django.http import FileResponse, HttpResponse, JsonResponse
 from django.utils import timezone
+from django.utils.html import format_html
 from django.utils.text import slugify
 from django.shortcuts import get_object_or_404, redirect
 from django.template.loader import render_to_string
@@ -34,7 +35,8 @@ from .constants import (
     DAT_STATUS_REQUIRED_ROLES,
 )
 from .exporters import get_dat_export_model_builder
-from .forms import DATForm, DATSubSectionForm
+from .forms import DATForm, DATImportForm, DATSubSectionForm
+from .importers import DATImportError, DATImportService
 from .models import (
     Application,
     DAT,
@@ -396,7 +398,12 @@ class DATDetailView(ModuleContextMixin, DetailModelView):
 
     def get_queryset(self):
         base_queryset = (
-            DAT.objects.select_related("application", "owner")
+            DAT.objects.select_related(
+                "application",
+                "application__business_direction",
+                "business_direction",
+                "owner",
+            )
             .prefetch_related(
                 HISTORY_ENTRIES_PREFETCH,
                 "participants__role",
@@ -430,10 +437,10 @@ class DATViewSet(BaseSecuredViewSet):
     def _can_add(self, request):
         return user_can_create_dat_entities(request.user)
 
-    list_display = ("reference", "title", "application", "status", "owner", "created_at")
+    list_display = ("reference", "title", "application", "business_direction", "status", "owner", "created_at")
     list_display_links = ("reference",)
     ordering = ("-created_at",)
-    search_fields = ("reference", "title", "description", "application__name", "application__code")
+    search_fields = ("reference", "title", "description", "application__name", "application__code", "business_direction__name")
 
     layout = Layout(
         Fieldset("Identite", Row("reference", "title"), Row("application")),
@@ -451,7 +458,7 @@ class DATViewSet(BaseSecuredViewSet):
 
     def get_queryset(self, request):
         base_queryset = (
-            DAT.objects.select_related("application", "owner")
+            DAT.objects.select_related("application", "application__business_direction", "business_direction", "owner")
             .order_by("-created_at")
         )
         return filter_dat_queryset_for_user(base_queryset, request.user)
@@ -483,14 +490,14 @@ class ApplicationViewSet(BaseSecuredViewSet):
     def _can_add(self, request):
         return user_can_create_dat_entities(request.user)
 
-    list_display = ("code", "name", "formatted_created_at", "formatted_updated_at")
+    list_display = ("code", "name", "business_direction", "formatted_created_at", "formatted_updated_at")
     list_display_links = ("code",)
     ordering = ("name",)
-    search_fields = ("code", "name", "description")
+    search_fields = ("code", "name", "description", "business_direction__name")
 
-    form_fields = ["code", "name", "description"]
+    form_fields = ["code", "name", "business_direction", "description"]
     layout = Layout(
-        Fieldset("Identite", Row("code", "name")),
+        Fieldset("Identite", Row("code", "name"), Row("business_direction")),
         Fieldset("Description", Row("description")),
     )
 
@@ -504,7 +511,7 @@ class DatList(ModuleContextMixin, LoginRequiredMixin, ListView):
 
     def get_queryset(self):
         base_queryset = (
-            DAT.objects.select_related("application", "owner")
+            DAT.objects.select_related("application", "application__business_direction", "business_direction", "owner")
             .order_by("-created_at")
         )
         return filter_dat_queryset_for_user(base_queryset, self.request.user)
@@ -823,6 +830,35 @@ class DatAdminList(ModuleContextMixin, DatManagerAccessMixin, ListView):
         context = super().get_context_data(**kwargs)
         context["total_dats"] = context["object_list"].count()
         return context
+
+
+class DatImportView(ModuleContextMixin, DatManagerAccessMixin, FormView):
+    template_name = "dat/dat_import.html"
+    form_class = DATImportForm
+    success_url = reverse_lazy("dat:import")
+
+    def form_valid(self, form):
+        importer = DATImportService(actor=self.request.user if self.request.user.is_authenticated else None)
+        payload = form.payload or {}
+        try:
+            result = importer.import_from_payload(payload)
+        except DATImportError as exc:
+            form.add_error(None, str(exc))
+            return self.form_invalid(form)
+
+        dat = result.dat
+        messages.success(
+            self.request,
+            f"Le DAT « {dat.reference} - {dat.title} » a été importé avec succès.",
+        )
+        detail_url = f"/dat/manage/dats/crud/{dat.pk}/detail/"
+        messages.info(
+            self.request,
+            format_html('Consulter le <a href="{}">DAT importé</a>.', detail_url),
+        )
+        for warning in result.warnings:
+            messages.warning(self.request, warning)
+        return super().form_valid(form)
 
 
 class DatDashboardView(ModuleContextMixin, DatManagerAccessMixin, TemplateView):

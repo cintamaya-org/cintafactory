@@ -21,7 +21,10 @@
             <th>Prenom</th>
             <th>Nom</th>
             <th>Role</th>
-            <th>Referent</th>
+            <th>Groupe</th>
+            <th>Responsable du groupe</th>
+            <th>Direction projet</th>
+            <th>Direction métier</th>
             <th>Actif</th>
             <th style="width:1%; white-space:nowrap;">Actions</th>
           </tr>
@@ -31,16 +34,16 @@
     {% for obj in object_list %}
       {% include "users/_user_row.html" %}
     {% empty %}
-      <tr><td colspan="8" style="color:#666;">Aucun utilisateur pour le moment.</td></tr>
+      <tr><td colspan="11" style="color:#666;">Aucun utilisateur pour le moment.</td></tr>
     {% endfor %}
   {% elif page_obj %}
     {% for obj in page_obj.object_list %}
       {% include "users/_user_row.html" %}
     {% empty %}
-      <tr><td colspan="8" style="color:#666;">Aucun utilisateur pour le moment.</td></tr>
+      <tr><td colspan="11" style="color:#666;">Aucun utilisateur pour le moment.</td></tr>
     {% endfor %}
   {% else %}
-    <tr><td colspan="8" style="color:#666;">Aucun utilisateur pour le moment.</td></tr>
+    <tr><td colspan="11" style="color:#666;">Aucun utilisateur pour le moment.</td></tr>
   {% endif %}
 </tbody>
 

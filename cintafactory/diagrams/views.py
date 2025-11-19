@@ -189,6 +189,29 @@ def _build_embed_url(library_urls: list[str]) -> str:
     )
 
 
+def _current_thumbnail_url(diagram: Diagram) -> str | None:
+    field = getattr(diagram, "thumbnail", None)
+    if not field or not getattr(field, "name", None):
+        return None
+    try:
+        storage = field.storage
+    except Exception as exc:  # pragma: no cover - storage misconfiguration
+        logger.warning("diagram %s: thumbnail storage unavailable: %s", diagram.pk, exc)
+        return None
+    try:
+        exists = storage.exists(field.name)
+    except Exception as exc:  # pragma: no cover - storage failure best-effort
+        logger.warning("diagram %s: unable to check thumbnail existence: %s", diagram.pk, exc)
+        return None
+    if not exists:
+        return None
+    try:
+        return field.url
+    except Exception as exc:  # pragma: no cover - storage failure best-effort
+        logger.warning("diagram %s: unable to build thumbnail URL: %s", diagram.pk, exc)
+        return None
+
+
 def _save_thumbnail_from_data_uri(diagram: Diagram, data_uri: str) -> bool:
     if not (isinstance(data_uri, str) and data_uri.startswith("data:image/png;base64,")):
         return False
@@ -316,10 +339,9 @@ def diagram_embed_context(request, pk: int):
 @login_required
 def diagram_viewer_context(request, pk: int):
     diagram = get_object_or_404(Diagram, pk=pk, owner=request.user)
-    thumbnail_url = diagram.thumbnail.url if diagram.thumbnail else None
-    if not thumbnail_url:
-        if _regenerate_drawio_thumbnail(diagram, diagram.xml or "<mxGraphModel/>"):
-            thumbnail_url = diagram.thumbnail.url if diagram.thumbnail else None
+    thumbnail_url = _current_thumbnail_url(diagram)
+    if not thumbnail_url and _regenerate_drawio_thumbnail(diagram, diagram.xml or "<mxGraphModel/>"):
+        thumbnail_url = _current_thumbnail_url(diagram)
     payload = {
         "ok": True,
         "diagram": {
@@ -408,7 +430,7 @@ def diagram_import_xml(request, pk: int):
         log_context["user_id"],
         regenerated,
     )
-    thumbnail_url = diagram.thumbnail.url if diagram.thumbnail and regenerated else None
+    thumbnail_url = _current_thumbnail_url(diagram) if regenerated else None
     if thumbnail_url:
         thumbnail_url = request.build_absolute_uri(thumbnail_url)
 

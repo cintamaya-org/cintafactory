@@ -25,6 +25,12 @@ class Application(models.Model):
     code = models.SlugField(max_length=64, unique=True, verbose_name="Code")
     name = models.CharField(max_length=200, verbose_name="Nom")
     description = models.TextField(blank=True, verbose_name="Description")
+    business_direction = models.ForeignKey(
+        "users.BusinessDirection",
+        on_delete=models.PROTECT,
+        related_name="applications",
+        verbose_name="Direction métier",
+    )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Créé le")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Mis à jour le")
 
@@ -75,6 +81,12 @@ class DAT(models.Model):
         blank=True,
         related_name="dats",
     )
+    business_direction = models.ForeignKey(
+        "users.BusinessDirection",
+        on_delete=models.PROTECT,
+        related_name="dats",
+        verbose_name="Direction métier",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     pdf_export_in_progress = models.BooleanField(default=False)
@@ -94,6 +106,20 @@ class DAT(models.Model):
 
     def __str__(self) -> str:
         return f"{self.reference} - {self.title}"
+
+    def sync_business_direction(self):
+        if not self.application_id:
+            self.business_direction_id = None
+            return
+        application = getattr(self, "application", None)
+        if application is None or application.pk != self.application_id:
+            application = Application.objects.filter(pk=self.application_id).only("business_direction_id").first()
+        if application:
+            self.business_direction_id = application.business_direction_id
+
+    def save(self, *args, **kwargs):
+        self.sync_business_direction()
+        super().save(*args, **kwargs)
 
 
 class DATParticipant(models.Model):

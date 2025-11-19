@@ -286,14 +286,24 @@ body.dat-modal-open {
 </div>
 
 <script>
-document.addEventListener("DOMContentLoaded", () => {
-  const overlay = document.getElementById("dat-modal-overlay");
+(function () {
+  if (window.__cintaDatModalHandlersBound) {
+    bindOverlay();
+    return;
+  }
+
+  window.__cintaDatModalHandlersBound = true;
+
+  function getOverlay() {
+    return document.getElementById("dat-modal-overlay");
+  }
 
   function openModal(modal) {
     if (!modal) {
       return;
     }
     modal.classList.add("open");
+    const overlay = getOverlay();
     if (overlay) {
       overlay.classList.add("visible");
     }
@@ -306,6 +316,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     modal.classList.remove("open");
     if (!document.querySelector(".dat-modal.open")) {
+      const overlay = getOverlay();
       if (overlay) {
         overlay.classList.remove("visible");
       }
@@ -314,16 +325,22 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function closeAllModals() {
-    document.querySelectorAll(".dat-modal.open").forEach((modal) => modal.classList.remove("open"));
+    document.querySelectorAll(".dat-modal.open").forEach((modal) => {
+      modal.classList.remove("open");
+    });
+    const overlay = getOverlay();
     if (overlay) {
       overlay.classList.remove("visible");
     }
     document.body.classList.remove("dat-modal-open");
   }
 
-  document.addEventListener("click", (event) => {
+  function handleTriggerClick(event) {
     const trigger = event.target.closest(".dat-modal-trigger");
     if (!trigger) {
+      return;
+    }
+    if (trigger.hasAttribute("aria-disabled") || trigger.classList.contains("disabled")) {
       return;
     }
     event.preventDefault();
@@ -334,9 +351,9 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     const modal = document.getElementById(targetId);
     openModal(modal);
-  });
+  }
 
-  document.addEventListener("click", (event) => {
+  function handleCloseClick(event) {
     const closeButton = event.target.closest(".dat-modal-close");
     if (!closeButton) {
       return;
@@ -344,18 +361,27 @@ document.addEventListener("DOMContentLoaded", () => {
     event.preventDefault();
     const modal = closeButton.closest(".dat-modal");
     closeModal(modal);
-  });
-
-  if (overlay) {
-    overlay.addEventListener("click", closeAllModals);
   }
 
+  function bindOverlay() {
+    const overlay = getOverlay();
+    if (overlay && !overlay.__datModalOverlayBound) {
+      overlay.addEventListener("click", closeAllModals);
+      overlay.__datModalOverlayBound = true;
+    }
+  }
+
+  bindOverlay();
+  document.addEventListener("turbolinks:load", bindOverlay);
+  document.addEventListener("turbolinks:before-cache", closeAllModals);
+  document.addEventListener("click", handleTriggerClick);
+  document.addEventListener("click", handleCloseClick);
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       closeAllModals();
     }
   });
-});
+})();
 </script>
 <script>
 document.addEventListener("DOMContentLoaded", () => {

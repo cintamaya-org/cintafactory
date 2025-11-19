@@ -9,7 +9,7 @@ from django.http import HttpRequest
 from django.utils import timezone
 
 from dat.models import DATHistory
-from .models import UserNotification
+from .models import NotificationMessage, NotificationType, UserNotification
 
 
 DEFAULT_NOTIFICATION_LIMIT = 99
@@ -175,11 +175,18 @@ def create_user_notification(
     if not getattr(user, "is_authenticated", False):
         return None
     resolved_display = created_by_display or _format_user_display(created_by)
+    notification_type, _ = NotificationType.objects.get_or_create(
+        title=title,
+        level=level or UserNotification.LEVEL_INFO,
+    )
+    message_content = message or ""
+    notification_message, _ = NotificationMessage.objects.get_or_create(
+        content=message_content,
+    )
     notification = UserNotification.objects.create(
         user=user,
-        title=title,
-        message=message,
-        level=level,
+        notification_type=notification_type,
+        notification_message=notification_message,
         dat=dat,
         target_url=target_url,
         created_by=created_by if getattr(created_by, "is_authenticated", False) else None,

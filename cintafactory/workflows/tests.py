@@ -5,8 +5,8 @@ from django.test import Client, TestCase
 from django.urls import reverse
 
 from dat.models import Application, DAT, DATParticipant, DATStatus, DATHistory, DATHistoryAction
-from users.models import Role
-from .models import Workflow, UserNotification
+from users.models import BusinessDirection, Role
+from .models import NotificationMessage, NotificationType, Workflow, UserNotification
 from .notifications import SESSION_SEEN_KEY
 from .sync import sync_workflow_definitions
 
@@ -63,24 +63,33 @@ class WorkflowBoardViewTests(TestCase):
         self.other_user = get_user_model().objects.create_user(username="other-user", password="pwd")
         self.client = Client()
         self.client.force_login(self.user)
+        self.business_direction = get_default_business_direction()
+        self.application = Application.objects.create(
+            code="workflow-app",
+            name="Workflow App",
+            business_direction=self.business_direction,
+        )
 
     def test_board_renders_columns_with_dat_items(self):
         DAT.objects.create(
             reference="DAT-001",
             title="Initial",
             status=DATStatus.DEMANDE_INITIALE,
+            application=self.application,
             owner=self.user,
         )
         DAT.objects.create(
             reference="DAT-002",
             title="Technique",
             status=DATStatus.INSTRUCTION_ARCHITECTURE,
+            application=self.application,
             owner=self.user,
         )
         DAT.objects.create(
             reference="DAT-003",
             title="Referent",
             status=DATStatus.VALIDATION_REFERENT,
+            application=self.application,
             owner=self.user,
         )
 
@@ -110,12 +119,14 @@ class WorkflowBoardViewTests(TestCase):
             reference="DAT-OWNED",
             title="My DAT",
             status=DATStatus.DEMANDE_INITIALE,
+            application=self.application,
             owner=self.user,
         )
         DAT.objects.create(
             reference="DAT-FOREIGN",
             title="Other DAT",
             status=DATStatus.INSTRUCTION_ARCHITECTURE,
+            application=self.application,
             owner=self.other_user,
         )
 
@@ -135,11 +146,13 @@ class WorkflowBoardViewTests(TestCase):
             reference="DAT-ADMIN-1",
             title="Admin Visible",
             status=DATStatus.DEMANDE_INITIALE,
+            application=self.application,
         )
         DAT.objects.create(
             reference="DAT-ADMIN-2",
             title="Admin Visible 2",
             status=DATStatus.VALIDATION_REFERENT,
+            application=self.application,
             owner=self.other_user,
         )
 
@@ -157,6 +170,7 @@ class WorkflowBoardViewTests(TestCase):
             reference="DAT-BOARD-REF",
             title="Board Referent",
             status=DATStatus.VALIDATION_REFERENT,
+            application=self.application,
             owner=porteur,
         )
         DATParticipant.objects.create(dat=dat, role=porteur_role, user=porteur)
@@ -177,6 +191,7 @@ class WorkflowBoardViewTests(TestCase):
             reference="DAT-BOARD-HIDDEN",
             title="Board Hidden",
             status=DATStatus.VALIDATION_REFERENT,
+            application=self.application,
             owner=porteur,
         )
         DATParticipant.objects.create(dat=dat, role=porteur_role, user=porteur)
@@ -195,7 +210,12 @@ class WorkflowNotificationsViewTests(TestCase):
         self.user = get_user_model().objects.create_user(username="notif-user", password="pwd")
         self.client = Client()
         self.client.force_login(self.user)
-        self.application = Application.objects.create(code="app-notif", name="Application Notifications")
+        direction = get_default_business_direction()
+        self.application = Application.objects.create(
+            code="app-notif",
+            name="Application Notifications",
+            business_direction=direction,
+        )
         self.dat = DAT.objects.create(
             reference="DAT-NOTIF",
             title="DAT Notifications",
@@ -212,10 +232,17 @@ class WorkflowNotificationsViewTests(TestCase):
             performed_by_display="Notif User",
             details={"from": "Demande initiale", "to": "Validation du referent"},
         )
+        self.notification_type = NotificationType.objects.create(
+            title="Export PDF lancé",
+            level=NotificationType.LEVEL_INFO,
+        )
+        self.notification_message = NotificationMessage.objects.create(
+            content="Votre export PDF est en préparation.",
+        )
         self.user_notification = UserNotification.objects.create(
             user=self.user,
-            title="Export PDF lancé",
-            message="Votre export PDF est en préparation.",
+            notification_type=self.notification_type,
+            notification_message=self.notification_message,
             dat=self.dat,
             target_url="/dat/1/",
         )
@@ -234,3 +261,9 @@ class WorkflowNotificationsViewTests(TestCase):
 
         self.user_notification.refresh_from_db()
         self.assertIsNotNone(self.user_notification.viewed_at)
+def get_default_business_direction():
+    direction, _ = BusinessDirection.objects.get_or_create(
+        slug="direction-metier-test",
+        defaults={"name": "Direction Métier Test"},
+    )
+    return direction

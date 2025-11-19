@@ -5,8 +5,10 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.mixins import LoginRequiredMixin
 from material.frontend.registry import modules as module_registry
 from types import SimpleNamespace
-from .forms import UserForm
-from .models import Role, User
+from django.db.models import Count
+
+from .forms import BusinessDirectionForm, BusinessGroupForm, ProjectDirectionForm, UserForm
+from .models import BusinessDirection, BusinessGroup, ProjectDirection, Role, User
 from django.views.generic import ListView
 
 User = get_user_model()
@@ -97,11 +99,78 @@ class RoleViewSet(LoginRequiredMixin, ModelViewSet):
     detail_view_class = ModuleAwareDetailView
     layout = Layout(Row("name", "slug"))
 
+
+class ProjectDirectionViewSet(LoginRequiredMixin, ModelViewSet):
+    model = ProjectDirection
+    queryset = ProjectDirection.objects.all()
+    paginate_by = None
+    list_display = ("name", "slug")
+    list_display_links = ("name",)
+    ordering = ("name",)
+    search_fields = ("name", "slug")
+    form_class = ProjectDirectionForm
+    create_view_class = ModuleAwareCreateView
+    update_view_class = ModuleAwareUpdateView
+    detail_view_class = ModuleAwareDetailView
+    layout = Layout(Row("name", "slug"))
+
+
+class BusinessDirectionViewSet(LoginRequiredMixin, ModelViewSet):
+    model = BusinessDirection
+    queryset = BusinessDirection.objects.all()
+    paginate_by = None
+    list_display = ("name", "slug")
+    list_display_links = ("name",)
+    ordering = ("name",)
+    search_fields = ("name", "slug")
+    form_class = BusinessDirectionForm
+    create_view_class = ModuleAwareCreateView
+    update_view_class = ModuleAwareUpdateView
+    detail_view_class = ModuleAwareDetailView
+    layout = Layout(Row("name", "slug"))
+
+
+class BusinessGroupViewSet(LoginRequiredMixin, ModelViewSet):
+    model = BusinessGroup
+    queryset = BusinessGroup.objects.select_related("direction", "business_direction", "responsible").annotate(
+        user_total=Count("users")
+    )
+    paginate_by = None
+    list_display = ("name", "direction", "business_direction", "responsible", "is_default", "user_total")
+    list_display_links = ("name",)
+    ordering = ("name",)
+    search_fields = ("name", "direction__name", "business_direction__name", "responsible__username")
+    form_class = BusinessGroupForm
+    create_view_class = ModuleAwareCreateView
+    update_view_class = ModuleAwareUpdateView
+    detail_view_class = ModuleAwareDetailView
+    layout = Layout(
+        Fieldset("Groupe", Row("name", "direction", "business_direction")),
+        Fieldset("Responsable", Row("responsible")),
+    )
+
+    def user_total(self, obj):
+        return obj.member_count
+
+    user_total.short_description = "Utilisateurs"
+
+    def get_list_context_data(self, **kwargs):
+        context = super().get_list_context_data(**kwargs)
+        context["object_list"] = self.get_queryset()
+        return context
+
+
 class UserViewSet(LoginRequiredMixin, ModelViewSet):
     model = User
-    queryset = User.objects.all()
+    queryset = User.objects.select_related(
+        "business_group",
+        "business_group__direction",
+        "business_group__business_direction",
+        "business_group__responsible",
+        "role",
+    )
     paginate_by = None
-    list_display = ("username", "email", "first_name", "last_name", "role", "is_active")
+    list_display = ("username", "email", "first_name", "last_name", "business_group", "business_direction", "role", "is_active")
     list_display_links = ("username",)
     ordering = ("username",)
     search_fields = ("username", "email", "first_name", "last_name")
@@ -113,8 +182,9 @@ class UserViewSet(LoginRequiredMixin, ModelViewSet):
     layout = Layout(
         Fieldset("Compte", Row("username", "email")),
         Fieldset("Profil", Row("first_name", "last_name")),
+        Fieldset("Organisation", Row("business_group", "role")),
         Fieldset("Securite", Row("password1", "password2")),
-        Fieldset("Roles et droits", Row("role", "architect_referent", "is_active", "is_staff", "is_superuser")),
+        Fieldset("Roles et droits", Row("is_active", "is_staff", "is_superuser")),
     )
 
 
@@ -123,7 +193,45 @@ class RoleList(LoginRequiredMixin, ListView):
     template_name = "users/role_list.html"
     context_object_name = "object_list"
 
+
+class ProjectDirectionList(LoginRequiredMixin, ListView):
+    model = ProjectDirection
+    template_name = "users/project_direction_list.html"
+    context_object_name = "object_list"
+
+
+class BusinessDirectionList(LoginRequiredMixin, ListView):
+    model = BusinessDirection
+    template_name = "users/business_direction_list.html"
+    context_object_name = "object_list"
+
 class UserList(LoginRequiredMixin, ListView):
     model = User
     template_name = "users/user_list.html"
     context_object_name = "object_list"
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        return queryset.select_related(
+            "business_group",
+            "business_group__direction",
+            "business_group__business_direction",
+            "business_group__responsible",
+            "role",
+        )
+
+    def business_direction(self, obj):
+        group = getattr(obj, "business_group", None)
+        if group:
+            return group.business_direction
+        return None
+
+
+class BusinessGroupList(LoginRequiredMixin, ListView):
+    model = BusinessGroup
+    template_name = "users/group_list.html"
+    context_object_name = "object_list"
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        return queryset.select_related("direction", "responsible").annotate(user_total=Count("users"))

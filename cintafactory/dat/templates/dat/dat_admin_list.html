@@ -9,9 +9,14 @@
           <h5 style="margin:0;">Administration des DAT</h5>
           <p style="margin:0; color:#666;">{{ total_dats }} éléments</p>
         </div>
-        <a href="/dat/manage/dats/crud/add/" class="btn waves-effect waves-light cinta-btn-primary">
-          <i class="material-icons left" aria-hidden="true">add</i>Créer un DAT
-        </a>
+        <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
+          <a href="/dat/manage/dats/crud/add/" class="btn waves-effect waves-light cinta-btn-primary">
+            <i class="material-icons left" aria-hidden="true">add</i>Créer un DAT
+          </a>
+          <a href="{% url 'dat:import' %}" class="btn waves-effect waves-light cinta-btn-primary">
+            <i class="material-icons left" aria-hidden="true">publish</i>Importer un DAT
+          </a>
+        </div>
       </div>
       <div style="margin-top:1.5rem; overflow-x:auto;">
         <table class="highlight responsive-table">
@@ -20,6 +25,7 @@
               <th>Référence</th>
               <th>Titre</th>
               <th>Application</th>
+              <th>Direction métier</th>
               <th>Statut</th>
               <th>Responsable</th>
               <th>Créé le</th>
@@ -37,6 +43,7 @@
                 </td>
                 <td>{{ obj.title }}</td>
                 <td>{{ obj.application|default:"—" }}</td>
+                <td>{{ obj.business_direction|default:"—" }}</td>
                 <td>{{ obj.get_status_display }}</td>
                 <td>{{ obj.owner|default:"—" }}</td>
                 <td>{{ obj.created_at|date:"d/m/Y" }} à {{ obj.created_at|time:"H\\hi" }}</td>
@@ -48,7 +55,7 @@
               </tr>
             {% empty %}
               <tr>
-                <td colspan="8">Aucun DAT disponible.</td>
+                <td colspan="9">Aucun DAT disponible.</td>
               </tr>
             {% endfor %}
           </tbody>

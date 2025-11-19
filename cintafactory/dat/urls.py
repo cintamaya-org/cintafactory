@@ -51,6 +51,7 @@ urlpatterns = [
 
     # Dashboard
     path("manage/dats/dashboard/", views.DatDashboardView.as_view(), name="dashboard"),
+    path("manage/dats/import/", views.DatImportView.as_view(), name="import"),
 
     # CRUD
     path("manage/dats/crud/", views.DatAdminList.as_view(), name="admin_list"),

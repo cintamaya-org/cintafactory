@@ -2,6 +2,7 @@
   <td><a href="/dat/manage/dats/crud/{{ obj.pk }}/detail/">{{ obj.reference }}</a></td>
   <td>{{ obj.title }}</td>
   <td>{{ obj.application|default:"—" }}</td>
+  <td>{{ obj.business_direction|default:"—" }}</td>
   <td>{{ obj.get_status_display }}</td>
   <td>{{ obj.owner|default:"—" }}</td>
   <td>{{ obj.created_at|date:"Y-m-d H:i" }}</td>
