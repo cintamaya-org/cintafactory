@@ -456,6 +456,12 @@ class DATSubSectionForm(forms.Form):
 
 class DATImportForm(forms.Form):
     data_file = forms.FileField(label="Fichier JSON du DAT")
+    reference_override = forms.CharField(
+        label="Référence du DAT",
+        help_text="Laisser vide pour garder la référence présente dans le fichier importé.",
+        required=False,
+        widget=forms.TextInput(attrs={"class": "validate"}),
+    )
 
     def clean_data_file(self):
         uploaded = self.cleaned_data.get("data_file")
@@ -474,6 +480,16 @@ class DATImportForm(forms.Form):
         self.cleaned_data["payload"] = payload
         uploaded.seek(0)
         return uploaded
+
+    def clean_reference_override(self):
+        reference = (self.cleaned_data.get("reference_override") or "").strip()
+        if not reference:
+            return ""
+        if DAT.objects.filter(reference=reference).exists():
+            raise forms.ValidationError(
+                f"Un DAT avec la référence « {reference} » existe déjà. Merci d'en saisir une autre."
+            )
+        return reference
 
     @property
     def payload(self):

@@ -6,7 +6,7 @@
     <div style="display:flex; align-items:center; justify-content:space-between; gap:1rem;">
       <h5 style="margin:0;">Groupes métiers</h5>
 
-      {% if request.user.is_superuser or request.user.is_staff or request.user.role and request.user.role.slug == "comite-validation" %}
+{% if request.user.is_superuser %}
         <a href="crud/add/" class="btn waves-effect waves-light cinta-btn-primary">+ Ajouter un groupe</a>
       {% endif %}
     </div>
@@ -16,7 +16,7 @@
         <thead>
           <tr>
             <th>Nom</th>
-            <th>Direction projet</th>
+            <th>Direction technique</th>
             <th>Direction métier</th>
             <th>Responsable</th>
             <th>Par défaut</th>

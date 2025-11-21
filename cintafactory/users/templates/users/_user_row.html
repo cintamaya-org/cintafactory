@@ -1,9 +1,26 @@
 <tr>
-  <td>{{ obj.username }}</td>
+  <td>
+    {% if request.user.is_superuser %}
+      <a href="{% url 'users:user_detail' pk=obj.pk %}" style="font-weight:600;">
+        {{ obj.username }}
+      </a>
+    {% else %}
+      {{ obj.username }}
+    {% endif %}
+  </td>
   <td>{{ obj.email }}</td>
   <td>{{ obj.first_name }}</td>
   <td>{{ obj.last_name }}</td>
   <td>{% if obj.role %}{{ obj.role.name }}{% else %}—{% endif %}</td>
+  <td>
+    {% if obj.role and obj.role.technical_direction %}
+      {{ obj.role.technical_direction.name }}
+    {% elif obj.role and obj.role.is_admin_role %}
+      <span style="color:#888;">Transverse</span>
+    {% else %}
+      —
+    {% endif %}
+  </td>
   <td>
     {% if obj.business_group %}
       {{ obj.business_group.name }}
@@ -36,7 +53,7 @@
   </td>
   <td>{% if obj.is_active %}Oui{% else %}Non{% endif %}</td>
   <td>
-    {% if request.user.is_superuser or request.user.is_staff or request.user.role and request.user.role.slug == "comite-validation" %}
+    {% if request.user.is_superuser %}
       <a href="{% url 'users:user_change' pk=obj.pk %}" class="btn-flat waves-effect">Modifier</a>
     {% else %}
       <span title="Aucune permission" style="color:#888;">—</span>

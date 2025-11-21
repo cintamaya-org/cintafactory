@@ -6,8 +6,8 @@
     <div style="display:flex; align-items:center; justify-content:space-between; gap:1rem;">
       <h5 style="margin:0;">Utilisateurs</h5>
 
-      {# Bouton affiche pour superuser/staff/admin #}
-      {% if request.user.is_superuser or request.user.is_staff or request.user.role and request.user.role.slug == "comite-validation" %}
+      {# Bouton reserve aux super administrateurs #}
+      {% if request.user.is_superuser %}
         <a href="crud/add/" class="btn waves-effect waves-light cinta-btn-primary">+ Ajouter un utilisateur</a>
       {% endif %}
     </div>
@@ -21,9 +21,10 @@
             <th>Prenom</th>
             <th>Nom</th>
             <th>Role</th>
+            <th>Direction technique (rôle)</th>
             <th>Groupe</th>
             <th>Responsable du groupe</th>
-            <th>Direction projet</th>
+            <th>Direction technique (groupe)</th>
             <th>Direction métier</th>
             <th>Actif</th>
             <th style="width:1%; white-space:nowrap;">Actions</th>
@@ -34,16 +35,16 @@
     {% for obj in object_list %}
       {% include "users/_user_row.html" %}
     {% empty %}
-      <tr><td colspan="11" style="color:#666;">Aucun utilisateur pour le moment.</td></tr>
+      <tr><td colspan="12" style="color:#666;">Aucun utilisateur pour le moment.</td></tr>
     {% endfor %}
   {% elif page_obj %}
     {% for obj in page_obj.object_list %}
       {% include "users/_user_row.html" %}
     {% empty %}
-      <tr><td colspan="11" style="color:#666;">Aucun utilisateur pour le moment.</td></tr>
+      <tr><td colspan="12" style="color:#666;">Aucun utilisateur pour le moment.</td></tr>
     {% endfor %}
   {% else %}
-    <tr><td colspan="11" style="color:#666;">Aucun utilisateur pour le moment.</td></tr>
+    <tr><td colspan="12" style="color:#666;">Aucun utilisateur pour le moment.</td></tr>
   {% endif %}
 </tbody>
 

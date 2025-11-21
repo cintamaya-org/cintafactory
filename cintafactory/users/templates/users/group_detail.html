@@ -1,0 +1,169 @@
+{% extends "material/frontend/base_module.html" %}
+{% load static %}
+
+{% block extrahead %}
+  {{ block.super }}
+  <script src="{% static 'js/user_detail_graph.js' %}" defer></script>
+{% endblock %}
+
+{% block content %}
+{% with group=group_obj|default:object %}
+{% with members=member_list|default:group.users.all %}
+<div class="card cinta-card">
+  <div class="card-content">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+      <div>
+        <h5 style="margin:0;">Groupe métier</h5>
+        <p style="margin:0; color:#666;">Détails pour {{ group.name }}</p>
+      </div>
+      <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+        <a href="{% url 'users:businessgroup_change' pk=group.pk %}" class="btn waves-effect waves-light cinta-btn-primary">
+          <i class="material-icons left">edit</i>Modifier
+        </a>
+        <a href="{% url 'users:group_list' %}" class="btn-flat waves-effect">
+          <i class="material-icons left">arrow_back</i>Retour à la liste
+        </a>
+      </div>
+    </div>
+
+    <div class="divider" style="margin:1.5rem 0;"></div>
+
+    <div class="row">
+      <div class="col s12 m6">
+        <h6 style="font-weight:600;">Informations générales</h6>
+        <ul class="collection" style="border:none;">
+          <li class="collection-item"><strong>Nom :</strong> {{ group.name }}</li>
+          <li class="collection-item"><strong>Direction technique :</strong>
+            {% if group.direction %}{{ group.direction.name }}{% else %}—{% endif %}
+          </li>
+          <li class="collection-item"><strong>Direction métier :</strong>
+            {% if group.business_direction %}{{ group.business_direction.name }}{% else %}—{% endif %}
+          </li>
+          <li class="collection-item"><strong>Groupe par défaut :</strong> {% if group.is_default %}Oui{% else %}Non{% endif %}</li>
+          <li class="collection-item"><strong>Total membres :</strong> {{ group.member_count }}</li>
+        </ul>
+      </div>
+      <div class="col s12 m6">
+        <h6 style="font-weight:600;">Responsable</h6>
+        <ul class="collection" style="border:none;">
+          <li class="collection-item"><strong>Nom :</strong>
+            {% if group.responsible %}
+              {{ group.responsible.get_full_name|default:group.responsible.username }}
+            {% else %}
+              —
+            {% endif %}
+          </li>
+          <li class="collection-item"><strong>Email :</strong>
+            {% if group.responsible and group.responsible.email %}
+              {{ group.responsible.email }}
+            {% else %}
+              —
+            {% endif %}
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="divider" style="margin:1.5rem 0;"></div>
+
+    <div>
+      <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:0.5rem; align-items:center;">
+        <div>
+          <h6 style="font-weight:600; margin:0;">Dépendances du groupe</h6>
+          <p style="margin:0; color:#666;">Visualise les liens entre le groupe, ses directions et son responsable.</p>
+        </div>
+        <span style="font-size:0.85rem; color:#777;">Les éléments sont cliquables pour accéder au détail.</span>
+      </div>
+      <div id="group-dependency-graph"
+           class="user-relationship-graph"
+           data-graph-source="group-dependency-graph-data">
+      </div>
+    </div>
+
+    <div class="divider" style="margin:1.5rem 0;"></div>
+
+    <div>
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+        <h6 style="font-weight:600; margin:0;">Utilisateurs du groupe</h6>
+        <span style="color:#777;">{{ members|length }} utilisateur{% if members|length != 1 %}s{% endif %}</span>
+      </div>
+      <div style="margin-top:1rem; overflow-x:auto;">
+        <table class="highlight responsive-table">
+          <thead>
+            <tr>
+              <th>Utilisateur</th>
+              <th>Email</th>
+              <th>Rôle</th>
+              <th>Direction (rôle)</th>
+              <th>Actif</th>
+              <th style="width:1%; white-space:nowrap;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if members %}
+              {% for member in members %}
+                <tr>
+                  <td>{{ member.get_full_name|default:member.username }}</td>
+                  <td>{{ member.email|default:"—" }}</td>
+                  <td>{% if member.role %}{{ member.role.name }}{% else %}—{% endif %}</td>
+                  <td>
+                    {% if member.role and member.role.technical_direction %}
+                      {{ member.role.technical_direction.name }}
+                    {% elif member.role and member.role.is_admin_role %}
+                      Transverse
+                    {% else %}
+                      —
+                    {% endif %}
+                  </td>
+                  <td>{% if member.is_active %}Oui{% else %}Non{% endif %}</td>
+                  <td>
+                    <a href="{% url 'users:user_detail' pk=member.pk %}" class="btn-flat waves-effect">Voir</a>
+                  </td>
+                </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="6" style="color:#666; text-align:center;">Aucun utilisateur dans ce groupe.</td>
+              </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% if group_dependency_graph %}
+  {{ group_dependency_graph|json_script:"group-dependency-graph-data" }}
+  <script>
+    (function () {
+      function renderGroupGraph() {
+        var container = document.getElementById("group-dependency-graph");
+        var source = document.getElementById("group-dependency-graph-data");
+        if (!container || !source || (container && container.__userGraphReady)) {
+          return;
+        }
+        if (!window.CintaUserGraph || typeof window.CintaUserGraph.render !== "function") {
+          window.setTimeout(renderGroupGraph, 80);
+          return;
+        }
+        try {
+          var payload = JSON.parse(source.textContent);
+          window.CintaUserGraph.render(container, payload);
+          container.__userGraphReady = true;
+        } catch (err) {
+          console.error("Unable to render group dependency graph", err);
+        }
+      }
+
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", renderGroupGraph, { once: true });
+      } else {
+        renderGroupGraph();
+      }
+      document.addEventListener("turbolinks:load", renderGroupGraph);
+    })();
+  </script>
+{% endif %}
+{% endwith %}
+{% endwith %}
+{% endblock %}

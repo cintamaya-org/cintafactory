@@ -840,8 +840,9 @@ class DatImportView(ModuleContextMixin, DatManagerAccessMixin, FormView):
     def form_valid(self, form):
         importer = DATImportService(actor=self.request.user if self.request.user.is_authenticated else None)
         payload = form.payload or {}
+        reference_override = form.cleaned_data.get("reference_override") or None
         try:
-            result = importer.import_from_payload(payload)
+            result = importer.import_from_payload(payload, reference_override=reference_override)
         except DATImportError as exc:
             form.add_error(None, str(exc))
             return self.form_invalid(form)

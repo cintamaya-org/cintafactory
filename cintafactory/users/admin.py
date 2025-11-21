@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 
-from .models import BusinessDirection, ProjectDirection, BusinessGroup, Role, User
+from .models import BusinessDirection, TechnicalDirection, BusinessGroup, Role, User
 
 
 @admin.register(BusinessDirection)
@@ -11,8 +11,8 @@ class BusinessDirectionAdmin(admin.ModelAdmin):
     ordering = ("name",)
 
 
-@admin.register(ProjectDirection)
-class ProjectDirectionAdmin(admin.ModelAdmin):
+@admin.register(TechnicalDirection)
+class TechnicalDirectionAdmin(admin.ModelAdmin):
     list_display = ("name", "slug", "group_count")
     search_fields = ("name", "slug")
     ordering = ("name",)
@@ -38,11 +38,15 @@ class BusinessGroupAdmin(admin.ModelAdmin):
 
 @admin.register(Role)
 class RoleAdmin(admin.ModelAdmin):
-    list_display = ("name", "slug", "user_count")
-    search_fields = ("name", "slug")
+    list_display = ("name", "slug", "technical_direction", "is_admin_role", "user_count")
+    search_fields = ("name", "slug", "technical_direction__name")
+    list_filter = ("technical_direction", "is_admin_role")
     ordering = ("name",)
-    def user_count(self, obj): return obj.users.count()
-    user_count.short_description = "Users"
+
+    def user_count(self, obj):
+        return obj.users.count()
+
+    user_count.short_description = "Utilisateurs"
 
 @admin.register(User)
 class UserAdmin(DjangoUserAdmin):
@@ -75,10 +79,20 @@ class UserAdmin(DjangoUserAdmin):
         "last_name",
         "is_staff",
         "role",
+        "role_direction",
         "business_group",
         "business_direction",
     )
-    list_filter = ("is_staff", "is_superuser", "is_active", "groups", "role", "business_group", "business_group__business_direction")
+    list_filter = (
+        "is_staff",
+        "is_superuser",
+        "is_active",
+        "groups",
+        "role",
+        "role__technical_direction",
+        "business_group",
+        "business_group__business_direction",
+    )
     search_fields = ("username", "first_name", "last_name", "email")
     ordering = ("username",)
 
@@ -89,3 +103,13 @@ class UserAdmin(DjangoUserAdmin):
         return None
 
     business_direction.short_description = "Direction métier"
+
+    def role_direction(self, obj):
+        role = getattr(obj, "role", None)
+        if role and role.technical_direction:
+            return role.technical_direction
+        if role and role.is_admin_role:
+            return "Transverse"
+        return None
+
+    role_direction.short_description = "Direction technique (rôle)"

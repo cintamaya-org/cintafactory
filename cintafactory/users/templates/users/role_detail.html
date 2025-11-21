@@ -1,0 +1,167 @@
+{% extends "material/frontend/base_module.html" %}
+{% load static %}
+
+{% block extrahead %}
+  {{ block.super }}
+  <script src="{% static 'js/user_detail_graph.js' %}" defer></script>
+{% endblock %}
+
+{% block content %}
+{% with role=role_obj|default:object %}
+{% with members=member_list|default:role.users.all %}
+{% with members_count=members|length %}
+<div class="card cinta-card">
+  <div class="card-content">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+      <div>
+        <h5 style="margin:0;">Rôle</h5>
+        <p style="margin:0; color:#666;">Détails pour {{ role.name }}</p>
+      </div>
+      <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+        <a href="{% url 'users:role_change' pk=role.pk %}" class="btn waves-effect waves-light cinta-btn-primary">
+          <i class="material-icons left">edit</i>Modifier
+        </a>
+        <a href="{% url 'users:role_list' %}" class="btn-flat waves-effect">
+          <i class="material-icons left">arrow_back</i>Retour à la liste
+        </a>
+      </div>
+    </div>
+
+    <div class="divider" style="margin:1.5rem 0;"></div>
+
+    <div class="row">
+      <div class="col s12 m6">
+        <h6 style="font-weight:600;">Informations générales</h6>
+        <ul class="collection" style="border:none;">
+          <li class="collection-item"><strong>Nom :</strong> {{ role.name }}</li>
+          <li class="collection-item"><strong>Slug :</strong> {{ role.slug }}</li>
+          <li class="collection-item"><strong>Direction technique :</strong>
+            {% if role.technical_direction %}
+              {{ role.technical_direction.name }}
+            {% elif role.is_admin_role %}
+              Transverse
+            {% else %}
+              —
+            {% endif %}
+          </li>
+          <li class="collection-item"><strong>Type :</strong>
+            {% if role.is_admin_role %}Administrateur{% else %}Direction{% endif %}
+          </li>
+        </ul>
+      </div>
+      <div class="col s12 m6">
+        <h6 style="font-weight:600;">Statistiques</h6>
+        <ul class="collection" style="border:none;">
+          <li class="collection-item"><strong>Utilisateurs rattachés :</strong> {{ members_count }}</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="divider" style="margin:1.5rem 0;"></div>
+
+    <div>
+      <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:0.5rem; align-items:center;">
+        <div>
+          <h6 style="font-weight:600; margin:0;">Dépendances du rôle</h6>
+          <p style="margin:0; color:#666;">Visualise le lien entre le rôle et sa direction technique.</p>
+        </div>
+        <span style="font-size:0.85rem; color:#777;">Les éléments sont cliquables pour accéder au détail.</span>
+      </div>
+      <div id="role-dependency-graph"
+           class="user-relationship-graph"
+           data-graph-source="role-dependency-graph-data">
+      </div>
+    </div>
+
+    <div class="divider" style="margin:1.5rem 0;"></div>
+
+    <div>
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+        <h6 style="font-weight:600; margin:0;">Utilisateurs avec ce rôle</h6>
+        <span style="color:#777;">{{ members_count }} utilisateur{% if members_count != 1 %}s{% endif %}</span>
+      </div>
+      <div style="margin-top:1rem; overflow-x:auto;">
+        <table class="highlight responsive-table">
+          <thead>
+            <tr>
+              <th>Utilisateur</th>
+              <th>Email</th>
+              <th>Groupe</th>
+              <th>Direction (groupe)</th>
+              <th>Actif</th>
+              <th style="width:1%; white-space:nowrap;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if members %}
+              {% for member in members %}
+                <tr>
+                  <td>{{ member.get_full_name|default:member.username }}</td>
+                  <td>{{ member.email|default:"—" }}</td>
+                  <td>
+                    {% if member.business_group %}
+                      {{ member.business_group.name }}
+                    {% else %}
+                      —
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if member.business_group and member.business_group.direction %}
+                      {{ member.business_group.direction.name }}
+                    {% else %}
+                      —
+                    {% endif %}
+                  </td>
+                  <td>{% if member.is_active %}Oui{% else %}Non{% endif %}</td>
+                  <td>
+                    <a href="{% url 'users:user_detail' pk=member.pk %}" class="btn-flat waves-effect">Voir</a>
+                  </td>
+                </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="6" style="color:#666; text-align:center;">Aucun utilisateur pour ce rôle.</td>
+              </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% if role_dependency_graph %}
+  {{ role_dependency_graph|json_script:"role-dependency-graph-data" }}
+  <script>
+    (function () {
+      function renderRoleGraph() {
+        var container = document.getElementById("role-dependency-graph");
+        var source = document.getElementById("role-dependency-graph-data");
+        if (!container || !source || (container && container.__userGraphReady)) {
+          return;
+        }
+        if (!window.CintaUserGraph || typeof window.CintaUserGraph.render !== "function") {
+          window.setTimeout(renderRoleGraph, 80);
+          return;
+        }
+        try {
+          var payload = JSON.parse(source.textContent);
+          window.CintaUserGraph.render(container, payload);
+          container.__userGraphReady = true;
+        } catch (err) {
+          console.error("Unable to render role dependency graph", err);
+        }
+      }
+
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", renderRoleGraph, { once: true });
+      } else {
+        renderRoleGraph();
+      }
+      document.addEventListener("turbolinks:load", renderRoleGraph);
+    })();
+  </script>
+{% endif %}
+{% endwith %}
+{% endwith %}
+{% endwith %}
+{% endblock %}

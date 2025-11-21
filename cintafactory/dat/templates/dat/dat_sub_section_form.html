@@ -22,7 +22,6 @@
         <p style="margin:0.35rem 0 0; color:#616161;">{{ sub_section.description }}</p>
       {% endif %}
     </div>
-    <span class="chip amber lighten-4" style="margin:0;">Mode édition</span>
   </div>
   <form method="post" action="{{ form_action }}" novalidate class="dat-sub-section-edit-form" data-sub-section-form="{{ sub_section.slug }}">
     {% csrf_token %}
@@ -65,18 +64,151 @@
     {% empty %}
       <p style="margin:0;">Aucun champ à éditer.</p>
     {% endfor %}
-    <div style="display:flex; flex-wrap:wrap; gap:0.75rem; justify-content:flex-end; margin-top:1.5rem;">
-      <button type="submit" class="btn waves-effect waves-light cinta-btn-primary">
-        <i class="material-icons left" aria-hidden="true">save</i>
-        Enregistrer
-      </button>
-      <button type="button" class="btn-flat waves-effect dat-sub-section-cancel-btn">
-        Annuler
-      </button>
+    <div class="dat-sub-section-edit-actions" data-actions-card="true">
+      <div class="dat-sub-section-edit-actions__card">
+        <div class="dat-sub-section-edit-actions__content">
+          <div class="dat-sub-section-edit-actions__info">
+            {% if part_icon %}
+              <span class="{{ part_icon.variant }} dat-section-part-icon dat-sub-section-edit-actions__icon" aria-hidden="true">{{ part_icon.name }}</span>
+            {% endif %}
+            <div class="dat-sub-section-edit-actions__info-text">
+              <span class="dat-sub-section-edit-actions__info-label">Mode édition</span>
+              <span class="dat-sub-section-edit-actions__info-title">{{ sub_section.title }}</span>
+            </div>
+          </div>
+          <div class="dat-sub-section-edit-actions__buttons">
+            <button type="submit" class="btn waves-effect waves-light cinta-btn-primary dat-sub-section-edit-actions__primary">
+              <i class="material-icons left" aria-hidden="true">save</i>
+              Enregistrer
+            </button>
+            <button type="button" class="btn-flat waves-effect dat-sub-section-cancel-btn dat-sub-section-edit-actions__cancel">
+              Annuler
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   </form>
 </div>
 {% endwith %}
+
+<script>
+(function () {
+  function ensureNamespace() {
+    if (window.CintaDatEditActionsCard) {
+      return window.CintaDatEditActionsCard;
+    }
+    if (typeof window.IntersectionObserver === "undefined") {
+      window.CintaDatEditActionsCard = { scan: function () {} };
+      return window.CintaDatEditActionsCard;
+    }
+    const floatingStates = new Set();
+    const requestFrame = window.requestAnimationFrame
+      ? window.requestAnimationFrame.bind(window)
+      : (callback) => window.setTimeout(callback, 16);
+    let resizeScheduled = false;
+
+    function updateFloatingPosition(state) {
+      if (
+        !state ||
+        !state.container ||
+        !state.inner ||
+        !document.body.contains(state.container)
+      ) {
+        floatingStates.delete(state);
+        return;
+      }
+      const rect = state.container.getBoundingClientRect();
+      state.inner.style.width = rect.width + "px";
+      state.inner.style.left = rect.left + "px";
+    }
+
+    function scheduleResizeUpdate() {
+      if (!floatingStates.size || resizeScheduled) {
+        return;
+      }
+      resizeScheduled = true;
+      requestFrame(() => {
+        floatingStates.forEach(updateFloatingPosition);
+        resizeScheduled = false;
+      });
+    }
+
+    window.addEventListener("resize", scheduleResizeUpdate);
+
+    function setFloating(state, shouldFloat) {
+      if (
+        !state ||
+        !state.container ||
+        !state.inner ||
+        !document.body.contains(state.container)
+      ) {
+        floatingStates.delete(state);
+        return;
+      }
+      if (state.isFloating === shouldFloat) {
+        if (shouldFloat) {
+          updateFloatingPosition(state);
+        }
+        return;
+      }
+      state.isFloating = shouldFloat;
+      if (shouldFloat) {
+        floatingStates.add(state);
+        state.container.style.minHeight = state.inner.offsetHeight + "px";
+        state.container.setAttribute("data-actions-floating", "1");
+        state.inner.classList.add("is-floating");
+        updateFloatingPosition(state);
+      } else {
+        floatingStates.delete(state);
+        state.container.removeAttribute("data-actions-floating");
+        state.container.style.minHeight = "";
+        state.inner.classList.remove("is-floating");
+        state.inner.style.left = "";
+        state.inner.style.width = "";
+      }
+    }
+
+    function initCard(card) {
+      if (!card || card.dataset.actionsCardReady === "1") {
+        return;
+      }
+      const inner = card.querySelector(".dat-sub-section-edit-actions__card");
+      if (!inner) {
+        return;
+      }
+      card.dataset.actionsCardReady = "1";
+      const state = {
+        container: card,
+        inner,
+        observer: null,
+        isFloating: false,
+      };
+      const observer = new IntersectionObserver(([entry]) => {
+        if (!entry) {
+          return;
+        }
+        const fullyVisible = entry.intersectionRatio >= 0.999;
+        setFloating(state, !fullyVisible);
+      }, {threshold: [0.999, 1]});
+      observer.observe(card);
+      state.observer = observer;
+    }
+
+    function scan() {
+      document.querySelectorAll("[data-actions-card]").forEach(initCard);
+    }
+
+    window.CintaDatEditActionsCard = { scan };
+    return window.CintaDatEditActionsCard;
+  }
+
+  const runtime = ensureNamespace();
+  if (runtime && typeof runtime.scan === "function") {
+    runtime.scan();
+  }
+})();
+</script>
 
 {% if sub_section.slug == "schemas" %}
 <script>

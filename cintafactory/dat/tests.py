@@ -10,7 +10,7 @@ from django.urls import reverse
 from cintafactory.logging_utils import bind_request_context, clear_request_context
 
 from diagrams.models import Diagram
-from users.models import BusinessDirection, Role
+from users.models import BusinessDirection, Role, TechnicalDirection
 
 from .constants import (
     DAT_PORTEUR_ROLE_SLUG,
@@ -30,6 +30,27 @@ def get_default_business_direction():
         defaults={"name": "Direction Métier Test"},
     )
     return direction
+
+
+def get_default_technical_direction():
+    direction, _ = TechnicalDirection.objects.get_or_create(
+        slug="direction-technique-test",
+        defaults={"name": "Direction Technique Test"},
+    )
+    return direction
+
+
+def create_role(slug: str, name: str) -> Role:
+    return Role.objects.create(name=name, slug=slug, technical_direction=get_default_technical_direction())
+
+
+def ensure_role(slug: str, name: str) -> Role:
+    defaults = {"name": name, "technical_direction": get_default_technical_direction()}
+    role, created = Role.objects.get_or_create(slug=slug, defaults=defaults)
+    if not created and role.technical_direction_id is None:
+        role.technical_direction = defaults["technical_direction"]
+        role.save(update_fields=["technical_direction"])
+    return role
 
 
 class SmokeTest(TestCase):
@@ -88,7 +109,7 @@ class ApplicationOptionsViewTest(TestCase):
             password="pwd",
             is_staff=True,
         )
-        self.role_porteur = Role.objects.create(name="Porteur de la demande", slug="porteur-demande")
+        self.role_porteur = create_role("porteur-demande", "Porteur de la demande")
         self.porteur = get_user_model().objects.create_user(
             username="porteur",
             password="pwd",
@@ -124,7 +145,7 @@ class DatCreationPermissionTest(TestCase):
     def setUp(self) -> None:
         self.dat_add_url = "/dat/manage/dats/crud/add/"
         self.application_add_url = "/dat/manage/applications/crud/add/"
-        self.role_porteur = Role.objects.create(name="Porteur de la demande", slug="porteur-demande")
+        self.role_porteur = create_role("porteur-demande", "Porteur de la demande")
         self.porteur = get_user_model().objects.create_user(
             username="porteur-creator",
             password="pwd",
@@ -214,7 +235,7 @@ class DatImportViewTest(TestCase):
             is_staff=True,
         )
         self.regular = get_user_model().objects.create_user(username="import-user", password="pwd")
-        self.porteur_role = Role.objects.create(name="Porteur", slug=DAT_PORTEUR_ROLE_SLUG)
+        self.porteur_role = create_role(DAT_PORTEUR_ROLE_SLUG, "Porteur")
         self.porteur = get_user_model().objects.create_user(username="porteur-import", password="pwd")
         self.porteur.role = self.porteur_role
         self.porteur.save(update_fields=["role"])
@@ -276,13 +297,36 @@ class DatImportViewTest(TestCase):
         )
         self.assertEqual(part.value, self.sample_part_value)
 
+    def test_allows_reference_override(self):
+        payload = self._build_payload()
+        DAT.objects.create(
+            reference=payload["dat"]["reference"],
+            title="Existing DAT",
+            application=self.application,
+            status=DATStatus.DEMANDE_INITIALE,
+            owner=self.porteur,
+        )
+        upload = SimpleUploadedFile(
+            "dat.json",
+            json.dumps(payload).encode("utf-8"),
+            content_type="application/json",
+        )
+        override_reference = "DAT-IMPORT-NEW"
+        self.client.force_login(self.admin)
+        response = self.client.post(
+            self.url,
+            {"data_file": upload, "reference_override": override_reference},
+        )
+        self.assertEqual(response.status_code, 302)
+        imported = DAT.objects.get(reference=override_reference)
+        self.assertEqual(imported.title, payload["dat"]["title"])
+
 
 class DatVisibilityRestrictionTest(TestCase):
     def setUp(self) -> None:
         self.roles = {}
         for slug, label in DAT_REQUIRED_PARTICIPANT_ROLE_LABELS.items():
-            role, _ = Role.objects.get_or_create(slug=slug, defaults={"name": label})
-            self.roles[slug] = role
+            self.roles[slug] = ensure_role(slug, label)
         self.owner = get_user_model().objects.create_user(username="owner-user", password="pwd")
         self.other = get_user_model().objects.create_user(username="other-user", password="pwd")
         self.admin = get_user_model().objects.create_user(
@@ -460,7 +504,7 @@ class DatParticipantAssignmentFormTest(TestCase):
         self.roles: dict[str, Role] = {}
         for slug in DAT_REQUIRED_PARTICIPANT_ROLE_SLUGS:
             label = DAT_REQUIRED_PARTICIPANT_ROLE_LABELS.get(slug, slug)
-            self.roles[slug] = Role.objects.create(name=label, slug=slug)
+            self.roles[slug] = create_role(slug, label)
         self.users: dict[str, object] = {}
         User = get_user_model()
         for slug in DAT_REQUIRED_PARTICIPANT_ROLE_SLUGS:
@@ -681,8 +725,7 @@ class DatSectionIntegrationTest(TestCase):
             ("infra-exploitation", "Infra / Exploitation"),
         ]
         for slug, name in role_defs:
-            role, _ = Role.objects.get_or_create(slug=slug, defaults={"name": name})
-            self.roles[slug] = role
+            self.roles[slug] = ensure_role(slug, name)
 
         User = get_user_model()
         self.porteur = User.objects.create_user(username="sections-porteur", password="pwd")

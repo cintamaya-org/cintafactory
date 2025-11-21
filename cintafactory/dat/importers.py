@@ -40,13 +40,16 @@ class DATImportService:
         self._missing_sub_sections: set[Tuple[str, str]] = set()
         self._missing_parts: set[Tuple[str, str, str]] = set()
 
-    def import_from_payload(self, payload: Dict[str, Any]) -> DATImportResult:
+    def import_from_payload(self, payload: Dict[str, Any], *, reference_override: str | None = None) -> DATImportResult:
         dat_data = payload.get("dat")
         if not isinstance(dat_data, dict):
             raise DATImportError("Fichier invalide: section \"dat\" manquante.")
 
-        reference = (dat_data.get("reference") or "").strip()
+        override_reference = (reference_override or "").strip()
+        reference = override_reference or (dat_data.get("reference") or "").strip()
         if not reference:
+            if override_reference:
+                raise DATImportError("La référence du DAT fournie est vide.")
             raise DATImportError("La référence du DAT est absente du fichier importé.")
         if DAT.objects.filter(reference=reference).exists():
             raise DATImportError(f"Un DAT avec la référence « {reference} » existe déjà.")

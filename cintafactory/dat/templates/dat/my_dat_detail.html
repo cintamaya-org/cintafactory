@@ -447,6 +447,19 @@ document.addEventListener("DOMContentLoaded", () => {
     enableAllEditButtons();
   }
 
+  function cancelActiveInlineEdit() {
+    if (!editState.slug) {
+      return;
+    }
+    const activeContainer = document.querySelector(`.dat-sub-section[data-sub-section-slug="${editState.slug}"]`);
+    if (activeContainer) {
+      restoreView(activeContainer);
+    } else {
+      editState.slug = null;
+      enableAllEditButtons();
+    }
+  }
+
   function attachInlineFormHandlers(container, slug) {
     if (window.CintaDatRepeater && typeof window.CintaDatRepeater.scan === "function") {
       window.CintaDatRepeater.scan();
@@ -568,6 +581,13 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   document.addEventListener("click", (event) => {
+    const sectionLink = event.target.closest(".dat-section-link");
+    if (sectionLink) {
+      cancelActiveInlineEdit();
+    }
+  });
+
+  document.addEventListener("click", (event) => {
     const viewerBtn = event.target.closest(".dat-viewer-trigger");
     if (!viewerBtn) {
       return;
@@ -580,6 +600,9 @@ document.addEventListener("DOMContentLoaded", () => {
       alert("Affichage du diagramme indisponible pour le moment.");
     }
   });
+
+  document.addEventListener("turbolinks:before-visit", cancelActiveInlineEdit);
+  document.addEventListener("turbolinks:before-cache", cancelActiveInlineEdit);
 });
 </script>
 {% endblock %}

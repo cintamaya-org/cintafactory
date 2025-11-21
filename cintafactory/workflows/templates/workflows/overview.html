@@ -12,7 +12,6 @@
     background: linear-gradient(90deg, #f8f8f8, #ffffff);
     padding: 2rem 2.5rem;
     border-radius: 16px;
-    margin-bottom: 2rem;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
   }
   .wf-hero h1 {
@@ -55,7 +54,7 @@
     color: #333;
   }
   .wf-lifecycle {
-    margin-top: 2.5rem;
+    margin-top: 0;
     background: #fff;
     border-radius: 16px;
     padding: 2rem;
@@ -121,6 +120,11 @@
     stroke-width: 3;
     transition: fill 0.2s ease;
   }
+  .wf-node__badge {
+    fill: var(--badge-color, #43a047);
+    stroke: #ffffff;
+    stroke-width: 3;
+  }
   .wf-flow-notes {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -147,6 +151,10 @@
     top: 0;
     left: 0;
   }
+  .wf-tooltip--text {
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
   .wf-tooltip--visible {
     opacity: 1;
     transform: scale(1);
@@ -168,6 +176,9 @@
   .wf-tooltip__text {
     font-size: 0.9rem;
     font-weight: 500;
+    text-align: left;
+    width: 100%;
+    white-space: pre-line;
   }
 .wf-node text {
     fill: #fff;
@@ -191,8 +202,91 @@
       mauris vulputate feugiat. Euismod scelerisque commodo volutpat tellus luctus at sem sodales, dui torquent feugiat varius natoque nunc. Mauris auctor diam erat fusce phasellus proin purus class quisque ullamcorper morbi aliquam fames, primis molestie ad nibh iaculis fermentu
     </p>
   </div>
+  <div class="wf-lifecycle">
 
-  <div class="wf-steps">
+    <div class="wf-map-wrapper" style="margin-top:2rem;">
+      <svg class="wf-map wf-map--compact" viewBox="0 0 1800 400" role="img" aria-label="Flux linéaire simplifié">
+        <!-- Linear links -->
+        <path class="wf-link wf-link--pulse" d="M230 180 L490 180"></path>
+        <path class="wf-link" d="M630 180 L890 180"></path>
+        <path class="wf-link wf-link--pulse" d="M1030 180 L1290 180"></path>
+        <path class="wf-link" d="M1430 180 L1590 180"></path>
+
+        <!-- Link chips -->
+        <g class="wf-chip" data-tooltip="Phase 1 → 2" transform="translate(360,150)">
+          <rect x="-90" y="-20" width="180" height="40" rx="20" ry="20"></rect>
+          <text class="wf-link-label" style="font-size:0.95rem;">Phase 1 → 2</text>
+        </g>
+        <g class="wf-chip" data-tooltip="Phase 2 → 3" transform="translate(760,150)">
+          <rect x="-90" y="-20" width="180" height="40" rx="20" ry="20"></rect>
+          <text class="wf-link-label" style="font-size:0.95rem;">Phase 2 → 3</text>
+        </g>
+        <g class="wf-chip" data-tooltip="Phase 3 → 4" transform="translate(1160,150)">
+          <rect x="-90" y="-20" width="180" height="40" rx="20" ry="20"></rect>
+          <text class="wf-link-label" style="font-size:0.95rem;">Phase 3 → 4</text>
+        </g>
+        <g class="wf-chip" data-tooltip="Phase 4 → 5" transform="translate(1510,150)">
+          <rect x="-90" y="-20" width="180" height="40" rx="20" ry="20"></rect>
+          <text class="wf-link-label" style="font-size:0.95rem;">Phase 4 → 5</text>
+        </g>
+
+        <!-- Nodes -->
+        <g class="wf-node" transform="translate(160,180)" style="--badge-color:#d30000ff;">
+          <circle class="wf-dot" data-tooltip="Phase 1" cx="0" cy="0" r="70" fill="#4c83ff"></circle>
+          <circle class="wf-node__badge" cx="45" cy="-45" r="22" ></circle>
+          <text x="0" y="0" font-size="1.05rem">Phase 1</text>
+        </g>
+        <g class="wf-node" transform="translate(560,180)" style="--badge-color:#43a047;">
+          <circle class="wf-dot" data-tooltip="Phase 2" cx="0" cy="0" r="70" fill="#3f51b5"></circle>
+          <circle class="wf-node__badge" cx="45" cy="-45" r="22"></circle>
+          <text x="0" y="0" font-size="1.05rem">Phase 2</text>
+        </g>
+        <g class="wf-node" transform="translate(960,180)" style="--badge-color:#43a047;">
+          <circle class="wf-dot" data-tooltip="Phase 3" cx="0" cy="0" r="70" fill="#7b1fa2"></circle>
+          <circle class="wf-node__badge" cx="45" cy="-45" r="22"></circle>
+          <text x="0" y="0" font-size="1.05rem">Phase 3</text>
+        </g>
+        <g class="wf-node" transform="translate(1360,180)" style="--badge-color:#d30000ff;">
+          <circle class="wf-dot" data-tooltip="Phase 4" cx="0" cy="0" r="70" fill="#d30000ff"></circle>
+          <circle class="wf-node__badge" cx="45" cy="-45" r="22"></circle>
+          <text x="0" y="0" font-size="1.05rem">Phase 4</text>
+        </g>
+        <g class="wf-node" transform="translate(1660,180)" style="--badge-color:#d30000ff;">
+          <circle class="wf-dot" data-tooltip="Phase 5" cx="0" cy="0" r="70" fill="#43a047"></circle>
+          <circle class="wf-node__badge" cx="45" cy="-45" r="22"></circle>
+          <text x="0" y="0" font-size="1.05rem">Phase 5</text>
+        </g>
+      </svg>
+    </div>
+
+    <div id="wf-tooltip" class="wf-tooltip" hidden>
+      <div class="wf-tooltip__spinner">
+        {% include "components/_loading_spinner.html" %}
+      </div>
+      <span class="wf-tooltip__text" hidden></span>
+    </div>
+
+    <div class="wf-flow-notes">
+      <div class="wf-note">
+        <strong>Blocage</strong>
+        <p>Un retour métier ou un complément d'information est requis avant de poursuivre l'instruction.</p>
+      </div>
+      <div class="wf-note">
+        <strong>Réserve</strong>
+        <p>Les valideurs posent des réserves qui doivent être levées pour atteindre le statut «&nbsp;Validée&nbsp;».</p>
+      </div>
+      <div class="wf-note">
+        <strong>Refus</strong>
+        <p>Si l'un des valideurs sélectionne «&nbsp;Refusée&nbsp;», l'affaire sort du flux de validation.</p>
+      </div>
+      <div class="wf-note">
+        <strong>Procès-verbal</strong>
+        <p>Lorsque tous les valideurs confirment la décision, le PV est complété et l'affaire est classée.</p>
+      </div>
+    </div>
+</div>
+
+<div class="wf-steps">
     <div class="wf-step">
       <h3>Initialisation</h3>
       <strong>LOREM 1</strong>
@@ -231,84 +325,6 @@
     </div>
   </div>
 
-  <div class="wf-lifecycle">
-
-    <div class="wf-map-wrapper" style="margin-top:2rem;">
-      <svg class="wf-map wf-map--compact" viewBox="0 0 1800 400" role="img" aria-label="Flux linéaire simplifié">
-        <!-- Linear links -->
-        <path class="wf-link wf-link--pulse" d="M230 180 L490 180"></path>
-        <path class="wf-link" d="M630 180 L890 180"></path>
-        <path class="wf-link wf-link--pulse" d="M1030 180 L1290 180"></path>
-        <path class="wf-link" d="M1430 180 L1590 180"></path>
-
-        <!-- Link chips -->
-        <g class="wf-chip" data-tooltip="Phase 1 → 2" transform="translate(360,150)">
-          <rect x="-90" y="-20" width="180" height="40" rx="20" ry="20"></rect>
-          <text class="wf-link-label" style="font-size:0.95rem;">Phase 1 → 2</text>
-        </g>
-        <g class="wf-chip" data-tooltip="Phase 2 → 3" transform="translate(760,150)">
-          <rect x="-90" y="-20" width="180" height="40" rx="20" ry="20"></rect>
-          <text class="wf-link-label" style="font-size:0.95rem;">Phase 2 → 3</text>
-        </g>
-        <g class="wf-chip" data-tooltip="Phase 3 → 4" transform="translate(1160,150)">
-          <rect x="-90" y="-20" width="180" height="40" rx="20" ry="20"></rect>
-          <text class="wf-link-label" style="font-size:0.95rem;">Phase 3 → 4</text>
-        </g>
-        <g class="wf-chip" data-tooltip="Phase 4 → 5" transform="translate(1510,150)">
-          <rect x="-90" y="-20" width="180" height="40" rx="20" ry="20"></rect>
-          <text class="wf-link-label" style="font-size:0.95rem;">Phase 4 → 5</text>
-        </g>
-
-        <!-- Nodes -->
-        <g class="wf-node" transform="translate(160,180)">
-          <circle class="wf-dot" data-tooltip="Phase 1" cx="0" cy="0" r="70" fill="#4c83ff"></circle>
-          <text x="0" y="0" font-size="1.05rem">Phase 1</text>
-        </g>
-        <g class="wf-node" transform="translate(560,180)">
-          <circle class="wf-dot" data-tooltip="Phase 2" cx="0" cy="0" r="70" fill="#3f51b5"></circle>
-          <text x="0" y="0" font-size="1.05rem">Phase 2</text>
-        </g>
-        <g class="wf-node" transform="translate(960,180)">
-          <circle class="wf-dot" data-tooltip="Phase 3" cx="0" cy="0" r="70" fill="#7b1fa2"></circle>
-          <text x="0" y="0" font-size="1.05rem">Phase 3</text>
-        </g>
-        <g class="wf-node" transform="translate(1360,180)">
-          <circle class="wf-dot" data-tooltip="Phase 4" cx="0" cy="0" r="70" fill="#f9a825"></circle>
-          <text x="0" y="0" font-size="1.05rem">Phase 4</text>
-        </g>
-        <g class="wf-node" transform="translate(1660,180)">
-          <circle class="wf-dot" data-tooltip="Phase 5" cx="0" cy="0" r="70" fill="#43a047"></circle>
-          <text x="0" y="0" font-size="1.05rem">Phase 5</text>
-        </g>
-      </svg>
-    </div>
-
-    <div id="wf-tooltip" class="wf-tooltip" hidden>
-      <div class="wf-tooltip__spinner">
-        {% include "components/_loading_spinner.html" %}
-      </div>
-      <span class="wf-tooltip__text" hidden></span>
-    </div>
-
-    <div class="wf-flow-notes">
-      <div class="wf-note">
-        <strong>Blocage</strong>
-        <p>Un retour métier ou un complément d'information est requis avant de poursuivre l'instruction.</p>
-      </div>
-      <div class="wf-note">
-        <strong>Réserve</strong>
-        <p>Les valideurs posent des réserves qui doivent être levées pour atteindre le statut «&nbsp;Validée&nbsp;».</p>
-      </div>
-      <div class="wf-note">
-        <strong>Refus</strong>
-        <p>Si l'un des valideurs sélectionne «&nbsp;Refusée&nbsp;», l'affaire sort du flux de validation.</p>
-      </div>
-      <div class="wf-note">
-        <strong>Procès-verbal</strong>
-        <p>Lorsque tous les valideurs confirment la décision, le PV est complété et l'affaire est classée.</p>
-      </div>
-    </div>
-</div>
 </div>
 
 <script>
@@ -349,6 +365,7 @@
       }
       activeTarget = null;
       tooltip.classList.remove("wf-tooltip--visible");
+      tooltip.classList.remove("wf-tooltip--text");
       tooltip.hidden = true;
       spinner.hidden = false;
       textNode.hidden = true;
@@ -363,6 +380,7 @@
       activeTarget = target;
       spinner.hidden = false;
       textNode.hidden = true;
+      tooltip.classList.remove("wf-tooltip--text");
       tooltip.hidden = false;
       requestAnimationFrame(function () {
         tooltip.classList.add("wf-tooltip--visible");
@@ -376,8 +394,10 @@
           return;
         }
         spinner.hidden = true;
-        textNode.textContent = target.getAttribute("data-tooltip") || "Information";
+        var tip = target.getAttribute("data-tooltip") || "Information";
+        textNode.textContent = "Exmaple action blablalldfsodsjfdd\nexemple user : bill bille \n12-10-2001\n\ntra laoreet justo gravida himenaeos tortor. Eleifend senectus platea dictumst luctus massa magnis tristique cras taciti maecenas, magna felis metus dis augue facilisis bibendum elementum morbi. Semper risus condimentum porttitor netus pharetra congue nam, metus natoque maecenas tortor sapien praesent, turpis consequat\n\n" + tip;
         textNode.hidden = false;
+        tooltip.classList.add("wf-tooltip--text");
       }, 2000);
     }
 
@@ -413,13 +433,15 @@
       });
     }
 
-    document.querySelectorAll(".wf-dot").forEach(function (dot) {
-      attachHover(dot, dot);
+    document.querySelectorAll(".wf-node").forEach(function (node) {
+      var reference = node.querySelector(".wf-dot") || node.querySelector(".wf-node__badge") || node;
+      attachHover(node, reference);
     });
 
     document.querySelectorAll(".wf-chip").forEach(function (chip) {
       attachHover(chip, chip);
     });
+
 
     tooltip.addEventListener("mouseenter", function () {
       insideTrigger = true;

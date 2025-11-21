@@ -5,7 +5,7 @@ from django.test import Client, TestCase
 from django.urls import reverse
 
 from dat.models import Application, DAT, DATParticipant, DATStatus, DATHistory, DATHistoryAction
-from users.models import BusinessDirection, Role
+from users.models import BusinessDirection, Role, TechnicalDirection
 from .models import NotificationMessage, NotificationType, Workflow, UserNotification
 from .notifications import SESSION_SEEN_KEY
 from .sync import sync_workflow_definitions
@@ -25,10 +25,7 @@ ROLE_FIXTURES = {
 
 class WorkflowSyncTests(TestCase):
     def setUp(self):
-        self.roles = {
-            slug: Role.objects.create(name=name, slug=slug)
-            for slug, name in ROLE_FIXTURES.items()
-        }
+        self.roles = {slug: create_role(slug, name) for slug, name in ROLE_FIXTURES.items()}
 
     def test_sync_creates_workflow_steps_and_permissions(self):
         sync_workflow_definitions()
@@ -54,10 +51,7 @@ class WorkflowSyncTests(TestCase):
 
 class WorkflowBoardViewTests(TestCase):
     def setUp(self):
-        self.roles = {
-            slug: Role.objects.create(name=name, slug=slug)
-            for slug, name in ROLE_FIXTURES.items()
-        }
+        self.roles = {slug: create_role(slug, name) for slug, name in ROLE_FIXTURES.items()}
         sync_workflow_definitions()
         self.user = get_user_model().objects.create_user(username="architect", password="pwd")
         self.other_user = get_user_model().objects.create_user(username="other-user", password="pwd")
@@ -267,3 +261,15 @@ def get_default_business_direction():
         defaults={"name": "Direction Métier Test"},
     )
     return direction
+
+
+def get_default_technical_direction():
+    direction, _ = TechnicalDirection.objects.get_or_create(
+        slug="direction-technique-test",
+        defaults={"name": "Direction Technique Test"},
+    )
+    return direction
+
+
+def create_role(slug: str, name: str) -> Role:
+    return Role.objects.create(name=name, slug=slug, technical_direction=get_default_technical_direction())
