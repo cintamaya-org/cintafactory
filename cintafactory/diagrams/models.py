@@ -2,6 +2,8 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
+from .validation import sanitize_diagram_title
+
 
 def thumbnail_upload_to(instance, filename):
     return f"diagrams/{instance.id}/thumb.png"
@@ -21,6 +23,10 @@ class Diagram(models.Model):
 
     class Meta:
         ordering = ["-updated_at"]
+
+    def clean(self):
+        super().clean()
+        self.title = sanitize_diagram_title(self.title)
 
     def __str__(self) -> str:
         return self.title

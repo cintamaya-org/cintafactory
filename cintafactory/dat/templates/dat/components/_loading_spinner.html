@@ -1,0 +1,23 @@
+{% load static %}
+<style data-dat-loading-spinner>
+  .dat-rotating-logo {
+    width: 50px;
+    height: 50px;
+    animation: datSpinPause 1.2s ease-in-out infinite;
+    display: block;
+  }
+
+  @keyframes datSpinPause {
+    0%   { transform: rotate(0deg); }
+    80%  { transform: rotate(360deg); }
+    100% { transform: rotate(360deg); }
+  }
+</style>
+<img
+  src="{% static 'imgs/cintamaya_logo_100px.png' %}"
+  class="dat-rotating-logo"
+  alt="Logo en chargement"
+  role="status"
+  aria-live="polite"
+  aria-busy="true"
+/>

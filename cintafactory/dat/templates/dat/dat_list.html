@@ -13,6 +13,19 @@
         <a href="/dat/manage/dats/crud/add/" class="btn waves-effect waves-light cinta-btn-primary">Ajouter un DAT</a>
       {% endif %}
     </div>
+    <form method="get" style="margin-top:1rem; display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+      <div class="input-field" style="margin:0; flex:1 1 240px; min-width:200px;">
+        <input id="dat-search" type="search" name="q" placeholder="Rechercher par référence, titre, application..." value="{{ search_query|default_if_none:'' }}">
+        <label class="active" for="dat-search">Recherche</label>
+      </div>
+      <button type="submit" class="btn waves-effect waves-light cinta-btn-primary">Rechercher</button>
+      {% if search_query %}
+        <a href="." class="btn-flat waves-effect">Réinitialiser</a>
+      {% endif %}
+    </form>
+    {% if search_too_short %}
+      <p style="margin:0.25rem 0 0; color:#c00; font-size:0.9rem;">La recherche nécessite au moins 3 caractères.</p>
+    {% endif %}
   <div style="margin-top:1rem; overflow-x:auto;">
     <table class="highlight responsive-table">
     <thead>
@@ -20,6 +33,7 @@
         <th>Reference</th>
         <th>Titre</th>
         <th>Application</th>
+        <th>Direction métier</th>
         <th>Statut</th>
         <th>Responsable</th>
         <th>Cree le</th>
@@ -30,11 +44,28 @@
       {% for obj in object_list %}
         {% include "dat/_dat_row.html" %}
       {% empty %}
-        <tr><td colspan="7">Aucun DAT pour le moment.</td></tr>
+        <tr><td colspan="8">Aucun DAT pour le moment.</td></tr>
       {% endfor %}
     </tbody>
   </table>
   </div>
+  {% if is_paginated %}
+    <div style="margin-top:1rem; display:flex; align-items:center; justify-content:space-between; gap:0.5rem; flex-wrap:wrap;">
+      <div>Page {{ page_obj.number }} sur {{ paginator.num_pages }}</div>
+      <div style="display:flex; gap:0.5rem; align-items:center;">
+        {% if page_obj.has_previous %}
+          <a class="btn-flat waves-effect" href="?{% if base_querystring %}{{ base_querystring }}&{% endif %}page={{ page_obj.previous_page_number }}">Précédent</a>
+        {% else %}
+          <span class="btn-flat disabled">Précédent</span>
+        {% endif %}
+        {% if page_obj.has_next %}
+          <a class="btn-flat waves-effect" href="?{% if base_querystring %}{{ base_querystring }}&{% endif %}page={{ page_obj.next_page_number }}">Suivant</a>
+        {% else %}
+          <span class="btn-flat disabled">Suivant</span>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
   </div>
 </div>
   {% comment %} <p><a class="btn" href="/dat/manage/dats/crud/add/">Ajouter un DAT</a></p> {% endcomment %}

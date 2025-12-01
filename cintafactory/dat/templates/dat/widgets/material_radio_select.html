@@ -1,0 +1,12 @@
+<div class="material-radio-group" style="display:flex; flex-direction:column; gap:0.35rem;">
+  {% for group, options, index in widget.optgroups %}
+    {% if group %}
+      <div class="material-radio-group__title" style="font-weight:600; color:#37474f;">{{ group }}</div>
+    {% endif %}
+    <div class="material-radio-group__options" style="display:flex; flex-direction:column; gap:0.5rem;">
+      {% for option in options %}
+        {% include option.template_name with widget=option %}
+      {% endfor %}
+    </div>
+  {% endfor %}
+</div>

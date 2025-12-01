@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 from typing import Dict, List, Optional, Set
 
 from django import forms
 from django.contrib.auth import get_user_model
-from django.urls import reverse_lazy
+from django.core.validators import RegexValidator
+from django.urls import reverse, reverse_lazy
 from django.utils.safestring import mark_safe
 
 from users.models import Role
@@ -15,7 +17,96 @@ from .constants import (
     DAT_REQUIRED_PARTICIPANT_ROLE_SLUGS,
     DAT_STATUS_REQUIRED_ROLES,
 )
-from .models import DAT, DATParticipant, DATStatus
+from .models import DAT, DATParticipant, DATPart, DATPartEntryType, DATSubSection, DATStatus
+
+
+class RepeatableTableWidget(forms.Widget):
+    template_name = "dat/widgets/repeater.html"
+
+    def __init__(
+        self,
+        *,
+        columns: list[dict],
+        min_rows: int | None = None,
+        max_rows: int | None = None,
+        allow_row_addition: bool = True,
+        allow_row_removal: bool = True,
+        attrs: Optional[dict] = None,
+    ):
+        super().__init__(attrs)
+        self.columns = columns or []
+        self.min_rows = min_rows
+        self.max_rows = max_rows
+        self.allow_row_addition = allow_row_addition
+        self.allow_row_removal = allow_row_removal
+
+    def format_value(self, value):
+        if value in (None, "", []):
+            return []
+        return value
+
+    def get_context(self, name, value, attrs):
+        context = super().get_context(name, value, attrs)
+        serialised_value = value
+        if isinstance(serialised_value, str):
+            try:
+                serialised_value = json.loads(serialised_value)
+            except json.JSONDecodeError:
+                serialised_value = []
+        if not serialised_value:
+            serialised_value = []
+        context["widget"]["columns"] = self.columns
+        context["widget"]["columns_json"] = json.dumps(self.columns, ensure_ascii=False)
+        context["widget"]["value"] = serialised_value
+        context["widget"]["value_json"] = json.dumps(serialised_value, ensure_ascii=False)
+        context["widget"]["min_rows"] = self.min_rows
+        context["widget"]["max_rows"] = self.max_rows
+        context["widget"]["allow_row_addition"] = self.allow_row_addition
+        context["widget"]["allow_row_removal"] = self.allow_row_removal
+        return context
+
+
+class MaterialCheckboxSelectMultiple(forms.CheckboxSelectMultiple):
+    """
+    Custom checkbox group aligned with Material Design markup.
+    """
+
+    template_name = "dat/widgets/material_checkbox_select.html"
+    option_template_name = "dat/widgets/material_checkbox_option.html"
+
+
+class MaterialRadioSelect(forms.RadioSelect):
+    """
+    Custom radio group aligned with Material Design markup.
+    """
+
+    template_name = "dat/widgets/material_radio_select.html"
+    option_template_name = "dat/widgets/material_radio_option.html"
+
+
+def _attach_drawio_support(entry: DATPart, widget: RepeatableTableWidget) -> None:
+    sub_section = getattr(entry, "sub_section", None)
+    section = getattr(sub_section, "section", None)
+    dat = getattr(section, "dat", None)
+    if not (sub_section and section and dat):
+        return
+    columns = widget.columns or []
+    has_drawio_column = any(isinstance(col, dict) and col.get("drawio") for col in columns)
+    if not has_drawio_column:
+        return
+    attrs = widget.attrs or {}
+    attrs["data_drawio_create_url"] = reverse("dat:schema_create_diagram", args=[dat.pk])
+    edit_template = reverse("diagrams:edit", args=[0]).replace("/0/", "/{id}/")
+    detail_template = reverse("diagrams:detail", args=[0]).replace("/0/", "/{id}/")
+    attrs["data_drawio_edit_template"] = edit_template
+    attrs["data_drawio_detail_template"] = detail_template
+    import_template = reverse("diagrams:import_xml", args=[0]).replace("/0/", "/{id}/")
+    export_template = reverse("diagrams:export_xml", args=[0]).replace("/0/", "/{id}/")
+    attrs["data_drawio_import_template"] = import_template
+    attrs["data_drawio_export_template"] = export_template
+    # Mark every Draw.io-enabled repeater so the bulk import UI can attach to it.
+    attrs["data_schema_repeater"] = "true"
+    widget.attrs = attrs
 
 
 class DATForm(forms.ModelForm):
@@ -266,3 +357,200 @@ class DATForm(forms.ModelForm):
     class Meta:
         model = DAT
         fields = ["reference", "title", "application", "description", "status", "owner"]
+
+
+def build_dat_part_field(entry: DATPart) -> forms.Field:
+    """
+    Construct a Django form field matching the DAT part configuration.
+    """
+    config = entry.config or {}
+    help_text = config.get("help_text")
+    required = entry.required
+    field_kwargs = {"label": entry.label, "required": required, "help_text": help_text}
+
+    choices = None
+    widget_type = None
+    multiple_choices = False
+    if isinstance(config, dict):
+        choices = config.get("choices")
+        widget_type = config.get("widget")
+        multiple_choices = bool(config.get("multiple"))
+    if choices:
+        choice_list = [
+            (item.get("value"), item.get("label", item.get("value")))
+            for item in choices
+        ]
+        if multiple_choices:
+            widget = MaterialCheckboxSelectMultiple() if widget_type in ("checkbox", "checkboxes") else None
+            return forms.MultipleChoiceField(choices=choice_list, widget=widget, **field_kwargs)
+        widget = MaterialRadioSelect() if widget_type == "radio" else None
+        return forms.ChoiceField(choices=choice_list, widget=widget, **field_kwargs)
+
+    if entry.data_type == DATPartEntryType.TEXT:
+        max_length = config.get("max_length") if isinstance(config, dict) else None
+        if max_length:
+            field_kwargs["max_length"] = max_length
+        pattern = config.get("pattern") if isinstance(config, dict) else None
+        pattern_message = config.get("pattern_message") if isinstance(config, dict) else None
+        if pattern:
+            validator = RegexValidator(regex=pattern, message=pattern_message or "Format invalide.")
+            field_kwargs.setdefault("validators", []).append(validator)
+            attrs = {"pattern": pattern, "title": pattern_message or "Format attendu."}
+            field_kwargs.setdefault("widget", forms.TextInput(attrs=attrs))
+        return forms.CharField(**field_kwargs)
+    if entry.data_type == DATPartEntryType.LONG_TEXT:
+        rows = config.get("rows") if isinstance(config, dict) else None
+        attrs = {"rows": rows} if rows else {"style": "height:160px;"}
+        existing_class = attrs.get("class", "").strip()
+        extra_class = "materialize-textarea"
+        attrs["class"] = f"{existing_class} {extra_class}".strip() if existing_class else extra_class
+        field_kwargs["widget"] = forms.Textarea(attrs=attrs)
+        return forms.CharField(**field_kwargs)
+    if entry.data_type == DATPartEntryType.INTEGER:
+        return forms.IntegerField(**field_kwargs)
+    if entry.data_type == DATPartEntryType.DECIMAL:
+        max_digits = 12
+        decimal_places = 2
+        if isinstance(config, dict):
+            max_digits = config.get("max_digits", max_digits)
+            decimal_places = config.get("decimal_places", decimal_places)
+        return forms.DecimalField(
+            max_digits=max_digits,
+            decimal_places=decimal_places,
+            **field_kwargs,
+        )
+    if entry.data_type == DATPartEntryType.DATE:
+        field_kwargs["widget"] = forms.DateInput(attrs={"type": "date"})
+        return forms.DateField(**field_kwargs)
+    if entry.data_type == DATPartEntryType.BOOLEAN:
+        field_kwargs["required"] = False
+        return forms.BooleanField(**field_kwargs)
+    if entry.data_type == DATPartEntryType.JSON:
+        return forms.JSONField(**field_kwargs)
+    if entry.data_type == DATPartEntryType.URL:
+        return forms.URLField(**field_kwargs)
+    if entry.data_type == DATPartEntryType.REPEATER:
+        columns = config.get("columns", []) if isinstance(config, dict) else []
+        min_rows = config.get("min_rows") if isinstance(config, dict) else None
+        max_rows = config.get("max_rows") if isinstance(config, dict) else None
+        allow_row_addition = config.get("allow_row_addition", True) if isinstance(config, dict) else True
+        allow_row_removal = config.get("allow_row_removal", True) if isinstance(config, dict) else True
+        widget = RepeatableTableWidget(
+            columns=columns,
+            min_rows=min_rows,
+            max_rows=max_rows,
+            allow_row_addition=allow_row_addition,
+            allow_row_removal=allow_row_removal,
+        )
+        _attach_drawio_support(entry, widget)
+        return forms.JSONField(
+            required=False,
+            widget=widget,
+            label=entry.label,
+            help_text=help_text,
+        )
+    return forms.CharField(**field_kwargs)
+
+
+class DATSubSectionForm(forms.Form):
+    """
+    Form that exposes entries for a single DAT sub-section.
+    """
+
+    def __init__(self, sub_section: DATSubSection, *args, user=None, **kwargs):
+        self.sub_section = sub_section
+        self.user = user
+        self.entries: list[dict[str, object]] = []
+        super().__init__(*args, **kwargs)
+        parts = sub_section.parts.order_by("order", "id")
+        for part in parts:
+            field_name = part.form_field_name()
+            field = build_dat_part_field(part)
+            self.fields[field_name] = field
+            initial_value = part.initial_value()
+            if initial_value is not None:
+                self.initial[field_name] = initial_value
+            self.entries.append(
+                {
+                    "entry": part,
+                    "field_name": field_name,
+                }
+            )
+
+    def iter_entries(self):
+        for item in self.entries:
+            field_name = item["field_name"]
+            yield {
+                "entry": item["entry"],
+                "field": self[field_name],
+                "field_name": field_name,
+            }
+
+    def save(self):
+        if not self.is_valid():
+            raise ValueError("Cannot save an invalid form.")
+        changes: dict[str, dict[str, str]] = {}
+        for entry_info in self.entries:
+            entry = entry_info["entry"]
+            field_name = entry_info["field_name"]
+            if field_name not in self.cleaned_data:
+                continue
+            new_value = self.cleaned_data[field_name]
+            prepared = entry.prepare_value(new_value)
+            if prepared == entry.value:
+                continue
+            before_display = entry.render_value(entry.value)
+            entry.update_value(prepared)
+            after_display = entry.render_value(entry.value)
+            if entry.data_type == DATPartEntryType.REPEATER:
+                before_display = json.dumps(before_display or [], ensure_ascii=False)
+                after_display = json.dumps(after_display or [], ensure_ascii=False)
+            changes[entry.key] = {
+                "label": entry.label,
+                "part": self.sub_section.title,
+                "from": before_display,
+                "to": after_display,
+            }
+        return changes
+
+
+class DATImportForm(forms.Form):
+    data_file = forms.FileField(label="Fichier JSON du DAT")
+    reference_override = forms.CharField(
+        label="Référence du DAT",
+        help_text="Laisser vide pour garder la référence présente dans le fichier importé.",
+        required=False,
+        widget=forms.TextInput(attrs={"class": "validate"}),
+    )
+
+    def clean_data_file(self):
+        uploaded = self.cleaned_data.get("data_file")
+        if not uploaded:
+            return uploaded
+        try:
+            content = uploaded.read().decode("utf-8")
+        except UnicodeDecodeError:
+            raise forms.ValidationError("Le fichier doit être encodé en UTF-8.")
+        try:
+            payload = json.loads(content or "{}")
+        except json.JSONDecodeError as exc:
+            raise forms.ValidationError(f"Le contenu du fichier n'est pas un JSON valide: {exc}") from exc
+        if not isinstance(payload, dict):
+            raise forms.ValidationError("Le fichier importé doit contenir un objet JSON.")
+        self.cleaned_data["payload"] = payload
+        uploaded.seek(0)
+        return uploaded
+
+    def clean_reference_override(self):
+        reference = (self.cleaned_data.get("reference_override") or "").strip()
+        if not reference:
+            return ""
+        if DAT.objects.filter(reference=reference).exists():
+            raise forms.ValidationError(
+                f"Un DAT avec la référence « {reference} » existe déjà. Merci d'en saisir une autre."
+            )
+        return reference
+
+    @property
+    def payload(self):
+        return self.cleaned_data.get("payload")

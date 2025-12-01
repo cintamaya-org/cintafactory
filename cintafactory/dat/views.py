@@ -1,23 +1,32 @@
+import json
+import logging
 from collections import OrderedDict
 from types import SimpleNamespace
+from urllib.parse import urlencode
 
 from django.apps import apps as django_apps
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.core.exceptions import PermissionDenied
-from django.db.models import Count
+from django.core.exceptions import PermissionDenied, ValidationError
+from django.db.models import Count, Prefetch, Q
 from django.db.models.functions import TruncMonth
-from django.http import JsonResponse
+from django.http import FileResponse, HttpResponse, JsonResponse
 from django.utils import timezone
+from django.utils.html import format_html
+from django.utils.text import slugify
 from django.shortcuts import get_object_or_404, redirect
+from django.template.loader import render_to_string
 from django.urls import reverse, reverse_lazy
 from django.views import View
-from django.views.generic import DetailView, ListView, TemplateView
+from django.views.generic import DetailView, ListView, TemplateView, FormView
 
 from material import Fieldset, Layout, Row
 from material.frontend.registry import modules as module_registry
 from material.frontend.views import CreateModelView, DetailModelView, ListModelView, ModelViewSet, UpdateModelView
+
+from diagrams.models import Diagram
+from diagrams.validation import sanitize_diagram_title
 
 from .constants import (
     DAT_PORTEUR_ROLE_SLUG,
@@ -25,10 +34,36 @@ from .constants import (
     DAT_REQUIRED_PARTICIPANT_ROLE_SLUGS,
     DAT_STATUS_REQUIRED_ROLES,
 )
-from .forms import DATForm
-from .models import Application, DAT, DATStatus
+from .exporters import get_dat_export_model_builder
+from .forms import DATForm, DATImportForm, DATSubSectionForm
+from .importers import DATImportError, DATImportService
+from .models import (
+    Application,
+    DAT,
+    DATPart,
+    DATPartEntry,
+    DATSection,
+    DATSubSection,
+    DATStatus,
+    DATHistory,
+    DATHistoryAction,
+)
+from .pdf import generate_dat_pdf
 from .permissions import filter_dat_queryset_for_user, user_is_dat_admin
+from .sections import sync_dat_sections_if_needed
+from .tasks import schedule_dat_pdf_generation
+from .utils import (
+    dat_pdf_export_exists,
+    dat_pdf_export_modified_at,
+    format_user_display,
+    isoformat_datetime,
+    localize_datetime,
+    open_dat_pdf_export,
+    store_dat_pdf_export,
+)
 
+
+logger = logging.getLogger(__name__)
 
 PORTEUR_ROLE_SLUG = DAT_PORTEUR_ROLE_SLUG
 OWNER_EDITABLE_STATUSES = {
@@ -37,6 +72,10 @@ OWNER_EDITABLE_STATUSES = {
 }
 PROGRESSABLE_STATUSES = set(DAT_STATUS_REQUIRED_ROLES.keys())
 STATUS_SEQUENCE = [choice.value for choice in DATStatus]
+HISTORY_ENTRIES_PREFETCH = Prefetch(
+    "history_entries",
+    queryset=DATHistory.objects.select_related("performed_by").order_by("-performed_at", "-id"),
+)
 
 
 class ModuleContextMixin:
@@ -82,18 +121,6 @@ def get_required_roles_for_status(status: str) -> tuple[str, ...]:
     return DAT_STATUS_REQUIRED_ROLES.get(status, ())
 
 
-def _format_user_display(user) -> str:
-    if user is None:
-        return "-"
-    if hasattr(user, "get_full_name"):
-        full_name = user.get_full_name()
-        if full_name:
-            return full_name
-    if hasattr(user, "get_username"):
-        return user.get_username()
-    return str(user)
-
-
 def build_participant_overview(dat: DAT):
     participant_map = {}
     for participant in dat.participants.all():
@@ -115,7 +142,7 @@ def build_participant_overview(dat: DAT):
                 "role_slug": slug,
                 "role_label": role_label,
                 "user": user,
-                "user_display": _format_user_display(user),
+                "user_display": format_user_display(user),
                 "participant": participant,
                 "is_porteur": slug == DAT_PORTEUR_ROLE_SLUG,
                 "is_missing": user is None,
@@ -144,26 +171,180 @@ def get_current_responsibles(dat: DAT):
                 "role_slug": slug,
                 "role_label": role_label,
                 "user": user,
-                "user_display": _format_user_display(user),
+                "user_display": format_user_display(user),
                 "is_assigned": user is not None,
             }
         )
     return responsibles
 
 
+def get_dat_history_entries(dat: DAT):
+    """
+    Return ordered history entries, using any prefetched cache if available to avoid extra queries.
+    """
+    cache = getattr(dat, "_prefetched_objects_cache", None)
+    if cache and "history_entries" in cache:
+        return list(cache["history_entries"])
+    return list(
+        dat.history_entries.select_related("performed_by").order_by("-performed_at", "-id")
+    )
+
+
+def build_dat_overview_context(dat: DAT, user):
+    next_status = get_next_status(dat.status)
+    return {
+        "dat": dat,
+        "participant_overview": build_participant_overview(dat),
+        "current_responsibles": get_current_responsibles(dat),
+        "owner_editable_statuses": {status.value for status in OWNER_EDITABLE_STATUSES},
+        "owner_can_edit": user_is_dat_admin(user),
+        "can_create_dat": user_can_create_dat_entities(user),
+        "next_status": next_status,
+        "next_status_label": DATStatus(next_status).label if next_status else None,
+        "can_progress_dat": user_can_progress_dat(dat, user),
+    }
+
+
+def build_section_payload(dat: DAT, user, section_slug: str | None = None, sub_section_slug: str | None = None):
+    def extract_lock_rule(part: DATPart) -> dict[str, object] | None:
+        config = part.config if isinstance(part.config, dict) else None
+        if not config:
+            return None
+        rule = config.get("locked_when")
+        if not isinstance(rule, dict):
+            return None
+        controller = rule.get("field")
+        raw_values = rule.get("values")
+        if not controller or not raw_values:
+            return None
+        values = raw_values if isinstance(raw_values, (list, tuple)) else [raw_values]
+        cleaned = [str(value) for value in values if value not in (None, "")]
+        if not cleaned:
+            return None
+        payload: dict[str, object] = {"field": str(controller), "values": cleaned}
+        message = rule.get("message")
+        if message not in (None, ""):
+            payload["message"] = str(message)
+        return payload
+
+    def should_lock_part(part: DATPart, value_map: dict[str, object]) -> bool:
+        rule = extract_lock_rule(part)
+        if not rule:
+            return False
+        controller = rule.get("field")
+        expected_values = {str(value) for value in rule.get("values", []) if value not in (None, "")}
+        if not controller or not expected_values:
+            return False
+        current_value = value_map.get(str(controller))
+        if isinstance(current_value, (list, tuple)):
+            return any(str(value) in expected_values for value in current_value if value not in (None, ""))
+        if current_value in (None, ""):
+            return False
+        return str(current_value) in expected_values
+
+    sync_dat_sections_if_needed(dat)
+    validation_rows = None
+    try:
+        validation_rows = list(
+            dat.sections.exclude(slug="validation").order_by("order", "id").values_list("title", flat=True)
+        )
+    except Exception:
+        validation_rows = []
+    sections_payload = []
+    entry_prefetch = Prefetch(
+        "entries",
+        queryset=DATPartEntry.objects.order_by("-updated_at", "-id"),
+    )
+    part_prefetch = Prefetch(
+        "parts",
+        queryset=DATPart.objects.order_by("order", "id").prefetch_related(entry_prefetch),
+    )
+    sub_section_prefetch = Prefetch(
+        "sub_sections",
+        queryset=DATSubSection.objects.order_by("order", "id")
+        .prefetch_related("allowed_roles")
+        .prefetch_related(part_prefetch),
+    )
+    sections_qs = dat.sections.order_by("order", "id").prefetch_related(sub_section_prefetch)
+    if section_slug:
+        sections_qs = sections_qs.filter(slug=section_slug)
+    sections_list = list(sections_qs)
+    if section_slug and not sections_list:
+        return []
+    entry_value_map: dict[str, object] = {}
+    for section in sections_list:
+        for sub_section in section.sub_sections.all():
+            for entry in sub_section.parts.all():
+                entry_value_map[entry.key] = entry.value
+    for section in sections_list:
+        parts_payload = []
+        for sub_section in section.sub_sections.all():
+            if sub_section_slug and sub_section.slug != sub_section_slug:
+                continue
+            entries = [entry for entry in sub_section.parts.all() if not should_lock_part(entry, entry_value_map)]
+            if section.slug == "validation":
+                for entry in entries:
+                    if entry.key == "suivi_sections":
+                        rows = [{"section": title, "statut": "en_cours", "commentaire": ""} for title in validation_rows]
+                        entry.update_value(rows)
+            parts_payload.append(
+                {
+                    "section_part": sub_section,
+                    "entries": entries,
+                    "can_edit": False if section.slug == "validation" else sub_section.can_user_edit(user),
+                }
+            )
+        if sub_section_slug and not parts_payload:
+            continue
+        sections_payload.append(
+            {
+                "section": section,
+                "parts": parts_payload,
+                "can_edit": False if section.slug == "validation" else section.can_user_edit(user),
+            }
+        )
+        if sub_section_slug:
+            break
+    return sections_payload
+
+
+def render_sub_section_snippet(dat: DAT, user, section_slug: str, sub_section_slug: str) -> str:
+    payload = build_section_payload(dat, user, section_slug=section_slug, sub_section_slug=sub_section_slug)
+    if not payload:
+        return ""
+    section_context = payload[0]
+    parts = section_context.get("parts", [])
+    if not parts:
+        return ""
+    part_context = parts[0]
+    return render_to_string(
+        "dat/partials/dat_sub_section_card.html",
+        {
+            "part": part_context,
+            "container_section": section_context["section"],
+            "dat": dat,
+        },
+    )
+
+
 def user_is_porteur_demande(user):
-    return bool(getattr(user, "is_role", None) and user.is_role(PORTEUR_ROLE_SLUG))
+    is_role = getattr(user, "is_role", None)
+    return bool(callable(is_role) and is_role(PORTEUR_ROLE_SLUG))
 
 
 def user_can_create_dat_entities(user):
-    return bool(user.is_authenticated and user_is_porteur_demande(user))
+    is_authenticated = getattr(user, "is_authenticated", False)
+    return bool(is_authenticated and user_is_porteur_demande(user))
 
 
 def user_can_manage_dat(user):
+    if user is None:
+        return False
+    is_role = getattr(user, "is_role", None)
     return (
-        user.is_superuser
-        or user.is_staff
-        or (hasattr(user, "is_role") and user.is_role("admin"))
+        getattr(user, "is_superuser", False)
+        or getattr(user, "is_staff", False)
+        or (callable(is_role) and is_role("admin"))
     )
 
 
@@ -270,20 +451,30 @@ class DATDetailView(ModuleContextMixin, DetailModelView):
 
     def get_queryset(self):
         base_queryset = (
-            DAT.objects.select_related("application", "owner")
-            .prefetch_related("participants__role", "participants__user")
+            DAT.objects.select_related(
+                "application",
+                "application__business_direction",
+                "business_direction",
+                "owner",
+            )
+            .prefetch_related(
+                HISTORY_ENTRIES_PREFETCH,
+                "participants__role",
+                "participants__user",
+            )
         )
         return filter_dat_queryset_for_user(base_queryset, self.request.user)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        history_qs = (
-            self.object.history_entries.select_related("performed_by")
-            .order_by("-performed_at", "-id")
-        )
-        context["history_entries"] = list(history_qs)
+        context["history_entries"] = get_dat_history_entries(self.object)
+        context["history_actions"] = DATHistoryAction
         context["participant_overview"] = build_participant_overview(self.object)
         context["current_responsibles"] = get_current_responsibles(self.object)
+        context["sections_payload"] = build_section_payload(self.object, self.request.user)
+        context["section_nav"] = list(
+            self.object.sections.order_by("order", "id").values("slug", "title")
+        )
         return context
 
 
@@ -299,10 +490,10 @@ class DATViewSet(BaseSecuredViewSet):
     def _can_add(self, request):
         return user_can_create_dat_entities(request.user)
 
-    list_display = ("reference", "title", "application", "status", "owner", "created_at")
+    list_display = ("reference", "title", "application", "business_direction", "status", "owner", "created_at")
     list_display_links = ("reference",)
     ordering = ("-created_at",)
-    search_fields = ("reference", "title", "description", "application__name", "application__code")
+    search_fields = ("reference", "title", "description", "application__name", "application__code", "business_direction__name")
 
     layout = Layout(
         Fieldset("Identite", Row("reference", "title"), Row("application")),
@@ -320,7 +511,7 @@ class DATViewSet(BaseSecuredViewSet):
 
     def get_queryset(self, request):
         base_queryset = (
-            DAT.objects.select_related("application", "owner")
+            DAT.objects.select_related("application", "application__business_direction", "business_direction", "owner")
             .order_by("-created_at")
         )
         return filter_dat_queryset_for_user(base_queryset, request.user)
@@ -352,14 +543,14 @@ class ApplicationViewSet(BaseSecuredViewSet):
     def _can_add(self, request):
         return user_can_create_dat_entities(request.user)
 
-    list_display = ("code", "name", "formatted_created_at", "formatted_updated_at")
+    list_display = ("code", "name", "business_direction", "formatted_created_at", "formatted_updated_at")
     list_display_links = ("code",)
     ordering = ("name",)
-    search_fields = ("code", "name", "description")
+    search_fields = ("code", "name", "description", "business_direction__name")
 
-    form_fields = ["code", "name", "description"]
+    form_fields = ["code", "name", "business_direction", "description"]
     layout = Layout(
-        Fieldset("Identite", Row("code", "name")),
+        Fieldset("Identite", Row("code", "name"), Row("business_direction")),
         Fieldset("Description", Row("description")),
     )
 
@@ -368,15 +559,26 @@ class DatList(ModuleContextMixin, LoginRequiredMixin, ListView):
     model = DAT
     template_name = "dat/dat_list.html"
     context_object_name = "object_list"
+    paginate_by = 10
 
     owner_editable_statuses = OWNER_EDITABLE_STATUSES
 
     def get_queryset(self):
+        self.raw_search_query = self.request.GET.get("q", "")
+        cleaned_query = self.raw_search_query.strip()
+        self.search_query = cleaned_query if len(cleaned_query) >= 3 else ""
+        self.search_too_short = bool(cleaned_query and not self.search_query)
         base_queryset = (
-            DAT.objects.select_related("application", "owner")
+            DAT.objects.select_related("application", "application__business_direction", "business_direction", "owner")
             .order_by("-created_at")
         )
-        return filter_dat_queryset_for_user(base_queryset, self.request.user)
+        queryset = filter_dat_queryset_for_user(base_queryset, self.request.user)
+        if self.search_query:
+            queryset = queryset.filter(
+                Q(reference__icontains=self.search_query)
+                | Q(title__icontains=self.search_query)
+            )
+        return queryset
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -384,6 +586,13 @@ class DatList(ModuleContextMixin, LoginRequiredMixin, ListView):
         user = self.request.user
         context["owner_can_edit"] = user_is_dat_admin(user)
         context["can_create_dat"] = user_can_create_dat_entities(user)
+        search_query = getattr(self, "search_query", "")
+        context["search_query"] = getattr(self, "raw_search_query", "")
+        context["search_too_short"] = getattr(self, "search_too_short", False)
+        base_params = {}
+        if search_query:
+            base_params["q"] = search_query
+        context["base_querystring"] = urlencode(base_params)
         return context
 
 
@@ -395,19 +604,18 @@ class DatDetail(ModuleContextMixin, LoginRequiredMixin, DetailView):
     def get_queryset(self):
         base_queryset = (
             DAT.objects.select_related("application", "owner")
-            .prefetch_related("history_entries__performed_by", "participants__role", "participants__user")
+            .prefetch_related(
+                HISTORY_ENTRIES_PREFETCH,
+                "participants__role",
+                "participants__user",
+            )
         )
         return filter_dat_queryset_for_user(base_queryset, self.request.user)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        history_qs = (
-            self.object.history_entries.select_related("performed_by")
-            .order_by("-performed_at", "-id")
-        )
-        context["history_entries"] = list(history_qs)
-        context["participant_overview"] = build_participant_overview(self.object)
-        context["current_responsibles"] = get_current_responsibles(self.object)
+        context["history_entries"] = get_dat_history_entries(self.object)
+        context["history_actions"] = DATHistoryAction
         context["owner_editable_statuses"] = {status.value for status in OWNER_EDITABLE_STATUSES}
         context["owner_can_edit"] = user_is_dat_admin(self.request.user)
         context["can_create_dat"] = user_can_create_dat_entities(self.request.user)
@@ -415,7 +623,260 @@ class DatDetail(ModuleContextMixin, LoginRequiredMixin, DetailView):
         context["next_status"] = next_status
         context["next_status_label"] = DATStatus(next_status).label if next_status else None
         context["can_progress_dat"] = user_can_progress_dat(self.object, self.request.user)
+        context["export_urls"] = {
+            "pdf_trigger": reverse("dat:my_export_pdf_trigger", args=[self.object.pk]),
+            "pdf_download": reverse("dat:my_export_pdf_download", args=[self.object.pk]),
+            "json": reverse("dat:my_export_json", args=[self.object.pk]),
+            "status": reverse("dat:my_export_pdf_status", args=[self.object.pk]),
+        }
+        context["pdf_export_available"] = dat_pdf_export_exists(self.object)
+        context["pdf_export_generated_at"] = dat_pdf_export_modified_at(self.object)
+        context["pdf_export_in_progress"] = self.object.pdf_export_in_progress
+        context["pdf_export_requested_at"] = self.object.pdf_export_requested_at
+        context["pdf_export_requested_by_display"] = self.object.pdf_export_requested_by_display
+        sync_dat_sections_if_needed(self.object)
+        context.update(build_dat_overview_context(self.object, self.request.user))
+        section_nav = [{"slug": "overview", "title": "DETAILS DU DAT"}]
+        section_nav.extend(
+            list(
+                self.object.sections.order_by("order", "id").values("slug", "title")
+            )
+        )
+        valid_slugs = {entry["slug"] for entry in section_nav}
+        selected_slug = self.request.GET.get("section") or "overview"
+        if selected_slug not in valid_slugs:
+            selected_slug = "overview"
+        context["section_nav"] = section_nav
+        context["selected_section_slug"] = selected_slug
+        if selected_slug == "overview":
+            context["selected_sections"] = []
+        else:
+            context["selected_sections"] = build_section_payload(self.object, self.request.user, section_slug=selected_slug)
         return context
+
+
+class DatExportBaseView(LoginRequiredMixin, View):
+    http_method_names = ["get"]
+    template_name = "dat/exports/dat_export_pdf.html"
+
+    def get_queryset(self):
+        base_queryset = (
+            DAT.objects.select_related("application", "owner")
+            .prefetch_related("participants__role", "participants__user")
+        )
+        return filter_dat_queryset_for_user(base_queryset, self.request.user)
+
+    def get_object(self):
+        queryset = self.get_queryset()
+        return get_object_or_404(queryset, pk=self.kwargs.get("pk"))
+
+    def build_filename(self, dat: DAT, extension: str) -> str:
+        base = slugify(dat.reference or dat.title or "") or f"dat-{dat.pk}"
+        return f"{base}.{extension}"
+
+    def build_pdf_document(self, dat: DAT):
+        base_url = self.request.build_absolute_uri("/")
+        return generate_dat_pdf(dat, base_url=base_url)
+
+
+class DatExportJSONView(DatExportBaseView):
+    def get(self, request, *args, **kwargs):
+        dat = self.get_object()
+        builder = get_dat_export_model_builder()
+        payload = builder.build(dat)
+        response = JsonResponse(
+            payload,
+            json_dumps_params={"ensure_ascii": False, "indent": 2},
+        )
+        response["Content-Disposition"] = f'attachment; filename="{self.build_filename(dat, "json")}"'
+        return response
+
+
+class DatGeneratePDFExportView(DatExportBaseView):
+    def get(self, request, *args, **kwargs):
+        dat = self.get_object()
+        pdf_content, _payload = self.build_pdf_document(dat)
+        try:
+            store_dat_pdf_export(dat, pdf_content)
+        except Exception as exc:  # pragma: no cover - storage failure should be surfaced
+            logger.warning("Impossible d'enregistrer l'export PDF du DAT %s: %s", dat.pk, exc)
+        response = HttpResponse(pdf_content, content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="{self.build_filename(dat, "pdf")}"'
+        return response
+
+
+class DatTriggerPDFExportView(DatExportBaseView):
+    http_method_names = ["post"]
+
+    def post(self, request, *args, **kwargs):
+        dat = self.get_object()
+        base_url = request.build_absolute_uri("/")
+        scheduled = schedule_dat_pdf_generation(dat, request.user, base_url=base_url)
+        if scheduled:
+            requester = format_user_display(request.user) if request.user.is_authenticated else "Système"
+            messages.success(
+                request,
+                f"Une génération PDF a été lancée par {requester}. Vous serez informé lorsque le document sera prêt.",
+            )
+        else:
+            messages.warning(
+                request,
+                "Une génération PDF est déjà en cours pour ce DAT.",
+            )
+        return redirect("dat:my_detail", pk=dat.pk)
+
+
+class DatDownloadCachedPDFView(DatExportBaseView):
+    def get(self, request, *args, **kwargs):
+        dat = self.get_object()
+        file_handle = open_dat_pdf_export(dat)
+        if file_handle is None:
+            messages.warning(
+                request,
+                "Aucun export PDF n'est disponible pour ce DAT. Veuillez en générer un nouveau.",
+            )
+            return redirect("dat:my_detail", pk=dat.pk)
+        response = FileResponse(file_handle, content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="{self.build_filename(dat, "pdf")}"'
+        return response
+
+
+class DatExportStatusView(DatExportBaseView):
+    def get(self, request, *args, **kwargs):
+        dat = self.get_object()
+        generated_at = dat_pdf_export_modified_at(dat)
+        payload = {
+            "in_progress": dat.pdf_export_in_progress,
+            "requested_at": isoformat_datetime(dat.pdf_export_requested_at),
+            "requested_at_display": localize_datetime(dat.pdf_export_requested_at)
+            if dat.pdf_export_requested_at
+            else None,
+            "requested_by": dat.pdf_export_requested_by_display,
+            "available": dat_pdf_export_exists(dat),
+            "generated_at": isoformat_datetime(generated_at),
+            "generated_at_display": localize_datetime(generated_at) if generated_at else None,
+        }
+        return JsonResponse(payload)
+
+
+class DatSubSectionUpdateView(ModuleContextMixin, LoginRequiredMixin, FormView):
+    template_name = "dat/dat_sub_section_form.html"
+    form_class = DATSubSectionForm
+
+    def dispatch(self, request, *args, **kwargs):
+        dat_pk = kwargs.get("dat_pk")
+        section_slug = kwargs.get("section_slug")
+        sub_section_slug = kwargs.get("sub_section_slug")
+        base_queryset = DATSubSection.objects.select_related("section__dat").prefetch_related("allowed_roles")
+        self.sub_section = get_object_or_404(
+            base_queryset,
+            section__dat_id=dat_pk,
+            section__slug=section_slug,
+            slug=sub_section_slug,
+        )
+        self.section = self.sub_section.section
+        if sync_dat_sections_if_needed(self.section.dat):
+            self.sub_section = get_object_or_404(
+                base_queryset,
+                section__dat_id=dat_pk,
+                section__slug=section_slug,
+                slug=sub_section_slug,
+            )
+            self.section = self.sub_section.section
+        if not self.sub_section.can_user_edit(request.user):
+            raise PermissionDenied
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["sub_section"] = self.sub_section
+        kwargs["user"] = self.request.user
+        return kwargs
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["sub_section"] = self.sub_section
+        context["section"] = self.section
+        context["dat"] = self.section.dat
+        context["form_action"] = self.request.path
+        return context
+
+    def is_ajax(self) -> bool:
+        return self.request.headers.get("x-requested-with") == "XMLHttpRequest"
+
+    def form_valid(self, form):
+        changes = form.save()
+        dat = self.section.dat
+        if changes:
+            actor = self.request.user if self.request.user.is_authenticated else None
+            actor_display = format_user_display(actor) if actor else ""
+            DATHistory.objects.create(
+                dat=dat,
+                action=DATHistoryAction.SECTION_UPDATED,
+                status_before=dat.status,
+                status_after=dat.status,
+                performed_by=actor,
+                performed_by_display=actor_display,
+                details={
+                    "section": {
+                        "slug": self.section.slug,
+                        "title": self.section.title,
+                    },
+                    "sub_section": {
+                        "slug": self.sub_section.slug,
+                        "title": self.sub_section.title,
+                    },
+                    "changes": changes,
+                },
+            )
+            message = f"La sous-section « {self.sub_section.title} » a été mise à jour."
+            if not self.is_ajax():
+                messages.success(self.request, message)
+        else:
+            message = "Aucune modification détectée sur cette sous-section."
+            if not self.is_ajax():
+                messages.info(self.request, message)
+        if self.is_ajax():
+            html = render_sub_section_snippet(
+                dat,
+                self.request.user,
+                self.section.slug,
+                self.sub_section.slug,
+            )
+            return JsonResponse(
+                {
+                    "success": True,
+                    "message": message,
+                    "sub_section_slug": self.sub_section.slug,
+                    "sub_section_html": html,
+                }
+            )
+        return super().form_valid(form)
+
+    def form_invalid(self, form):
+        if self.is_ajax():
+            html = render_to_string(
+                "dat/dat_sub_section_form.html",
+                self.get_context_data(form=form, form_action=self.request.path),
+                request=self.request,
+            )
+            return JsonResponse({"success": False, "form_html": html}, status=400)
+        return super().form_invalid(form)
+
+    def get(self, request, *args, **kwargs):
+        response = super().get(request, *args, **kwargs)
+        if self.is_ajax():
+            html = render_to_string(
+                "dat/dat_sub_section_form.html",
+                self.get_context_data(form=response.context_data["form"], form_action=request.path),
+                request=request,
+            )
+            return JsonResponse({"form_html": html, "title": self.sub_section.title})
+        return response
+
+    def get_success_url(self):
+        anchor = f"#sub-section-{self.sub_section.slug}"
+        return f"{reverse('dat:my_detail', args=[self.section.dat_id])}{anchor}"
 
 
 class DatManagerAccessMixin(LoginRequiredMixin):
@@ -441,6 +902,36 @@ class DatAdminList(ModuleContextMixin, DatManagerAccessMixin, ListView):
         context = super().get_context_data(**kwargs)
         context["total_dats"] = context["object_list"].count()
         return context
+
+
+class DatImportView(ModuleContextMixin, DatManagerAccessMixin, FormView):
+    template_name = "dat/dat_import.html"
+    form_class = DATImportForm
+    success_url = reverse_lazy("dat:import")
+
+    def form_valid(self, form):
+        importer = DATImportService(actor=self.request.user if self.request.user.is_authenticated else None)
+        payload = form.payload or {}
+        reference_override = form.cleaned_data.get("reference_override") or None
+        try:
+            result = importer.import_from_payload(payload, reference_override=reference_override)
+        except DATImportError as exc:
+            form.add_error(None, str(exc))
+            return self.form_invalid(form)
+
+        dat = result.dat
+        messages.success(
+            self.request,
+            f"Le DAT « {dat.reference} - {dat.title} » a été importé avec succès.",
+        )
+        detail_url = f"/dat/manage/dats/crud/{dat.pk}/detail/"
+        messages.info(
+            self.request,
+            format_html('Consulter le <a href="{}">DAT importé</a>.', detail_url),
+        )
+        for warning in result.warnings:
+            messages.warning(self.request, warning)
+        return super().form_valid(form)
 
 
 class DatDashboardView(ModuleContextMixin, DatManagerAccessMixin, TemplateView):
@@ -551,6 +1042,53 @@ def application_options(request):
         for application in applications
     ]
     return JsonResponse({"options": options})
+
+
+@login_required
+def create_schema_diagram(request, dat_pk: int):
+    if request.method != "POST":
+        return JsonResponse({"error": "Méthode non autorisée"}, status=405)
+
+    dat = get_object_or_404(DAT.objects.prefetch_related("sections__allowed_roles"), pk=dat_pk)
+    architecture_section = dat.sections.filter(slug="architecture").first()
+    if architecture_section is None:
+        sync_dat_sections_if_needed(dat)
+        architecture_section = dat.sections.filter(slug="architecture").first()
+    if architecture_section is None or not architecture_section.can_user_edit(request.user):
+        raise PermissionDenied
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        payload = {}
+    raw_title = (payload.get("title") or "").strip()
+    if raw_title:
+        try:
+            title = sanitize_diagram_title(raw_title)
+        except ValidationError as exc:
+            message = exc.messages[0] if getattr(exc, "messages", None) else str(exc)
+            return JsonResponse(
+                {"ok": False, "error": "invalid_title", "message": message},
+                status=400,
+            )
+    else:
+        fallback_title = f"{dat.reference} - Schéma"
+        try:
+            title = sanitize_diagram_title(fallback_title)
+        except ValidationError:
+            title = sanitize_diagram_title("Diagramme")
+
+    diagram = Diagram.objects.create(title=title, owner=request.user)
+    response_payload = {
+        "ok": True,
+        "diagram": {
+            "id": diagram.pk,
+            "title": diagram.title,
+            "detail_url": reverse("diagrams:detail", args=[diagram.pk]),
+            "edit_url": reverse("diagrams:edit", args=[diagram.pk]),
+        },
+    }
+    return JsonResponse(response_payload, status=201)
 
 
 class DatAdvanceStatusView(LoginRequiredMixin, View):

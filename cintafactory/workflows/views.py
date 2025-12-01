@@ -2,14 +2,28 @@ from __future__ import annotations
 
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.shortcuts import get_object_or_404
+from django.urls import reverse
 from django.utils.functional import cached_property
 from django.views.generic import TemplateView
 
-from dat.models import DATStatus
+from dat.models import DATStatus, DATHistoryAction
 from dat.permissions import filter_dat_queryset_for_user
 from dat.views import get_current_responsibles, get_next_status, user_can_progress_dat
 
 from .models import Workflow
+from .notifications import (
+    DEFAULT_NOTIFICATION_LIMIT,
+    fetch_notifications_for_user,
+    get_seen_notification_ids,
+    mark_notifications_as_seen,
+    mark_user_notifications_as_viewed,
+)
+
+
+class WorkflowOverviewView(LoginRequiredMixin, TemplateView):
+    """Static overview describing the workflow journey."""
+
+    template_name = "workflows/overview.html"
 
 
 class WorkflowBoardView(LoginRequiredMixin, TemplateView):
@@ -190,6 +204,89 @@ class WorkflowBoardView(LoginRequiredMixin, TemplateView):
                 "workflow": self.workflow,
                 "columns": self.get_columns(),
                 "all_statuses": status_choices,
+            }
+        )
+        return context
+
+
+class WorkflowNotificationsView(LoginRequiredMixin, TemplateView):
+    """Timeline-like view listing history events relevant to the connected user."""
+
+    template_name = "workflows/notifications.html"
+    notification_limit = DEFAULT_NOTIFICATION_LIMIT
+
+    def get_notifications(self):
+        entries = fetch_notifications_for_user(
+            self.request.user,
+            limit=self.notification_limit,
+            with_related=True,
+        )
+        seen_ids = get_seen_notification_ids(self.request)
+        notifications = []
+        history_ids = []
+        user_notification_ids = []
+        for entry in entries:
+            dat = entry.dat
+            application = getattr(dat, "application", None) if dat else None
+            payload = {
+                "source": entry.source,
+                "dat_link": reverse("dat:my_detail", args=[dat.pk]) if dat else "",
+                "dat_reference": getattr(dat, "reference", "") if dat else "",
+                "dat_title": getattr(dat, "title", "") if dat else "",
+                "dat_application_name": getattr(application, "name", "") if application else "",
+            }
+            if entry.history is not None:
+                history_ids.append(entry.history.id)
+                payload.update(
+                    {
+                        "history": entry.history,
+                        "title": entry.history.get_action_display(),
+                        "actor_name": entry.history.actor_name(),
+                        "created_at": entry.history.performed_at,
+                        "details": entry.history.details or {},
+                        "action": entry.history.action,
+                        "status_before": entry.history.status_before,
+                        "status_after": entry.history.status_after,
+                        "is_unread": entry.history.id not in seen_ids,
+                    }
+                )
+            elif entry.user_notification is not None:
+                user_notification_ids.append(entry.user_notification.id)
+                payload.update(
+                    {
+                        "user_notification": entry.user_notification,
+                        "title": entry.user_notification.title,
+                        "actor_name": entry.user_notification.actor_name,
+                        "created_at": entry.user_notification.created_at,
+                        "message": entry.user_notification.message,
+                        "details": entry.user_notification.extra_data or {},
+                        "action": entry.user_notification.level,
+                        "level": entry.user_notification.level,
+                        "target_url": entry.user_notification.target_url,
+                        "is_unread": not entry.user_notification.is_viewed,
+                    }
+                )
+            notifications.append(payload)
+        mark_notifications_as_seen(
+            self.request,
+            history_ids,
+        )
+        mark_user_notifications_as_viewed(
+            self.request.user,
+            user_notification_ids,
+        )
+        return notifications
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        notifications = self.get_notifications()
+        unread_count = sum(1 for entry in notifications if entry.get("is_unread", False))
+        context.update(
+            {
+                "notifications": notifications,
+                "history_actions": DATHistoryAction,
+                "notifications_unread_count": unread_count,
+                "current_module": None,
             }
         )
         return context

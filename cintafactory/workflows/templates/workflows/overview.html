@@ -1,0 +1,455 @@
+{% extends "material/frontend/base_module.html" %}
+{% load static %}
+
+{% block content %}
+<style>
+  .wf-overview {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+  }
+  .wf-hero {
+    background: linear-gradient(90deg, #f8f8f8, #ffffff);
+    padding: 2rem 2.5rem;
+    border-radius: 16px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  }
+  .wf-hero h1 {
+    margin: 0;
+    font-size: 2rem;
+    font-weight: 600;
+  }
+  .wf-hero p {
+    margin: 0.75rem 0 0;
+    color: #4a4a4a;
+    max-width: 60ch;
+  }
+  .wf-steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1.25rem;
+  }
+  .wf-step {
+    background: #f3f3f3;
+    border-radius: 12px;
+    padding: 1.25rem;
+    min-height: 100%;
+  }
+  .wf-step h3 {
+    margin: 0 0 0.5rem;
+    text-transform: uppercase;
+    font-size: 0.9rem;
+    letter-spacing: 0.08em;
+    color: #555;
+  }
+  .wf-step strong {
+    display: block;
+    font-size: 1.2rem;
+    color: #111;
+    margin-bottom: 0.35rem;
+  }
+  .wf-step ul {
+    padding-left: 1.25rem;
+    margin: 0;
+    color: #333;
+  }
+  .wf-lifecycle {
+    margin-top: 0;
+    background: #fff;
+    border-radius: 16px;
+    padding: 2rem;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.07);
+  }
+  .wf-map-wrapper {
+    width: 100%;
+    overflow-x: auto;
+    padding-bottom: 1rem;
+  }
+  .wf-map {
+    width: 3200px;
+    max-width: none;
+    display: block;
+    margin: 0 auto;
+  }
+  .wf-map--compact {
+    width: 1800px;
+  }
+  .wf-link {
+    stroke: #90a4ae;
+    stroke-width: 4;
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .wf-link--dotted {
+    stroke-dasharray: 12 12;
+    animation: wf-dash 4s linear infinite;
+  }
+  .wf-link--pulse {
+    stroke-dasharray: 16 8;
+    animation: wf-dash 2.5s linear infinite;
+  }
+  @keyframes wf-dash {
+    from {
+      stroke-dashoffset: 0;
+    }
+    to {
+      stroke-dashoffset: -120;
+    }
+  }
+  .wf-map text {
+    fill: #ffffffff;
+    font-weight: 600;
+    font-size: 0.95rem;
+    text-anchor: middle;
+    dominant-baseline: middle;
+  }
+  .wf-link-label {
+    fill: #ffffff;
+    font-size: 0.75rem;
+    font-weight: 600;
+    dominant-baseline: middle;
+  }
+  .wf-chip rect {
+    fill: rgba(84, 110, 122, 0.95);
+    stroke: none;
+    cursor: pointer;
+  }
+  .wf-dot {
+    stroke: #ffffff;
+    stroke-width: 3;
+    transition: fill 0.2s ease;
+  }
+  .wf-node__badge {
+    fill: var(--badge-color, #43a047);
+    stroke: #ffffff;
+    stroke-width: 3;
+  }
+  .wf-flow-notes {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1.5rem;
+    margin-top: 2rem;
+  }
+  .wf-tooltip {
+    position: fixed;
+    z-index: 999;
+    pointer-events: none;
+    background: rgba(33, 33, 33, 0.95);
+    color: #fff;
+    padding: 0.75rem 1rem;
+    border-radius: 10px;
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.3);
+    min-width: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    opacity: 0;
+    transform: scale(0.95);
+    transition: opacity 0.15s ease, transform 0.15s ease;
+    top: 0;
+    left: 0;
+  }
+  .wf-tooltip--text {
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+  .wf-tooltip--visible {
+    opacity: 1;
+    transform: scale(1);
+  }
+  .wf-tooltip__spinner {
+    width: 64px;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .wf-tooltip__spinner[hidden] {
+    display: none !important;
+  }
+  .wf-tooltip__spinner .rotating-logo {
+    width: 45px;
+    height: 45px;
+  }
+  .wf-tooltip__text {
+    font-size: 0.9rem;
+    font-weight: 500;
+    text-align: left;
+    width: 100%;
+    white-space: pre-line;
+  }
+.wf-node text {
+    fill: #fff;
+    text-anchor: middle;
+    dominant-baseline: middle;
+    pointer-events: none;
+  }
+  @media (max-width: 640px) {
+    .wf-map {
+      width: 100%;
+    }
+  }
+</style>
+
+<div class="wf-overview" style="width:100%">
+  <div class="wf-hero">
+    <h1>LOREM</h1>
+    <p>
+      r nostra, facilisis per senectus habitass
+      e risus arcu aliquet orci aliquam condimentum neque ad 
+      mauris vulputate feugiat. Euismod scelerisque commodo volutpat tellus luctus at sem sodales, dui torquent feugiat varius natoque nunc. Mauris auctor diam erat fusce phasellus proin purus class quisque ullamcorper morbi aliquam fames, primis molestie ad nibh iaculis fermentu
+    </p>
+  </div>
+  <div class="wf-lifecycle">
+
+    <div class="wf-map-wrapper" style="margin-top:2rem;">
+      <svg class="wf-map wf-map--compact" viewBox="0 0 1800 400" role="img" aria-label="Flux linéaire simplifié">
+        <!-- Linear links -->
+        <path class="wf-link wf-link--pulse" d="M230 180 L490 180"></path>
+        <path class="wf-link" d="M630 180 L890 180"></path>
+        <path class="wf-link wf-link--pulse" d="M1030 180 L1290 180"></path>
+        <path class="wf-link" d="M1430 180 L1590 180"></path>
+
+        <!-- Link chips -->
+        <g class="wf-chip" data-tooltip="Phase 1 → 2" transform="translate(360,150)">
+          <rect x="-90" y="-20" width="180" height="40" rx="20" ry="20"></rect>
+          <text class="wf-link-label" style="font-size:0.95rem;">Phase 1 → 2</text>
+        </g>
+        <g class="wf-chip" data-tooltip="Phase 2 → 3" transform="translate(760,150)">
+          <rect x="-90" y="-20" width="180" height="40" rx="20" ry="20"></rect>
+          <text class="wf-link-label" style="font-size:0.95rem;">Phase 2 → 3</text>
+        </g>
+        <g class="wf-chip" data-tooltip="Phase 3 → 4" transform="translate(1160,150)">
+          <rect x="-90" y="-20" width="180" height="40" rx="20" ry="20"></rect>
+          <text class="wf-link-label" style="font-size:0.95rem;">Phase 3 → 4</text>
+        </g>
+        <g class="wf-chip" data-tooltip="Phase 4 → 5" transform="translate(1510,150)">
+          <rect x="-90" y="-20" width="180" height="40" rx="20" ry="20"></rect>
+          <text class="wf-link-label" style="font-size:0.95rem;">Phase 4 → 5</text>
+        </g>
+
+        <!-- Nodes -->
+        <g class="wf-node" transform="translate(160,180)" style="--badge-color:#d30000ff;">
+          <circle class="wf-dot" data-tooltip="Phase 1" cx="0" cy="0" r="70" fill="#4c83ff"></circle>
+          <circle class="wf-node__badge" cx="45" cy="-45" r="22" ></circle>
+          <text x="0" y="0" font-size="1.05rem">Phase 1</text>
+        </g>
+        <g class="wf-node" transform="translate(560,180)" style="--badge-color:#43a047;">
+          <circle class="wf-dot" data-tooltip="Phase 2" cx="0" cy="0" r="70" fill="#3f51b5"></circle>
+          <circle class="wf-node__badge" cx="45" cy="-45" r="22"></circle>
+          <text x="0" y="0" font-size="1.05rem">Phase 2</text>
+        </g>
+        <g class="wf-node" transform="translate(960,180)" style="--badge-color:#43a047;">
+          <circle class="wf-dot" data-tooltip="Phase 3" cx="0" cy="0" r="70" fill="#7b1fa2"></circle>
+          <circle class="wf-node__badge" cx="45" cy="-45" r="22"></circle>
+          <text x="0" y="0" font-size="1.05rem">Phase 3</text>
+        </g>
+        <g class="wf-node" transform="translate(1360,180)" style="--badge-color:#d30000ff;">
+          <circle class="wf-dot" data-tooltip="Phase 4" cx="0" cy="0" r="70" fill="#d30000ff"></circle>
+          <circle class="wf-node__badge" cx="45" cy="-45" r="22"></circle>
+          <text x="0" y="0" font-size="1.05rem">Phase 4</text>
+        </g>
+        <g class="wf-node" transform="translate(1660,180)" style="--badge-color:#d30000ff;">
+          <circle class="wf-dot" data-tooltip="Phase 5" cx="0" cy="0" r="70" fill="#43a047"></circle>
+          <circle class="wf-node__badge" cx="45" cy="-45" r="22"></circle>
+          <text x="0" y="0" font-size="1.05rem">Phase 5</text>
+        </g>
+      </svg>
+    </div>
+
+    <div id="wf-tooltip" class="wf-tooltip" hidden>
+      <div class="wf-tooltip__spinner">
+        {% include "components/_loading_spinner.html" %}
+      </div>
+      <span class="wf-tooltip__text" hidden></span>
+    </div>
+
+    <div class="wf-flow-notes">
+      <div class="wf-note">
+        <strong>Blocage</strong>
+        <p>Un retour métier ou un complément d'information est requis avant de poursuivre l'instruction.</p>
+      </div>
+      <div class="wf-note">
+        <strong>Réserve</strong>
+        <p>Les valideurs posent des réserves qui doivent être levées pour atteindre le statut «&nbsp;Validée&nbsp;».</p>
+      </div>
+      <div class="wf-note">
+        <strong>Refus</strong>
+        <p>Si l'un des valideurs sélectionne «&nbsp;Refusée&nbsp;», l'affaire sort du flux de validation.</p>
+      </div>
+      <div class="wf-note">
+        <strong>Procès-verbal</strong>
+        <p>Lorsque tous les valideurs confirment la décision, le PV est complété et l'affaire est classée.</p>
+      </div>
+    </div>
+</div>
+
+<div class="wf-steps">
+    <div class="wf-step">
+      <h3>Initialisation</h3>
+      <strong>LOREM 1</strong>
+      <ul>
+        <li>Le projet (CV ou Socle) crée et renseigne une nouvelle affaire dans ArchiFactory.</li>
+      </ul>
+    </div>
+    <div class="wf-step">
+      <h3>Initialisation</h3>
+      <strong>LOREM 2&nbsp;: Instruction référent</strong>
+      <ul>
+        <li>L'architecte référent CV/Socle analyse la demande.</li>
+        <li>Il attribue l'affaire à l'architecte technique en charge.</li>
+        <li>Il définit l'instance de validation (ASAP, GoExpress, …).</li>
+      </ul>
+    </div>
+    <div class="wf-step">
+      <h3>Instruction</h3>
+      <strong>LOREM 3&nbsp;: Construction du dossier</strong>
+      <ul>
+        <li>L'urbaniste et l'architecte technique complètent leurs onglets.</li>
+        <li>CYBER, DIGIT, COSME et APPS vérifient / enrichissent leurs sections.</li>
+        <li><strong>Validations spécifiques ajoutées si nécessaire :</strong> tampon Cloud, capacité, etc.</li>
+        <li>Chaque onglet passe au statut «&nbsp;Prêt&nbsp;» une fois conforme.</li>
+        <li>L'architecte référent relit le dossier complet et délivre, le cas échéant, le «&nbsp;Go Référent&nbsp;».</li>
+      </ul>
+    </div>
+    <div class="wf-step">
+      <h3>Validation</h3>
+      <strong>LOREM 4&nbsp;: Passage en instance</strong>
+      <ul>
+        <li>Go Référent et onglets «&nbsp;Prêt&nbsp;» rendent l'affaire visible aux approbateurs.</li>
+        <li>Archi / Urba / Sécu / Exploitation (COSME, APPS, DIGIT) valident en comité mardi matin
+          ou via les circuits en ligne (consuels express, Quickdevs).</li>
+      </ul>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  (function () {
+    var tooltip = document.getElementById("wf-tooltip");
+    if (!tooltip) {
+      return;
+    }
+    var spinner = tooltip.querySelector(".wf-tooltip__spinner");
+    var textNode = tooltip.querySelector(".wf-tooltip__text");
+    var showTimer = null;
+    var activeTarget = null;
+    var insideTrigger = false;
+
+    function getPoint(evt) {
+      if (!evt) {
+        return { x: 0, y: 0 };
+      }
+      if (evt.touches && evt.touches.length) {
+        return { x: evt.touches[0].clientX, y: evt.touches[0].clientY };
+      }
+      return { x: evt.clientX, y: evt.clientY };
+    }
+
+    function setPosition(point) {
+      if (!tooltip || tooltip.hidden) {
+        return;
+      }
+      var offsetX = 24;
+      var offsetY = 24;
+      tooltip.style.left = point.x + offsetX + "px";
+      tooltip.style.top = point.y - offsetY + "px";
+    }
+
+    function hideTooltip(target) {
+      if (insideTrigger && target === activeTarget) {
+        return;
+      }
+      activeTarget = null;
+      tooltip.classList.remove("wf-tooltip--visible");
+      tooltip.classList.remove("wf-tooltip--text");
+      tooltip.hidden = true;
+      spinner.hidden = false;
+      textNode.hidden = true;
+      textNode.textContent = "";
+      if (showTimer) {
+        clearTimeout(showTimer);
+        showTimer = null;
+      }
+    }
+
+    function showTooltip(target, point) {
+      activeTarget = target;
+      spinner.hidden = false;
+      textNode.hidden = true;
+      tooltip.classList.remove("wf-tooltip--text");
+      tooltip.hidden = false;
+      requestAnimationFrame(function () {
+        tooltip.classList.add("wf-tooltip--visible");
+      });
+      setPosition(point);
+      if (showTimer) {
+        clearTimeout(showTimer);
+      }
+      showTimer = setTimeout(function () {
+        if (activeTarget !== target) {
+          return;
+        }
+        spinner.hidden = true;
+        var tip = target.getAttribute("data-tooltip") || "Information";
+        textNode.textContent = "Exmaple action blablalldfsodsjfdd\nexemple user : bill bille \n12-10-2001\n\ntra laoreet justo gravida himenaeos tortor. Eleifend senectus platea dictumst luctus massa magnis tristique cras taciti maecenas, magna felis metus dis augue facilisis bibendum elementum morbi. Semper risus condimentum porttitor netus pharetra congue nam, metus natoque maecenas tortor sapien praesent, turpis consequat\n\n" + tip;
+        textNode.hidden = false;
+        tooltip.classList.add("wf-tooltip--text");
+      }, 2000);
+    }
+
+    function attachHover(element, owner) {
+      if (!element || !owner) {
+        return;
+      }
+      element.addEventListener("mouseenter", function (evt) {
+        insideTrigger = true;
+        showTooltip(owner, getPoint(evt));
+      });
+      element.addEventListener("mousemove", function (evt) {
+        setPosition(getPoint(evt));
+      });
+      element.addEventListener("mouseleave", function () {
+        insideTrigger = false;
+        hideTooltip(owner);
+      });
+      element.addEventListener("touchstart", function (evt) {
+        insideTrigger = true;
+        showTooltip(owner, getPoint(evt));
+      });
+      element.addEventListener("touchmove", function (evt) {
+        setPosition(getPoint(evt));
+      });
+      element.addEventListener("touchend", function () {
+        insideTrigger = false;
+        hideTooltip(owner);
+      });
+      element.addEventListener("touchcancel", function () {
+        insideTrigger = false;
+        hideTooltip(owner);
+      });
+    }
+
+    document.querySelectorAll(".wf-node").forEach(function (node) {
+      var reference = node.querySelector(".wf-dot") || node.querySelector(".wf-node__badge") || node;
+      attachHover(node, reference);
+    });
+
+    document.querySelectorAll(".wf-chip").forEach(function (chip) {
+      attachHover(chip, chip);
+    });
+
+
+    tooltip.addEventListener("mouseenter", function () {
+      insideTrigger = true;
+    });
+    tooltip.addEventListener("mouseleave", function () {
+      insideTrigger = false;
+      hideTooltip(activeTarget);
+    });
+  })();
+</script>
+{% endblock %}

@@ -1,0 +1,26 @@
+<tr>
+  <td>
+    <a href="{% url 'users:group_detail' pk=obj.pk %}" class="cinta-link">{{ obj.name }}</a>
+  </td>
+  <td>{% if obj.direction %}{{ obj.direction.name }}{% else %}—{% endif %}</td>
+  <td>{% if obj.business_direction %}{{ obj.business_direction.name }}{% else %}—{% endif %}</td>
+  <td>
+    {% if obj.responsible %}
+      {% if obj.responsible.get_full_name %}{{ obj.responsible.get_full_name }}{% else %}{{ obj.responsible.username }}{% endif %}
+    {% else %}
+      —
+    {% endif %}
+  </td>
+  <td>{% if obj.is_default %}Oui{% else %}Non{% endif %}</td>
+  <td>{{ obj.member_count }}</td>
+  <td>
+    <div style="display:flex; gap:0.3rem; flex-wrap:wrap;">
+      <a href="{% url 'users:group_detail' pk=obj.pk %}" class="btn-flat waves-effect">Détails</a>
+      {% if request.user.is_superuser %}
+        <a href="{% url 'users:businessgroup_change' pk=obj.pk %}" class="btn-flat waves-effect">Modifier</a>
+      {% else %}
+        <span title="Aucune permission" style="color:#888;">—</span>
+      {% endif %}
+    </div>
+  </td>
+</tr>

@@ -147,3 +147,151 @@ class WorkflowStepPermission(models.Model):
         if self.user:
             return self.user.get_username()
         return _("Unknown")
+
+
+class NotificationLevel(models.TextChoices):
+    INFO = "info", _("Information")
+    SUCCESS = "success", _("Succès")
+    WARNING = "warning", _("Avertissement")
+    ERROR = "error", _("Erreur")
+
+
+class NotificationType(models.Model):
+    """Reusable notification payload shared across user notifications."""
+
+    LEVEL_INFO = NotificationLevel.INFO
+    LEVEL_SUCCESS = NotificationLevel.SUCCESS
+    LEVEL_WARNING = NotificationLevel.WARNING
+    LEVEL_ERROR = NotificationLevel.ERROR
+    LEVEL_CHOICES = NotificationLevel.choices
+
+    title = models.CharField(max_length=255)
+    level = models.CharField(max_length=16, choices=LEVEL_CHOICES, default=LEVEL_INFO)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "workflow_notification_type"
+        unique_together = ("title", "level")
+        ordering = ["title", "level", "pk"]
+        verbose_name = _("Notification type")
+        verbose_name_plural = _("Notification types")
+
+    def __str__(self) -> str:  # pragma: no cover - human readable helper
+        return f"{self.title} ({self.get_level_display()})"
+
+
+class NotificationMessage(models.Model):
+    """Stores deduplicated notification message payloads."""
+
+    content = models.TextField(blank=True, null=True, default=None, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "workflow_notification_message"
+        ordering = ["pk"]
+        verbose_name = _("Notification message")
+        verbose_name_plural = _("Notification messages")
+
+    def __str__(self) -> str:  # pragma: no cover - human readable helper
+        preview = (self.content or "").strip()
+        if len(preview) > 60:
+            preview = f"{preview[:57]}..."
+        return preview or _("Message vide")
+
+
+class UserNotification(models.Model):
+    """Notification explicitly targeted to a single user."""
+
+    LEVEL_INFO = NotificationLevel.INFO
+    LEVEL_SUCCESS = NotificationLevel.SUCCESS
+    LEVEL_WARNING = NotificationLevel.WARNING
+    LEVEL_ERROR = NotificationLevel.ERROR
+    LEVEL_CHOICES = NotificationLevel.choices
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="workflow_notifications",
+    )
+    notification_type = models.ForeignKey(
+        NotificationType,
+        on_delete=models.PROTECT,
+        related_name="user_notifications",
+    )
+    notification_message = models.ForeignKey(
+        NotificationMessage,
+        on_delete=models.PROTECT,
+        related_name="user_notifications",
+    )
+    dat = models.ForeignKey(
+        "dat.DAT",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="user_notifications",
+    )
+    target_url = models.CharField(max_length=500, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    created_by_display = models.CharField(max_length=255, blank=True)
+    extra_data = models.JSONField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    viewed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "workflow_user_notification"
+        ordering = ["-created_at", "-pk"]
+
+    def __str__(self) -> str:  # pragma: no cover - human readable helper
+        return f"{self.title} → {self.user}"
+
+    @property
+    def is_viewed(self) -> bool:
+        return self.viewed_at is not None
+
+    def mark_as_viewed(self) -> None:
+        if self.is_viewed:
+            return
+        from django.utils import timezone
+
+        self.viewed_at = timezone.now()
+        self.save(update_fields=["viewed_at"])
+
+    @property
+    def actor_name(self) -> str:
+        if self.created_by_display:
+            return self.created_by_display
+        if self.created_by:
+            full_name = self.created_by.get_full_name()
+            if full_name:
+                return full_name
+            return self.created_by.get_username()
+        return "Système"
+
+    @property
+    def title(self) -> str:
+        if self.notification_type_id is None:
+            return ""
+        return self.notification_type.title
+
+    @property
+    def message(self) -> str:
+        if self.notification_message_id is None:
+            return ""
+        return self.notification_message.content
+
+    @property
+    def level(self) -> str:
+        if self.notification_type_id is None:
+            return NotificationLevel.INFO
+        return self.notification_type.level
+
+    def get_level_display(self) -> str:  # pragma: no cover - compatibility helper
+        if self.notification_type_id is None:
+            return dict(NotificationLevel.choices).get(NotificationLevel.INFO, NotificationLevel.INFO)
+        return self.notification_type.get_level_display()

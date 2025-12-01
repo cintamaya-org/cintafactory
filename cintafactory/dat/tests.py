@@ -1,17 +1,57 @@
+import json
+from unittest import mock
+
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db.models import ProtectedError
 from django.test import TestCase
 from django.urls import reverse
 
-from users.models import Role
+from cintafactory.logging_utils import bind_request_context, clear_request_context
+
+from diagrams.models import Diagram
+from users.models import BusinessDirection, Role, TechnicalDirection
 
 from .constants import (
     DAT_PORTEUR_ROLE_SLUG,
     DAT_REQUIRED_PARTICIPANT_ROLE_LABELS,
     DAT_REQUIRED_PARTICIPANT_ROLE_SLUGS,
 )
+from .exporters import DATExportModelBuilder
 from .forms import DATForm
-from .models import Application, DAT, DATParticipant, DATStatus, DATHistoryAction
+from .models import Application, DAT, DATParticipant, DATPart, DATPartEntryType, DATStatus, DATHistoryAction
+from .sections import sync_dat_sections_if_needed
+from .tasks import _run_pdf_generation
+from workflows.models import UserNotification
+
+def get_default_business_direction():
+    direction, _ = BusinessDirection.objects.get_or_create(
+        slug="direction-metier-test",
+        defaults={"name": "Direction Métier Test"},
+    )
+    return direction
+
+
+def get_default_technical_direction():
+    direction, _ = TechnicalDirection.objects.get_or_create(
+        slug="direction-technique-test",
+        defaults={"name": "Direction Technique Test"},
+    )
+    return direction
+
+
+def create_role(slug: str, name: str) -> Role:
+    return Role.objects.create(name=name, slug=slug, technical_direction=get_default_technical_direction())
+
+
+def ensure_role(slug: str, name: str) -> Role:
+    defaults = {"name": name, "technical_direction": get_default_technical_direction()}
+    role, created = Role.objects.get_or_create(slug=slug, defaults=defaults)
+    if not created and role.technical_direction_id is None:
+        role.technical_direction = defaults["technical_direction"]
+        role.save(update_fields=["technical_direction"])
+    return role
+
 
 class SmokeTest(TestCase):
     def test_import(self):
@@ -20,7 +60,12 @@ class SmokeTest(TestCase):
 class DATApplicationRelationTest(TestCase):
     def setUp(self) -> None:
         self.user = get_user_model().objects.create(username="owner")
-        self.application = Application.objects.create(code="app-code", name="App Name")
+        self.business_direction = get_default_business_direction()
+        self.application = Application.objects.create(
+            code="app-code",
+            name="App Name",
+            business_direction=self.business_direction,
+        )
 
     def test_dat_links_to_single_application(self):
         dat = DAT.objects.create(
@@ -46,6 +91,16 @@ class DATApplicationRelationTest(TestCase):
         self.application.delete()
         self.assertFalse(Application.objects.filter(pk=self.application.pk).exists())
 
+    def test_dat_inherits_application_business_direction(self):
+        dat = DAT.objects.create(
+            reference="DAT-003",
+            title="Direction Test",
+            application=self.application,
+            status=DATStatus.DEMANDE_INITIALE,
+            owner=self.user,
+        )
+        self.assertEqual(dat.business_direction, self.business_direction)
+
 class ApplicationOptionsViewTest(TestCase):
     def setUp(self) -> None:
         self.url = reverse("dat:application_options")
@@ -54,15 +109,16 @@ class ApplicationOptionsViewTest(TestCase):
             password="pwd",
             is_staff=True,
         )
-        self.role_porteur = Role.objects.create(name="Porteur de la demande", slug="porteur-demande")
+        self.role_porteur = create_role("porteur-demande", "Porteur de la demande")
         self.porteur = get_user_model().objects.create_user(
             username="porteur",
             password="pwd",
         )
         self.porteur.role = self.role_porteur
         self.porteur.save()
-        Application.objects.create(code="app-1", name="App One")
-        Application.objects.create(code="app-2", name="App Two")
+        direction = get_default_business_direction()
+        Application.objects.create(code="app-1", name="App One", business_direction=direction)
+        Application.objects.create(code="app-2", name="App Two", business_direction=direction)
 
     def test_requires_management_rights(self):
         user = get_user_model().objects.create_user(username="regular", password="pwd")
@@ -89,7 +145,7 @@ class DatCreationPermissionTest(TestCase):
     def setUp(self) -> None:
         self.dat_add_url = "/dat/manage/dats/crud/add/"
         self.application_add_url = "/dat/manage/applications/crud/add/"
-        self.role_porteur = Role.objects.create(name="Porteur de la demande", slug="porteur-demande")
+        self.role_porteur = create_role("porteur-demande", "Porteur de la demande")
         self.porteur = get_user_model().objects.create_user(
             username="porteur-creator",
             password="pwd",
@@ -135,7 +191,12 @@ class DatAdminListViewTest(TestCase):
             username="regular-user",
             password="pwd",
         )
-        self.application = Application.objects.create(code="app-admin", name="Application Admin")
+        direction = get_default_business_direction()
+        self.application = Application.objects.create(
+            code="app-admin",
+            name="Application Admin",
+            business_direction=direction,
+        )
         DAT.objects.create(
             reference="DAT-ADMIN-1",
             title="Admin DAT 1",
@@ -165,12 +226,107 @@ class DatAdminListViewTest(TestCase):
         self.assertIn("DAT-ADMIN-2", content)
 
 
+class DatImportViewTest(TestCase):
+    def setUp(self) -> None:
+        self.url = reverse("dat:import")
+        self.admin = get_user_model().objects.create_user(
+            username="import-admin",
+            password="pwd",
+            is_staff=True,
+        )
+        self.regular = get_user_model().objects.create_user(username="import-user", password="pwd")
+        self.porteur_role = create_role(DAT_PORTEUR_ROLE_SLUG, "Porteur")
+        self.porteur = get_user_model().objects.create_user(username="porteur-import", password="pwd")
+        self.porteur.role = self.porteur_role
+        self.porteur.save(update_fields=["role"])
+        self.business_direction = get_default_business_direction()
+        self.application = Application.objects.create(
+            code="app-import",
+            name="Application Import",
+            business_direction=self.business_direction,
+        )
+        self.sample_part_value = "Architecture importée"
+
+    def _build_payload(self):
+        dat = DAT.objects.create(
+            reference="DAT-EXPORT-IMPORT",
+            title="DAT pour export",
+            application=self.application,
+            status=DATStatus.DEMANDE_INITIALE,
+            owner=self.porteur,
+        )
+        sync_dat_sections_if_needed(dat)
+        DATParticipant.objects.create(dat=dat, role=self.porteur_role, user=self.porteur)
+        part = (
+            dat.sections.get(slug="architecture")
+            .sub_sections.get(slug="presentation-generale")
+            .parts.get(key="presentation_generale")
+        )
+        part.update_value(part.prepare_value(self.sample_part_value))
+        builder = DATExportModelBuilder()
+        payload = builder.build(dat)
+        payload["dat"]["reference"] = "DAT-IMPORT-001"
+        payload["dat"]["title"] = "DAT importé"
+        return payload
+
+    def test_requires_management_rights(self):
+        self.client.force_login(self.regular)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 403)
+
+    def test_imports_dat_from_json(self):
+        payload = self._build_payload()
+        upload = SimpleUploadedFile(
+            "dat.json",
+            json.dumps(payload).encode("utf-8"),
+            content_type="application/json",
+        )
+        self.client.force_login(self.admin)
+        response = self.client.post(self.url, {"data_file": upload})
+        self.assertEqual(response.status_code, 302)
+        imported = DAT.objects.get(reference=payload["dat"]["reference"])
+        self.assertEqual(imported.title, payload["dat"]["title"])
+        self.assertEqual(imported.application, self.application)
+        self.assertEqual(imported.owner, self.porteur)
+        participant_qs = imported.participants.filter(role__slug=DAT_PORTEUR_ROLE_SLUG)
+        self.assertEqual(participant_qs.count(), 1)
+        part = (
+            imported.sections.get(slug="architecture")
+            .sub_sections.get(slug="presentation-generale")
+            .parts.get(key="presentation_generale")
+        )
+        self.assertEqual(part.value, self.sample_part_value)
+
+    def test_allows_reference_override(self):
+        payload = self._build_payload()
+        DAT.objects.create(
+            reference=payload["dat"]["reference"],
+            title="Existing DAT",
+            application=self.application,
+            status=DATStatus.DEMANDE_INITIALE,
+            owner=self.porteur,
+        )
+        upload = SimpleUploadedFile(
+            "dat.json",
+            json.dumps(payload).encode("utf-8"),
+            content_type="application/json",
+        )
+        override_reference = "DAT-IMPORT-NEW"
+        self.client.force_login(self.admin)
+        response = self.client.post(
+            self.url,
+            {"data_file": upload, "reference_override": override_reference},
+        )
+        self.assertEqual(response.status_code, 302)
+        imported = DAT.objects.get(reference=override_reference)
+        self.assertEqual(imported.title, payload["dat"]["title"])
+
+
 class DatVisibilityRestrictionTest(TestCase):
     def setUp(self) -> None:
         self.roles = {}
         for slug, label in DAT_REQUIRED_PARTICIPANT_ROLE_LABELS.items():
-            role, _ = Role.objects.get_or_create(slug=slug, defaults={"name": label})
-            self.roles[slug] = role
+            self.roles[slug] = ensure_role(slug, label)
         self.owner = get_user_model().objects.create_user(username="owner-user", password="pwd")
         self.other = get_user_model().objects.create_user(username="other-user", password="pwd")
         self.admin = get_user_model().objects.create_user(
@@ -178,7 +334,12 @@ class DatVisibilityRestrictionTest(TestCase):
             password="pwd",
             is_staff=True,
         )
-        self.application = Application.objects.create(code="app-vis", name="Visibility App")
+        direction = get_default_business_direction()
+        self.application = Application.objects.create(
+            code="app-vis",
+            name="Visibility App",
+            business_direction=direction,
+        )
         self.dat = DAT.objects.create(
             reference="DAT-VIS-1",
             title="Visibility DAT",
@@ -343,31 +504,28 @@ class DatParticipantAssignmentFormTest(TestCase):
         self.roles: dict[str, Role] = {}
         for slug in DAT_REQUIRED_PARTICIPANT_ROLE_SLUGS:
             label = DAT_REQUIRED_PARTICIPANT_ROLE_LABELS.get(slug, slug)
-            self.roles[slug] = Role.objects.create(name=label, slug=slug)
+            self.roles[slug] = create_role(slug, label)
         self.users: dict[str, object] = {}
         User = get_user_model()
         for slug in DAT_REQUIRED_PARTICIPANT_ROLE_SLUGS:
             username = f"{slug.replace('-', '_')}_user"
             user = User.objects.create_user(username=username, password="pwd")
             user.role = self.roles[slug]
-            if slug == "architecte-technique":
-                referent_user = self.users.get("architecte-referent")
-                if referent_user:
-                    user.architect_referent = referent_user
             user.save()
             self.users[slug] = user
         self.porteur = self.users[DAT_PORTEUR_ROLE_SLUG]
-        self.application = Application.objects.create(code="form-app", name="Form App")
+        direction = get_default_business_direction()
+        self.application = Application.objects.create(
+            code="form-app",
+            name="Form App",
+            business_direction=direction,
+        )
 
     def _make_user(self, role_slug: str, suffix: str) -> object:
         User = get_user_model()
         username = f"{role_slug.replace('-', '_')}_{suffix}"
         user = User.objects.create_user(username=username, password="pwd")
         user.role = self.roles[role_slug]
-        if role_slug == "architecte-technique":
-            referent_user = self.users.get("architecte-referent")
-            if referent_user:
-                user.architect_referent = referent_user
         user.save()
         return user
 
@@ -452,7 +610,12 @@ class DatParticipantAssignmentFormTest(TestCase):
 
 class ApplicationModelFormattingTest(TestCase):
     def test_formatted_dates(self):
-        application = Application.objects.create(code="format-app", name="Format App")
+        direction = get_default_business_direction()
+        application = Application.objects.create(
+            code="format-app",
+            name="Format App",
+            business_direction=direction,
+        )
         formatted_created = application.formatted_created_at()
         formatted_updated = application.formatted_updated_at()
         self.assertIn("/", formatted_created)
@@ -468,7 +631,13 @@ class DatHistoryTest(TestCase):
             username="history-manager",
             is_staff=True,
         )
-        self.application = Application.objects.create(code="hist-app", name="History App")
+        direction = get_default_business_direction()
+        self.application = Application.objects.create(
+            code="hist-app",
+            name="History App",
+            business_direction=direction,
+        )
+        self.addCleanup(clear_request_context)
 
     def _create_dat(self) -> DAT:
         dat = DAT(
@@ -525,3 +694,281 @@ class DatHistoryTest(TestCase):
         self.assertIn("Historique du dossier", content)
         self.assertIn(self.manager.username, content)
         self.assertIn(DATStatus.VALIDATION_REFERENT.label, content)
+        self.assertIn("Passage de", content)
+
+    def test_history_uses_request_context_when_actor_not_set(self):
+        bind_request_context(user_id=self.manager.id, username=self.manager.username)
+        dat = DAT.objects.create(
+            reference="DAT-HIST-CTX",
+            title="Request Context Actor",
+            application=self.application,
+            status=DATStatus.DEMANDE_INITIALE,
+        )
+        entry = dat.history_entries.first()
+        self.assertIsNotNone(entry)
+        if entry:
+            self.assertEqual(entry.action, DATHistoryAction.CREATED)
+            self.assertEqual(entry.performed_by_id, self.manager.id)
+            self.assertEqual(entry.performed_by_display, self.manager.username)
+            self.assertEqual(entry.actor_name(), self.manager.username)
+
+
+class DatSectionIntegrationTest(TestCase):
+    def setUp(self) -> None:
+        self.roles = {}
+        role_defs = [
+            ("porteur-demande", "Porteur de la demande"),
+            ("architecte-technique", "Architecte technique"),
+            ("architecte-referent", "Architecte referent"),
+            ("analyste-secu", "Analyste securite"),
+            ("rssi", "RSSI"),
+            ("infra-exploitation", "Infra / Exploitation"),
+        ]
+        for slug, name in role_defs:
+            self.roles[slug] = ensure_role(slug, name)
+
+        User = get_user_model()
+        self.porteur = User.objects.create_user(username="sections-porteur", password="pwd")
+        self.porteur.role = self.roles["porteur-demande"]
+        self.porteur.save(update_fields=["role"])
+        self.architect = User.objects.create_user(username="sections-architecte", password="pwd")
+        self.architect.role = self.roles["architecte-technique"]
+        self.architect.save(update_fields=["role"])
+
+        direction = get_default_business_direction()
+        self.application = Application.objects.create(
+            code="app-sections",
+            name="Sections App",
+            business_direction=direction,
+        )
+        self.dat = DAT.objects.create(
+            reference="DAT-SECT-1",
+            title="DAT Sections",
+            application=self.application,
+            status=DATStatus.DEMANDE_INITIALE,
+            owner=self.porteur,
+        )
+        DATParticipant.objects.create(dat=self.dat, role=self.roles["porteur-demande"], user=self.porteur)
+
+    def test_default_sections_created(self):
+        sections = list(self.dat.sections.order_by("order"))
+        self.assertEqual(len(sections), 7)
+        besoins = next((section for section in sections if section.slug == "besoins"), None)
+        self.assertIsNotNone(besoins)
+        if besoins:
+            self.assertEqual(besoins.sub_sections.count(), 3)
+            for part in besoins.sub_sections.all():
+                self.assertEqual(part.parts.count(), 0)
+
+    def test_porteur_can_update_section_and_history_logged(self):
+        section, sub_section, entry = self._prepare_sub_section_with_entry()
+        url = reverse("dat:sub_section_edit", args=[self.dat.pk, section.slug, sub_section.slug])
+        self.client.force_login(self.porteur)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+
+        post_data = {
+            entry.form_field_name(): "Nouveau besoin prioritaire",
+        }
+        response = self.client.post(url, post_data)
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response["Location"].startswith(reverse("dat:my_detail", args=[self.dat.pk])))
+
+        entry.refresh_from_db()
+        self.assertEqual(entry.value, "Nouveau besoin prioritaire")
+
+        history_entry = self.dat.history_entries.filter(action=DATHistoryAction.SECTION_UPDATED).first()
+        self.assertIsNotNone(history_entry)
+        if history_entry and history_entry.details:
+            changes = history_entry.details.get("changes", {})
+            self.assertIn("besoin_description", changes)
+
+        detail_url = reverse("dat:my_detail", args=[self.dat.pk])
+        response = self.client.get(detail_url)
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertIn("Description du besoin", content)
+        self.assertIn("Nouveau besoin prioritaire", content)
+
+    def _prepare_sub_section_with_entry(self):
+        section = self.dat.sections.get(slug="besoins")
+        sub_section = section.sub_sections.first()
+        if not sub_section:
+            self.fail("Section sans sous-section initialisée")
+        entry = DATPart.objects.create(
+            sub_section=sub_section,
+            key="besoin_description",
+            label="Description du besoin",
+            data_type=DATPartEntryType.LONG_TEXT,
+        )
+        return section, sub_section, entry
+
+    def test_ajax_get_returns_form_html(self):
+        section, sub_section, entry = self._prepare_sub_section_with_entry()
+        url = reverse("dat:sub_section_edit", args=[self.dat.pk, section.slug, sub_section.slug])
+        self.client.force_login(self.porteur)
+        response = self.client.get(url, HTTP_X_REQUESTED_WITH="XMLHttpRequest")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIn("form_html", payload)
+        self.assertIn(entry.label, payload["form_html"])
+        self.assertEqual(payload.get("title"), sub_section.title)
+
+    def test_ajax_post_updates_sub_section(self):
+        section, sub_section, entry = self._prepare_sub_section_with_entry()
+        url = reverse("dat:sub_section_edit", args=[self.dat.pk, section.slug, sub_section.slug])
+        self.client.force_login(self.porteur)
+        response = self.client.post(
+            url,
+            {entry.form_field_name(): "Mise à jour via AJAX"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload.get("success"))
+        self.assertEqual(payload.get("sub_section_slug"), sub_section.slug)
+        self.assertIn(sub_section.slug, payload.get("sub_section_html", ""))
+        entry.refresh_from_db()
+        self.assertEqual(entry.value, "Mise à jour via AJAX")
+
+    def test_user_without_assignment_cannot_edit_section(self):
+        section = self.dat.sections.get(slug="besoins")
+        sub_section = section.sub_sections.first()
+        url = reverse("dat:sub_section_edit", args=[self.dat.pk, section.slug, sub_section.slug])
+        self.client.force_login(self.architect)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 403)
+
+    def test_sections_visible_in_detail_view(self):
+        self.client.force_login(self.porteur)
+        url = reverse("dat:my_detail", args=[self.dat.pk])
+        response = self.client.get(url, {"section": "besoins"})
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertIn("BESOIN(S)", content)
+
+
+class CreateSchemaDiagramViewTest(TestCase):
+    def setUp(self) -> None:
+        self.user = get_user_model().objects.create_user(
+            username="diagram-staff",
+            password="pwd",
+            is_staff=True,
+        )
+        direction = get_default_business_direction()
+        self.application = Application.objects.create(
+            code="app-diagram",
+            name="Diagram App",
+            business_direction=direction,
+        )
+        self.dat = DAT.objects.create(
+            reference="DAT-DIAG-1",
+            title="Schema DAT",
+            application=self.application,
+            status=DATStatus.DEMANDE_INITIALE,
+            owner=self.user,
+        )
+        DATSection.objects.create(
+            dat=self.dat,
+            title="Architecture",
+            slug="architecture",
+            order=1,
+        )
+        self.url = reverse("dat:schema_create_diagram", args=[self.dat.pk])
+
+    def test_rejects_invalid_diagram_title(self):
+        self.client.force_login(self.user)
+        response = self.client.post(
+            self.url,
+            data=json.dumps({"title": "<script>alert(1)</script>"}),
+            content_type="application/json",
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 400)
+        payload = response.json()
+        self.assertFalse(payload.get("ok"))
+        self.assertEqual(payload.get("error"), "invalid_title")
+        self.assertIn("caract", payload.get("message", "").lower())
+        self.assertEqual(Diagram.objects.count(), 0)
+
+    def test_creates_diagram_with_normalized_title(self):
+        self.client.force_login(self.user)
+        response = self.client.post(
+            self.url,
+            data=json.dumps({"title": "   Nouveau    diagramme   critique   "}),
+            content_type="application/json",
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        self.assertTrue(payload.get("ok"))
+        diagram_payload = payload.get("diagram") or {}
+        self.assertEqual(diagram_payload.get("title"), "Nouveau diagramme critique")
+        diagram = Diagram.objects.get(pk=diagram_payload.get("id"))
+        self.assertEqual(diagram.owner, self.user)
+        self.assertEqual(diagram.title, "Nouveau diagramme critique")
+
+    def test_uses_reference_based_title_when_missing(self):
+        self.client.force_login(self.user)
+        response = self.client.post(
+            self.url,
+            data=json.dumps({}),
+            content_type="application/json",
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        diagram_payload = payload.get("diagram") or {}
+        self.assertIn("DAT-DIAG-1", diagram_payload.get("title", ""))
+        diagram = Diagram.objects.get(pk=diagram_payload.get("id"))
+        self.assertTrue(diagram.title.startswith("DAT-DIAG-1"))
+
+
+class DatPdfExportNotificationTest(TestCase):
+    def setUp(self) -> None:
+        self.user = get_user_model().objects.create_user(username="pdf-user", password="pwd")
+        direction = get_default_business_direction()
+        self.application = Application.objects.create(
+            code="app-pdf",
+            name="Application PDF",
+            business_direction=direction,
+        )
+        self.dat = DAT.objects.create(
+            reference="DAT-PDF",
+            title="DAT PDF",
+            application=self.application,
+            status=DATStatus.DEMANDE_INITIALE,
+            owner=self.user,
+        )
+        self.client.force_login(self.user)
+
+    @mock.patch("dat.tasks.Thread")
+    def test_trigger_pdf_export_sends_user_notification(self, thread_cls):
+        thread_instance = mock.Mock()
+        thread_cls.return_value = thread_instance
+        url = reverse("dat:my_export_pdf_trigger", args=[self.dat.pk])
+        response = self.client.post(url)
+
+        self.assertEqual(response.status_code, 302)
+        notifications = UserNotification.objects.filter(user=self.user)
+        self.assertEqual(notifications.count(), 0)
+        thread_instance.start.assert_called_once()
+
+    @mock.patch("dat.tasks.store_dat_pdf_export")
+    @mock.patch("dat.tasks.generate_dat_pdf")
+    def test_pdf_generation_completion_creates_notification(self, generate_pdf, store_pdf):
+        generate_pdf.return_value = (b"%PDF", {})
+        store_pdf.return_value = "dat/path.pdf"
+        DAT.objects.filter(pk=self.dat.pk).update(
+            pdf_export_in_progress=True,
+            pdf_export_requested_by=self.user,
+            pdf_export_requested_by_display="PDF User",
+        )
+
+        _run_pdf_generation(self.dat.pk, base_url=None)
+
+        notification = UserNotification.objects.get(user=self.user)
+        self.assertEqual(notification.title, "Export PDF disponible")
+        self.assertEqual(notification.dat, self.dat)
+        self.assertEqual(notification.level, "success")
+        self.assertIn("prêt", notification.message)

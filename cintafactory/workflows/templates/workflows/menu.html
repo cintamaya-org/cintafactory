@@ -4,6 +4,11 @@
 
 {% block app_menu_items %}
   <li>
+    <a href="{% url 'workflows:overview' %}">
+      <i class="material-icons">insights</i>Workflow overview
+    </a>
+  </li>
+  <li>
     <a href="{% url 'workflows:board' %}">
       <i class="material-icons">fact_check</i>Tableau des workflows
     </a>

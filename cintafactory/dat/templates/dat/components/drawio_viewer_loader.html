@@ -1,0 +1,461 @@
+{% load static %}
+{% include "components/drawio_preview_listener.html" %}
+<script>
+(function () {
+  if (window.CintaDatViewer) {
+    return;
+  }
+
+  const runtime = {
+    resourcePromise: null,
+    container: null,
+    viewer: null,
+  };
+
+  function getViewerOverlay() {
+    return runtime.viewer && runtime.viewer.viewer;
+  }
+
+  function setViewerAccessibility(isVisible) {
+    const overlay = getViewerOverlay();
+    if (!overlay) {
+      return;
+    }
+    if (isVisible) {
+      overlay.removeAttribute("aria-hidden");
+      overlay.removeAttribute("inert");
+    } else {
+      overlay.setAttribute("aria-hidden", "true");
+      overlay.setAttribute("inert", "");
+      if (overlay.contains(document.activeElement)) {
+        document.activeElement.blur();
+      }
+    }
+  }
+
+  function ensureViewerAccessibilityHooks(wrapper) {
+    if (!wrapper || wrapper.dataset.viewerA11yBound === "1") {
+      return;
+    }
+    wrapper.dataset.viewerA11yBound = "1";
+    wrapper.addEventListener("shown", () => setViewerAccessibility(true));
+    wrapper.addEventListener("hidden", () => setViewerAccessibility(false));
+  }
+
+  function loadViewerResources() {
+    if (typeof window.Viewer !== "undefined") {
+      return Promise.resolve();
+    }
+    if (runtime.resourcePromise) {
+      return runtime.resourcePromise;
+    }
+    runtime.resourcePromise = new Promise((resolve, reject) => {
+      const head = document.head || document.getElementsByTagName("head")[0];
+      if (!document.getElementById("viewerjs-style")) {
+        const link = document.createElement("link");
+        link.id = "viewerjs-style";
+        link.rel = "stylesheet";
+        link.href = "https://cdnjs.cloudflare.com/ajax/libs/viewerjs/1.11.6/viewer.min.css";
+        head.appendChild(link);
+      }
+      const existingScript = document.getElementById("viewerjs-script");
+      const attach = (scriptEl) => {
+        scriptEl.addEventListener("load", () => resolve(), { once: true });
+        scriptEl.addEventListener(
+          "error",
+          (error) => {
+            runtime.resourcePromise = null;
+            reject(error);
+          },
+          { once: true }
+        );
+      };
+      if (existingScript) {
+        attach(existingScript);
+        if (existingScript.dataset.loaded === "true") {
+          resolve();
+        }
+        return;
+      }
+      const script = document.createElement("script");
+      script.id = "viewerjs-script";
+      script.src = "https://cdnjs.cloudflare.com/ajax/libs/viewerjs/1.11.6/viewer.min.js";
+      script.async = true;
+      script.dataset.loaded = "false";
+      script.addEventListener("load", () => {
+        script.dataset.loaded = "true";
+      });
+      attach(script);
+      head.appendChild(script);
+    });
+    return runtime.resourcePromise;
+  }
+
+  function ensureViewerContainer() {
+    if (runtime.container) {
+      return runtime.container;
+    }
+    const wrapper = document.createElement("div");
+    wrapper.id = "dat-viewerjs-container";
+    wrapper.style.display = "none";
+    const image = document.createElement("img");
+    image.alt = "Diagramme Draw.io";
+    wrapper.appendChild(image);
+    document.body.appendChild(wrapper);
+    runtime.container = { wrapper, image };
+    return runtime.container;
+  }
+
+  function cacheBust(url) {
+    const helper = window.CintaDrawioPreview;
+    if (helper && typeof helper.withCacheBuster === "function") {
+      return helper.withCacheBuster(url);
+    }
+    if (!url) {
+      return url;
+    }
+    const separator = url.includes("?") ? "&" : "?";
+    return `${url}${separator}_=${Date.now()}`;
+  }
+
+  function openViewer(diagramId) {
+    if (!diagramId) {
+      return;
+    }
+    loadViewerResources()
+      .then(() =>
+        fetch(`/diagrams/${diagramId}/viewer-context/`, {
+          method: "GET",
+          credentials: "same-origin",
+          headers: { Accept: "application/json" },
+        })
+      )
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        return response.json();
+      })
+      .then((data) => {
+        const thumbnailUrl = cacheBust(data.diagram?.thumbnail_url);
+        if (!thumbnailUrl) {
+          alert("Aucun aperçu n'est disponible pour ce diagramme.");
+          return;
+        }
+        const title = data.diagram?.title || `Diagramme #${diagramId}`;
+        const { wrapper, image } = ensureViewerContainer();
+        image.src = thumbnailUrl;
+        image.alt = title;
+        image.dataset.title = title;
+        image.dataset.thumbnailUrl = thumbnailUrl;
+
+        if (!runtime.viewer) {
+          runtime.viewer = new window.Viewer(wrapper, {
+            navbar: false,
+            tooltip: false,
+            toolbar: {
+              zoomIn: 4,
+              zoomOut: 4,
+              oneToOne: 4,
+              reset: 4,
+              prev: 0,
+              play: 0,
+              next: 0,
+              rotateLeft: 4,
+              rotateRight: 4,
+              flipHorizontal: 4,
+              flipVertical: 4,
+            },
+            title: () => image.dataset.title || "",
+          });
+          ensureViewerAccessibilityHooks(wrapper);
+          setViewerAccessibility(false);
+        } else {
+          runtime.viewer.update();
+        }
+        runtime.viewer.view(0);
+        setViewerAccessibility(true);
+      })
+      .catch((error) => {
+        console.error("Impossible d'afficher le diagramme:", error);
+        alert("Affichage du diagramme impossible. Merci de réessayer.");
+      });
+  }
+
+  window.CintaDatViewer = {
+    open: openViewer,
+  };
+})();
+
+(function () {
+  if (window.CintaDatDrawioFileActions) {
+    return;
+  }
+
+  const runtime = {
+    fileInput: null,
+    activeButton: null,
+  };
+  const BUTTON_SPINNER_STYLE_ID = "dat-drawio-import-spinner-style";
+  const BUTTON_SPINNER_SRC = "{% static 'imgs/cintamaya_logo_100px.png' %}";
+
+  function ensureButtonSpinnerStyles() {
+    if (document.getElementById(BUTTON_SPINNER_STYLE_ID)) {
+      return;
+    }
+    const style = document.createElement("style");
+    style.id = BUTTON_SPINNER_STYLE_ID;
+    style.textContent = `
+      .dat-drawio-import-button {
+        position: relative;
+        min-width: 140px;
+        justify-content: center;
+      }
+      .dat-drawio-import-button .dat-drawio-button-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+      }
+      .dat-drawio-import-button.is-loading,
+      .dat-drawio-import-button.is-loading .material-icons {
+        color: transparent !important;
+      }
+      .dat-drawio-import-button.is-loading .material-icons {
+        visibility: hidden;
+      }
+      .dat-drawio-import-button.is-loading .dat-drawio-button-label {
+        display: none;
+      }
+      .dat-drawio-button-spinner {
+        position: absolute;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+      }
+      .dat-drawio-button-spinner img {
+        width: 28px;
+        height: 28px;
+        animation: datDrawioButtonSpin 1s ease-in-out infinite;
+      }
+      .dat-drawio-import-button.is-loading .dat-drawio-button-spinner {
+        display: flex;
+      }
+      @keyframes datDrawioButtonSpin {
+        0% { transform: rotate(0deg); }
+        70% { transform: rotate(360deg); }
+        100% { transform: rotate(360deg); }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function ensureButtonSpinner(button) {
+    if (!button) {
+      return;
+    }
+    ensureButtonSpinnerStyles();
+    if (button.querySelector(".dat-drawio-button-spinner")) {
+      return;
+    }
+    const spinner = document.createElement("span");
+    spinner.className = "dat-drawio-button-spinner";
+    const img = document.createElement("img");
+    img.src = BUTTON_SPINNER_SRC;
+    img.alt = "";
+    img.setAttribute("aria-hidden", "true");
+    spinner.appendChild(img);
+    button.appendChild(spinner);
+  }
+
+  function ensureFileInput() {
+    if (runtime.fileInput) {
+      return runtime.fileInput;
+    }
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".drawio,.xml,text/xml";
+    input.style.display = "none";
+    input.addEventListener("change", (event) => {
+      const target = event.target;
+      const files = target.files;
+      const button = runtime.activeButton;
+      runtime.activeButton = null;
+      if (!button || !files || !files.length) {
+        target.value = "";
+        return;
+      }
+      uploadDiagramFile(button, files[0]);
+      target.value = "";
+    });
+    document.body.appendChild(input);
+    runtime.fileInput = input;
+    return input;
+  }
+
+  function getCsrfToken() {
+    const value = document.cookie
+      .split(";")
+      .map((entry) => entry.trim())
+      .find((entry) => entry.startsWith("csrftoken="));
+    return value ? decodeURIComponent(value.split("=", 2)[1]) : "";
+  }
+
+  function showToast(message, isError) {
+    if (window.M && M.toast) {
+      M.toast({
+        html: message,
+        displayLength: 4000,
+        classes: isError ? "red darken-2" : "green darken-2",
+      });
+    } else {
+      window.alert(message);
+    }
+  }
+
+  function setButtonBusy(button, isBusy) {
+    if (!button) {
+      return;
+    }
+    if (isBusy) {
+      button.dataset.prevDisabled = button.disabled ? "1" : "0";
+      button.disabled = true;
+      button.classList.add("disabled");
+      button.classList.add("is-loading");
+      button.dataset.loading = "1";
+      if (button.classList.contains("dat-drawio-import-button")) {
+        ensureButtonSpinner(button);
+        button.setAttribute("aria-busy", "true");
+      }
+    } else {
+      const wasDisabled = button.dataset.prevDisabled === "1";
+      if (!wasDisabled) {
+        button.disabled = false;
+        button.classList.remove("disabled");
+      }
+      button.classList.remove("is-loading");
+      button.removeAttribute("aria-busy");
+      delete button.dataset.prevDisabled;
+      delete button.dataset.loading;
+    }
+  }
+
+  function uploadDiagramFile(button, file) {
+    if (!button) {
+      return Promise.reject(new Error("missing_button"));
+    }
+    const importUrl = button.dataset.importUrl;
+    if (!importUrl) {
+      showToast("Import indisponible pour ce diagramme.", true);
+      return Promise.reject(new Error("missing_import_url"));
+    }
+    const formData = new FormData();
+    formData.append("file", file, file.name || "diagram.drawio");
+    setButtonBusy(button, true);
+    const request = fetch(importUrl, {
+      method: "POST",
+      body: formData,
+      credentials: "same-origin",
+      headers: {
+        "X-Requested-With": "XMLHttpRequest",
+        "X-CSRFToken": getCsrfToken(),
+      },
+    })
+      .then((response) => {
+        if (!response.ok) {
+          return response
+            .json()
+            .catch(() => ({}))
+            .then((payload) => {
+              const message = payload && payload.error ? payload.error : `Import impossible (HTTP ${response.status}).`;
+              throw new Error(message);
+            });
+        }
+        return response.json().catch(() => ({}));
+    })
+      .then((payload) => {
+        const diagramData = payload && payload.diagram ? payload.diagram : {};
+        const thumbnailUrl = diagramData.thumbnail_url || diagramData.thumbnailUrl || null;
+        showToast("Diagramme importé avec succès.");
+        const detail = {
+          diagramId: button.dataset.diagramId || null,
+          fileName: file.name || null,
+          thumbnailUrl,
+          thumbnail_url: thumbnailUrl,
+        };
+        document.dispatchEvent(new CustomEvent("dat:diagram-imported", { detail }));
+      })
+      .catch((error) => {
+        const message = error && error.message ? error.message : "Import du diagramme impossible.";
+        showToast(message, true);
+      })
+      .finally(() => setButtonBusy(button, false));
+    return request;
+  }
+
+  function handleImport(button, event) {
+    if (!button || button.disabled || button.classList.contains("disabled")) {
+      return;
+    }
+    const editForm = button.closest(".dat-sub-section-edit-form");
+    if (!editForm) {
+      showToast("L'import est disponible uniquement en mode édition.", true);
+      return;
+    }
+    if (event) {
+      event.preventDefault();
+    }
+    if (!button.dataset.importUrl) {
+      showToast("Import indisponible pour ce diagramme.", true);
+      return;
+    }
+    const input = ensureFileInput();
+    runtime.activeButton = button;
+    input.value = "";
+    input.click();
+  }
+
+  function handleExport(button, event) {
+    if (!button || button.disabled || button.classList.contains("disabled")) {
+      return;
+    }
+    if (event) {
+      event.preventDefault();
+    }
+    const exportUrl = button.dataset.exportUrl;
+    if (!exportUrl) {
+      showToast("Export indisponible pour ce diagramme.", true);
+      return;
+    }
+    window.open(exportUrl, "_blank", "noopener");
+  }
+
+  document.addEventListener("click", (event) => {
+    const importBtn = event.target.closest(".dat-drawio-import-button");
+    if (importBtn) {
+      handleImport(importBtn, event);
+      return;
+    }
+    const exportBtn = event.target.closest(".dat-drawio-export-button");
+    if (exportBtn) {
+      handleExport(exportBtn, event);
+    }
+  });
+
+  window.CintaDatDrawioFileActions = {
+    triggerImport(button) {
+      handleImport(button);
+    },
+    triggerExport(button) {
+      handleExport(button);
+    },
+    importFileForButton(button, file) {
+      if (!button || !file) {
+        return Promise.reject(new Error("missing_import_parameters"));
+      }
+      return uploadDiagramFile(button, file);
+    },
+  };
+})();
+</script>

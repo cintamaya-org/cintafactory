@@ -1,0 +1,11 @@
+<tr>
+  <td>{{ obj.name }}</td>
+  <td>{{ obj.slug }}</td>
+  <td>
+    {% if request.user.is_superuser %}
+      <a href="{% url 'users:technicaldirection_change' pk=obj.pk %}" class="btn-flat waves-effect">Modifier</a>
+    {% else %}
+      <span title="Aucune permission" style="color:#888;">—</span>
+    {% endif %}
+  </td>
+</tr>

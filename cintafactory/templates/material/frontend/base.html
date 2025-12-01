@@ -15,6 +15,7 @@
         <link rel="stylesheet" href="{% static 'css/global.css' %}">
         {% endblock css %}
         {% block js %}{% include 'material/frontend/includes/material_js.html' %}{% endblock js %}
+        <script src="{% static 'js/user_form.js' %}" defer></script>
         {% block extrahead %}{% endblock %}
         {% endblock head %}
     </head>
@@ -27,9 +28,6 @@
                     {% block sidenav_header %}
                     <li>
                         <div class="user-view">
-                            <div class="background">
-                              <img src="{% static 'imgs/cintamaya_logo.jpg' %}" alt="Fond de la barre laterale">
-                            </div>
                             {% comment %} {% block userphoto %}
                             {% if user.photo.url %}
                             <a href="#"><img class="circle" src="{{ user.photo.url }}"></a>
@@ -37,8 +35,10 @@
                             <a href="#"><img class="circle" src="{% static 'material/imgs/user.png' %}"></a>
                             {% endif %}
                             {% endblock %} {% endcomment %}
-                            <a href="#"><span class="black-text name" style="color:#000;">{{ request.user.get_username|title }}</span></a>
-                            <a href="#"><span class="black-text email" style="color:#000;">{{ request.user.email }}</span></a>
+                            <div class="chip user-identity-chip light-blue lighten-5">
+                                <span class="user-identity-chip__name">{{ request.user.get_username|title }}</span>
+                                <span class="user-identity-chip__email">{{ request.user.email }}</span>
+                            </div>
                             <a href="{% url 'account:profile' %}"
                                class="btn waves-effect waves-light cinta-btn-primary my-account__link"
                                style="margin-top:0.75rem; min-width:170px; text-align:center;">
@@ -47,27 +47,51 @@
                         </div>
                     </li>
                     {% endblock %}
-                    {% block sidenav_items %}
-                    {% for module in modules %}
-                    {% if current_module == module and forloop.last %}
-                    <li class="active last">
-                        {% include module.menu with module=module %}
+                    <li class="sidenav-modules">
+                        <ul class="sidenav-modules__list">
+                            {% block sidenav_items %}
+                            {% for module in modules %}
+                            {% if current_module == module and forloop.last %}
+                            <li class="active last">
+                                {% include module.menu with module=module %}
+                            </li>
+                            {% elif current_module == module %}
+                            <li class="active">
+                                {% include module.menu with module=module %}
+                            </li>
+                            {% elif forloop.last %}
+                            <li class="last">
+                                {% include module.menu with module=module %}
+                            </li>
+                            {% else %}
+                            <li>
+                                {% include module.menu with module=module %}
+                            </li>
+                            {% endif %}
+                            {% endfor %}
+                            {% endblock sidenav_items %}
+                        </ul>
                     </li>
-                    {% elif current_module == module %}
-                    <li class="active">
-                        {% include module.menu with module=module %}
-                    </li>
-                    {% elif forloop.last %}
-                    <li class="last">
-                        {% include module.menu with module=module %}
-                    </li>
-                    {% else %}
-                    <li>
-                        {% include module.menu with module=module %}
+                    {% block sidenav_global_actions %}
+                    {% if request.user.is_authenticated %}
+                    <li class="sidenav-notifications">
+                        <a href="{% url 'workflows:notifications' %}"
+                           class="cinta-btn-secondary cinta-btn-secondary--block"
+                           data-turbolinks="false">
+                            <i class="material-icons" style="margin:0;" aria-hidden="true">notifications</i>
+                            <span class="sidenav-notifications__text">{% trans "Notifications" %}</span>
+                            <span class="chip red darken-1 white-text sidenav-notifications__badge" role="status">
+                                {{ workflow_unread_notification_count|default:0 }}
+                            </span>
+                        </a>
                     </li>
                     {% endif %}
-                    {% endfor %}
-                    {% endblock sidenav_items %}
+                    {% endblock sidenav_global_actions %}
+                    {% block sidenav_footer %}
+                    <li class="sidenav-footer">
+                        <img src="{% static 'imgs/cintamata_logo_typogramme_signature.png' %}" alt="Logo CINTAMATA">
+                    </li>
+                    {% endblock sidenav_footer %}
                 </ul>
             </dmc-sidenav>
             {% endblock %}
@@ -89,7 +113,7 @@
                                 class="btn waves-effect waves-light cinta-btn-primary"
                                 data-turbolinks="false"
                                 style="display:inline-flex; align-items:center; gap:0.35rem;">
-                                 <i class="material-icons right" style="margin-left:0;">exit_to_app</i>Deconnexion
+                                 <i class="material-icons" style="margin:0;">exit_to_app</i>Deconnexion
                              </a>
                          </li>
                         {% else %}

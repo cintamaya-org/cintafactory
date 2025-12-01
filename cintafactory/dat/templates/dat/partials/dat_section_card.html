@@ -1,0 +1,29 @@
+{% load dat_extras %}
+{% with wrap_card=wrap|default:True %}
+{% if wrap_card %}
+<div class="card cinta-card" id="section-{{ container.section.slug }}">
+  <div class="card-content">
+{% else %}
+<div id="section-{{ container.section.slug }}" class="section" style="padding:0;">
+{% endif %}
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; flex-wrap:wrap;">
+      <div>
+        <span class="card-title" style="display:flex; align-items:center; gap:0.5rem;">
+          <i class="material-icons" aria-hidden="true">view_agenda</i>
+          {{ container.section.title }}
+        </span>
+        {% if container.section.description %}
+          <p style="margin:0; color:#616161; white-space:pre-wrap;">{{ container.section.description }}</p>
+        {% endif %}
+      </div>
+    </div>
+    {% for part in container.parts %}
+      {% include "dat/partials/dat_sub_section_card.html" with part=part container_section=container.section dat=dat %}
+    {% endfor %}
+{% if wrap_card %}
+  </div>
+</div>
+{% else %}
+</div>
+{% endif %}
+{% endwith %}

@@ -5,8 +5,8 @@ from .models import Application, DAT, DATParticipant
 
 @admin.register(Application)
 class ApplicationAdmin(admin.ModelAdmin):
-    list_display = ("code", "name", "formatted_created_at", "formatted_updated_at")
-    search_fields = ("code", "name")
+    list_display = ("code", "name", "business_direction", "formatted_created_at", "formatted_updated_at")
+    search_fields = ("code", "name", "business_direction__name")
     ordering = ("name",)
 
 
@@ -19,8 +19,8 @@ class DATParticipantInline(admin.TabularInline):
 
 @admin.register(DAT)
 class DATAdmin(admin.ModelAdmin):
-    list_display = ("reference", "title", "application", "status", "owner", "created_at")
-    list_filter = ("status", "created_at", "application")
-    search_fields = ("reference", "title", "description", "application__name")
+    list_display = ("reference", "title", "application", "business_direction", "status", "owner", "created_at")
+    list_filter = ("status", "created_at", "application", "business_direction")
+    search_fields = ("reference", "title", "description", "application__name", "business_direction__name")
     ordering = ("-created_at",)
     inlines = (DATParticipantInline,)

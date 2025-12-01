@@ -8,8 +8,8 @@
 | Component           | Technology           |
 | ------------------- | -------------------- |
 | **Framework**       | Django 5.2.5         |
-| **Database**        | SQLite (/PostgreSQL) |
-| **Language**        | Python TODO VE       |
+| **Database**        | PostgreSQL |
+| **Language**        | Python TODO VERSION       |
 
 ---
 
@@ -65,6 +65,26 @@ python manage.py runserver
 Now open:
 -> [http://127.0.0.1:8050/admin/](http://127.0.0.1:8050/admin/) to access the Django admin interface.
 
+### Optional: Embedded draw.io editor
+
+If you deploy the bundled draw.io containers, configure the application with:
+
+- `DRAWIO_BASE_URL`: address the Django backend should use to talk to the draw.io editor service on the Docker network (defaults to `http://drawio:8080`).
+- `DRAWIO_PUBLIC_URL`: URL exposed to browsers that should be used inside the iframe (defaults to the same value as `DRAWIO_BASE_URL`; override it for public hosts, e.g. `https://drawio.example.com`).
+- `DRAWIO_LIBS` (optional): built-in diagrams.net palettes to expose (defaults to `general`); use a comma-separated list such as `general,uml`.
+- `DRAWIO_CLIBS` (optional): comma-separated list of HTTP(S) URLs that point to custom library XML files. Each entry is transformed into the `clibs` parameter so the iframe loads the libraries automatically. When unset, the application still loads any XML libraries found under `static/diagrams`.
+- The `drawio-export` service (added to the Compose files) handles PNG generation locally; the application reaches it through the internal hostname `drawio-export:8000`.
+
+To host custom libraries locally, serve the XML file from any container reachable by draw.io. A simple option is to drop the file under Django’s static directory (for example `cintafactory/static/drawio/mes-formes.xml`, mounted read-only in production) so it becomes available at `https://your-app/static/drawio/mes-formes.xml`. Then set `DRAWIO_CLIBS` to the internal URL exposed within your Docker network, e.g. `http://web:8000/static/drawio/mes-formes.xml`. The embedder automatically URL-encodes the parameter for draw.io.
+
+The docker-compose stacks already pass reasonable defaults; adjust them to match your reverse-proxy/hostnames in production.
+
+### DAT exports (PDF/JSON)
+
+- Depuis la fiche DAT, lancez une nouvelle génération PDF en tâche de fond (action `dat:my_export_pdf_trigger`), téléchargez le dernier export stocké (`dat:my_export_pdf_download`) ou récupérez le JSON (`dat:my_export_json`). Un seul PDF est conservé par DAT pour éviter d'occuper trop d'espace disque et le bouton de génération reste indisponible tant que l'export en cours n'est pas terminé.
+- Les deux formats s'appuient sur `cintafactory/dat/exporters.py`. Surclassez `DAT_EXPORT_MODEL_BUILDER` pour ajuster la structure retournée si besoin.
+- Le gabarit PDF se trouve dans `cintafactory/dat/templates/dat/exports/dat_export_pdf.html` et s'appuie sur WeasyPrint (installez les bibliothèques système requises : Cairo, Pango…).
+
 ---
 
 ## CI/CD
@@ -101,5 +121,5 @@ See the [LICENSE](./LICENSE) file for full details.
 
 ### Notes
 
-* Default database: `SQLite` for local development (TODO switch to PostgreSQL).
+* Default database: `PostgreSQL`
 * Future features: SSO integration, role-based access control, external file storage....

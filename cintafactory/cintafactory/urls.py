@@ -27,9 +27,10 @@ from account.views import AccountLogoutView
 urlpatterns = [
     path("admin/", admin.site.urls),      # Django admin
     path("users/", include(("users.urls", "users"), namespace="users")),
+    path("configuration/", include(("configuration.urls", "configuration"), namespace="configuration")),
     path("dat/", include(("dat.urls", "dat"), namespace="dat")),
     path("workflows/", include(("workflows.urls", "workflows"), namespace="workflows")),
-    # path("diagrams/", include(("diagrams.urls", "diagrams"), namespace="diagrams")),
+    path("diagrams/", include(("diagrams.urls", "diagrams"), namespace="diagrams")),
     path("accounts/login/", auth_views.LoginView.as_view(), name="login"),
     path("accounts/logout/", AccountLogoutView.as_view(), name="logout"),
     path(
@@ -63,8 +64,6 @@ urlpatterns = [
         name="password_reset_complete",
     ),
     path("", include(material_urls)),     # Material shell
-
-
 ]
 
 if settings.DEBUG:

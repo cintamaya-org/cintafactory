@@ -40,7 +40,9 @@ class AccountLogoutView(TemplateView):
     def dispatch(self, request, *args, **kwargs):
         if request.user.is_authenticated:
             logout(request)
-        handler = getattr(self, request.method.lower(), None) or self.get
+        handler = getattr(self, request.method.lower(), None)
+        if handler is None:
+            handler = self.get
         response = handler(request, *args, **kwargs)
         if request.method.upper() == "HEAD":
             response.content = b""

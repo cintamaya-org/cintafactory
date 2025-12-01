@@ -6,8 +6,8 @@
     <div style="display:flex; align-items:center; justify-content:space-between; gap:1rem;">
       <h5 style="margin:0;">Roles du systeme</h5>
 
-      {# Bouton ajoute disponible pour superuser/staff/admin #}
-      {% if request.user.is_superuser or request.user.is_staff or request.user.role and request.user.role.slug == "comite-validation" %}
+      {# Bouton reserve aux super administrateurs #}
+      {% if request.user.is_superuser %}
         <a href="crud/add/" class="btn waves-effect waves-light cinta-btn-primary">+ Ajouter un role</a>
       {% endif %}
     </div>
@@ -18,6 +18,8 @@
           <tr>
             <th>Nom</th>
             <th>Slug</th>
+            <th>Direction technique</th>
+            <th>Type</th>
             <th style="width:1%; white-space:nowrap;">Actions</th>
           </tr>
         </thead>
@@ -26,16 +28,16 @@
     {% for obj in object_list %}
       {% include "users/_role_row.html" %}
     {% empty %}
-      <tr><td colspan="3" style="color:#666;">Aucun role pour le moment.</td></tr>
+      <tr><td colspan="5" style="color:#666;">Aucun role pour le moment.</td></tr>
     {% endfor %}
   {% elif page_obj %}
     {% for obj in page_obj.object_list %}
       {% include "users/_role_row.html" %}
     {% empty %}
-      <tr><td colspan="3" style="color:#666;">Aucun role pour le moment.</td></tr>
+      <tr><td colspan="5" style="color:#666;">Aucun role pour le moment.</td></tr>
     {% endfor %}
   {% else %}
-    <tr><td colspan="3" style="color:#666;">Aucun role pour le moment.</td></tr>
+    <tr><td colspan="5" style="color:#666;">Aucun role pour le moment.</td></tr>
   {% endif %}
 </tbody>
 

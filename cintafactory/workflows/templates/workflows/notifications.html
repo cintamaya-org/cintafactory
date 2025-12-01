@@ -1,0 +1,289 @@
+{% extends "material/frontend/base_module.html" %}
+
+{% block content %}
+<style>
+  .wf-notifications-card {
+    border-radius: 24px;
+  }
+  .wf-notifications-card .card-content {
+    padding: 2rem;
+  }
+  @media (max-width: 600px) {
+    .wf-notifications-card .card-content {
+      padding: 1.25rem;
+    }
+  }
+  .wf-notifications {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+  .wf-notifications__header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+  .wf-notifications__header h1 {
+    margin: 0;
+    font-size: 2rem;
+  }
+  .wf-notifications__summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+  }
+  .wf-notifications__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .wf-notification {
+    border: 1px solid #ececec;
+    border-radius: 16px;
+    padding: 1.25rem;
+    background: #fff;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.04);
+    display: flex;
+    gap: 1rem;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .wf-notification--unread {
+    border-color: #f44336;
+    box-shadow: 0 10px 25px rgba(244, 67, 54, 0.12);
+  }
+  .wf-notification__icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f5f5f5;
+    flex-shrink: 0;
+    font-size: 1.75rem;
+    color: #546e7a;
+  }
+  .wf-notification--unread .wf-notification__icon {
+    background: rgba(244, 67, 54, 0.12);
+    color: #c62828;
+  }
+  .wf-notification__body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  .wf-notification__title {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    align-items: center;
+  }
+  .wf-notification__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    color: #607d8b;
+    font-size: 0.9rem;
+    align-items: center;
+  }
+  .wf-notification__details {
+    margin-top: 0.35rem;
+    color: #37474f;
+    line-height: 1.4;
+  }
+  .wf-notification__details ul {
+    margin: 0.4rem 0 0 1.2rem;
+    padding: 0;
+  }
+  .wf-notification__status-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.35rem;
+  }
+  .wf-notifications__empty {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem 1rem;
+    border: 2px dashed #cfd8dc;
+    border-radius: 16px;
+    text-align: center;
+    color: #607d8b;
+  }
+</style>
+<div class="card wf-notifications-card">
+  <div class="card-content">
+    <div class="wf-notifications">
+      <div class="wf-notifications__header">
+        <div>
+          <h1>Notifications</h1>
+          <p style="margin:0; color:#546e7a;">Suivez les derniers événements liés à vos DAT et à vos workflows.</p>
+        </div>
+        <div class="wf-notifications__summary">
+          <span class="chip red darken-1 white-text" style="font-weight:600;">
+            {{ notifications_unread_count }} non lus
+          </span>
+          <span class="chip grey lighten-3">
+            {{ notifications|length }} éléments
+          </span>
+        </div>
+      </div>
+
+      {% if notifications %}
+        <ul class="wf-notifications__list">
+          {% for notification in notifications %}
+            <li class="wf-notification{% if notification.is_unread %} wf-notification--unread{% endif %}">
+              <div class="wf-notification__icon" aria-hidden="true">
+                {% if notification.source == "history" %}
+                  {% if notification.action == history_actions.STATUS_CHANGED %}
+                    <i class="material-icons">published_with_changes</i>
+                  {% elif notification.action == history_actions.OWNER_CHANGED %}
+                    <i class="material-icons">swap_horiz</i>
+                  {% elif notification.action == history_actions.SECTION_UPDATED %}
+                    <i class="material-icons">description</i>
+                  {% elif notification.action == history_actions.UPDATED %}
+                    <i class="material-icons">edit</i>
+                  {% elif notification.action == history_actions.CREATED %}
+                    <i class="material-icons">add_circle_outline</i>
+                  {% else %}
+                    <i class="material-icons">notifications</i>
+                  {% endif %}
+                {% else %}
+                  {% if notification.level == "success" %}
+                    <i class="material-icons">check_circle</i>
+                  {% elif notification.level == "warning" %}
+                    <i class="material-icons">warning</i>
+                  {% elif notification.level == "error" %}
+                    <i class="material-icons">error</i>
+                  {% else %}
+                    <i class="material-icons">notifications</i>
+                  {% endif %}
+                {% endif %}
+              </div>
+              <div class="wf-notification__body">
+                <div class="wf-notification__title">
+                  <span>{{ notification.title }}</span>
+                  <span aria-hidden="true">·</span>
+                  {% if notification.dat_link %}
+                    <a href="{{ notification.dat_link }}" class="wf-notification__dat-link">
+                      {{ notification.dat_reference }} · {{ notification.dat_title }}
+                    </a>
+                  {% else %}
+                    <span>{{ notification.dat_reference }} · {{ notification.dat_title }}</span>
+                  {% endif %}
+                </div>
+                <div class="wf-notification__meta">
+                  <span><i class="material-icons tiny" aria-hidden="true">event</i> {{ notification.created_at|date:"d/m/Y" }} à {{ notification.created_at|time:"H\\hi" }}</span>
+                  <span><i class="material-icons tiny" aria-hidden="true">person</i> {{ notification.actor_name }}</span>
+                  {% if notification.dat_application_name %}
+                    <span><i class="material-icons tiny" aria-hidden="true">apps</i> {{ notification.dat_application_name }}</span>
+                  {% endif %}
+                </div>
+                <div class="wf-notification__status-chips">
+                  {% if notification.source == "history" %}
+                    {% if notification.history.status_before %}
+                      <span class="chip grey lighten-3" title="Statut précédent">{{ notification.history.get_status_before_display }}</span>
+                    {% endif %}
+                    {% if notification.history.status_after and notification.history.status_after != notification.history.status_before %}
+                      <span class="chip blue lighten-5" title="Statut actuel">{{ notification.history.get_status_after_display }}</span>
+                    {% endif %}
+                  {% else %}
+                    <span class="chip grey lighten-3">{{ notification.actor_name }}</span>
+                    <span class="chip blue lighten-5">{{ notification.level|default:"info"|capfirst }}</span>
+                  {% endif %}
+                  {% if notification.is_unread %}
+                    <span class="chip red darken-1 white-text">Nouveau</span>
+                  {% endif %}
+                </div>
+                <div class="wf-notification__details">
+                  {% if notification.source == "history" %}
+                    {% with entry=notification.history %}
+                      {% if entry.action == history_actions.STATUS_CHANGED %}
+                        Passage de <strong>{{ entry.details.from|default:"-" }}</strong> à <strong>{{ entry.details.to|default:"-" }}</strong>.
+                      {% elif entry.action == history_actions.OWNER_CHANGED %}
+                        Responsable : <strong>{{ entry.details.from_username|default:"-" }}</strong> -> <strong>{{ entry.details.to_username|default:"-" }}</strong>.
+                      {% elif entry.action == history_actions.UPDATED %}
+                        {% if entry.details.changes %}
+                          <ul>
+                            {% for field, data in entry.details.changes.items %}
+                              <li>
+                                <strong>{{ field|capfirst }}</strong> : <span>{{ data.from|default:"-" }}</span> -> <span>{{ data.to|default:"-" }}</span>
+                              </li>
+                            {% endfor %}
+                          </ul>
+                        {% else %}
+                          Aucune précision supplémentaire.
+                        {% endif %}
+                      {% elif entry.action == history_actions.SECTION_UPDATED %}
+                        {% with details=entry.details %}
+                          {% if details.section %}
+                            Section <strong>{{ details.section.title|default:details.section.slug }}</strong>
+                            {% if details.section.slug %}
+                              (<code>{{ details.section.slug }}</code>)
+                            {% endif %}
+                            :
+                          {% endif %}
+                          {% if details.changes %}
+                            <ul>
+                              {% for key, change in details.changes.items %}
+                                <li>
+                                  {% if change.part %}<strong>{{ change.part }}</strong> · {% endif %}
+                                  <span>{{ change.label|default:key }}</span> :
+                                  <span>{{ change.from|default:"-" }}</span> -> <span>{{ change.to|default:"-" }}</span>
+                                </li>
+                              {% endfor %}
+                            </ul>
+                          {% else %}
+                            Mise à jour effectuée.
+                          {% endif %}
+                        {% endwith %}
+                      {% else %}
+                        {% if entry.details %}
+                          <code>{{ entry.details }}</code>
+                        {% else %}
+                          Un nouvel événement a été enregistré.
+                        {% endif %}
+                      {% endif %}
+                    {% endwith %}
+                  {% else %}
+                    {% if notification.message %}
+                      <p style="margin:0;">{{ notification.message|linebreaksbr }}</p>
+                    {% endif %}
+                    {% if notification.target_url %}
+                      <p style="margin:0.35rem 0 0;">
+                        <a href="{{ notification.target_url }}" class="btn-flat" style="padding-left:0;">Consulter</a>
+                      </p>
+                    {% elif notification.dat_link %}
+                      <p style="margin:0.35rem 0 0;">
+                        <a href="{{ notification.dat_link }}" class="btn-flat" style="padding-left:0;">Voir le DAT</a>
+                      </p>
+                    {% endif %}
+                  {% endif %}
+                </div>
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="wf-notifications__empty">
+          <i class="material-icons" style="font-size:3rem;" aria-hidden="true">notifications_none</i>
+          <p>Aucune notification à afficher pour le moment. Dès qu'un événement vous concernant sera enregistré, il apparaîtra ici.</p>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

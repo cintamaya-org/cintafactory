@@ -1,0 +1,317 @@
+{% load dat_extras %}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body {
+      font-family: "Helvetica Neue", Arial, sans-serif;
+      font-size: 12px;
+      color: #111;
+      margin: 0;
+      padding: 24px 36px;
+    }
+    h1, h2, h3, h4 {
+      color: #0d47a1;
+      margin: 0 0 8px;
+    }
+    h1 {
+      font-size: 26px;
+    }
+    h2 {
+      font-size: 18px;
+    }
+    h3 {
+      font-size: 16px;
+    }
+    h4 {
+      font-size: 14px;
+    }
+    .meta-table,
+    .participants-table,
+    .repeater-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+    }
+    .meta-table th,
+    .meta-table td,
+    .participants-table th,
+    .participants-table td,
+    .repeater-table th,
+    .repeater-table td {
+      border: 1px solid #cccccc;
+      padding: 6px 8px;
+      vertical-align: top;
+    }
+    .meta-table th,
+    .participants-table th,
+    .repeater-table th {
+      background: #f1f5fb;
+      text-transform: uppercase;
+      font-size: 11px;
+      letter-spacing: 0.05em;
+    }
+    .section-card,
+    .sub-section-card,
+    .part-card {
+      border: 1px solid #dfe5ef;
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .section-card {
+      background: #fdfdfd;
+    }
+    .sub-section-card {
+      background: #f8fafd;
+    }
+    .part-card {
+      background: #ffffff;
+    }
+    .part-label {
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: #e3f2fd;
+      color: #0d47a1;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .responsibles {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      font-size: 11px;
+      color: #2c3e50;
+    }
+.responsibles li {
+  margin-bottom: 2px;
+}
+.muted {
+  color: #777;
+}
+.schema-previews {
+  margin-top: 8px;
+}
+.schema-previews .diagram-preview {
+  margin-bottom: 12px;
+}
+.schema-previews .diagram-preview:last-child {
+  margin-bottom: 0;
+}
+.diagram-preview {
+  border: 1px solid #d0d7e3;
+  border-radius: 6px;
+  padding: 8px;
+  background: #fff;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+.diagram-preview img {
+  width: 100%;
+  max-width: 100%;
+  max-height: 520px;
+  height: auto;
+  object-fit: contain;
+  border-radius: 4px;
+  display: block;
+  margin-top: 6px;
+}
+.diagram-preview .diagram-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: #455a64;
+}
+  </style>
+</head>
+<body>
+  {% with meta=export.dat application=export.application owner=export.owner %}
+  <header style="margin-bottom:24px;">
+    <h1>DAT {{ meta.reference }} &mdash; {{ meta.title }}</h1>
+    <p class="muted" style="margin:4px 0 0;">
+      Exporté le {{ export.exported_at_display }} &
+      statut : {{ meta.status_label|default:meta.status }}
+    </p>
+  </header>
+
+  <section style="margin-bottom:20px;">
+    <h2>Informations générales</h2>
+    <table class="meta-table">
+      <tbody>
+        <tr>
+          <th>Référence</th>
+          <td>{{ meta.reference }}</td>
+          <th>Application</th>
+          <td>
+            {% if application %}
+              {{ application.name }}{% if application.code %} ({{ application.code }}){% endif %}
+            {% else %}
+              <span class="muted">Non renseigné</span>
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <th>Responsable</th>
+          <td>{{ owner.display|default:"-" }}</td>
+          <th>Créé le</th>
+          <td>{{ meta.created_at_display|default:"-" }}</td>
+        </tr>
+        <tr>
+          <th>Dernière mise à jour</th>
+          <td>{{ meta.updated_at_display|default:"-" }}</td>
+          <th>Statut</th>
+          <td>{{ meta.status_label|default:meta.status }}</td>
+        </tr>
+        <tr>
+          <th>Description</th>
+          <td colspan="3">{{ meta.description|default:"-" }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section style="margin-bottom:24px;">
+    <h2>Participants</h2>
+    {% if export.participants %}
+      <table class="participants-table">
+        <thead>
+          <tr>
+            <th>Utilisateur</th>
+            <th>Rôle</th>
+            <th>Date d'affectation</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for participant in export.participants %}
+            <tr>
+              <td>{{ participant.user_display|default:participant.user.display|default:"-" }}</td>
+              <td>{{ participant.role_label|default:participant.role.slug|default:"-" }}</td>
+              <td>{{ participant.assigned_at_display|default:"-" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="muted">Aucun participant enregistré.</p>
+    {% endif %}
+  </section>
+
+  <section>
+    <h2>Sections</h2>
+    {% for section in export.sections %}
+      <article class="section-card">
+        <h3>{{ section.title }}</h3>
+        {% if section.description %}<p>{{ section.description }}</p>{% endif %}
+        <p class="muted">
+          Responsables :
+          {% if section.responsibles %}
+            {% for responsible in section.responsibles %}
+              {{ responsible.user_display|default:"-" }}{% if not forloop.last %}, {% endif %}
+            {% endfor %}
+          {% else %}
+            Aucun responsable défini
+          {% endif %}
+        </p>
+
+        {% for sub_section in section.sub_sections %}
+          <div class="sub-section-card">
+            <h4>{{ sub_section.title }}</h4>
+            {% if sub_section.description %}<p>{{ sub_section.description }}</p>{% endif %}
+            <p class="muted">
+              Responsables :
+              {% if sub_section.responsibles %}
+                {% for responsible in sub_section.responsibles %}
+                  {{ responsible.user_display|default:"-" }}{% if not forloop.last %}, {% endif %}
+                {% endfor %}
+              {% else %}
+                Aucun responsable défini
+              {% endif %}
+            </p>
+
+            {% for part in sub_section.parts %}
+              <div class="part-card">
+                <div class="part-label">
+                  {{ part.label }}
+                  {% if part.required %}<span class="badge">Obligatoire</span>{% endif %}
+                </div>
+                {% if part.key != "schemas" %}
+                  {% if part.is_repeater and part.display_value %}
+                    <table class="repeater-table">
+                      <thead>
+                        <tr>
+                          {% for column in part.table_columns %}
+                            <th>{{ column.label }}</th>
+                          {% endfor %}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {% for row in part.display_value %}
+                          <tr>
+                            {% for column in part.table_columns %}
+                              <td>{{ row|get_item:column.key|default:"-" }}</td>
+                            {% endfor %}
+                          </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  {% elif part.display_value %}
+                    <div>
+                      {{ part.display_value|linebreaksbr }}
+                    </div>
+                  {% else %}
+                    <p class="muted">Valeur non renseignée.</p>
+                  {% endif %}
+                {% elif not part.display_value %}
+                  <p class="muted">Valeur non renseignée.</p>
+                {% endif %}
+                {% if part.key == "schemas" and part.display_value %}
+                  <div class="schema-previews">
+                    {% for row in part.display_value %}
+                      {% with preview=row.drawio_diagram schema_name=row|get_item:"nom_schema" schema_desc=row|get_item:"description" %}
+                        {% if preview %}
+                          <div class="diagram-preview">
+                            <div class="diagram-meta">
+                              <strong>{{ schema_name|default:preview.title|default:"Schéma" }}</strong>
+                              {% if schema_desc %}
+                                <span>{{ schema_desc }}</span>
+                              {% endif %}
+                            </div>
+                            {% if preview.data_uri %}
+                              <img src="{{ preview.data_uri }}" alt="Schéma {{ preview.title|default:schema_name|default:'Schéma' }}">
+                            {% elif preview.thumbnail_url %}
+                              <img src="{{ preview.thumbnail_url }}" alt="Schéma {{ preview.title|default:schema_name|default:'Schéma' }}">
+                            {% else %}
+                              <p class="muted" style="margin:6px 0 0;">Miniature indisponible.</p>
+                            {% endif %}
+                          </div>
+                        {% endif %}
+                      {% endwith %}
+                    {% empty %}
+                      <p class="muted">Aucun schéma disponible.</p>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+              </div>
+            {% empty %}
+              <p class="muted">Aucune partie définie pour cette sous-section.</p>
+            {% endfor %}
+          </div>
+        {% empty %}
+          <p class="muted">Aucune sous-section pour cette section.</p>
+        {% endfor %}
+      </article>
+    {% empty %}
+      <p class="muted">Aucune section n'est disponible.</p>
+    {% endfor %}
+  </section>
+  {% endwith %}
+</body>
+</html>

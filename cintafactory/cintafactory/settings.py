@@ -12,6 +12,9 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 import os
 from pathlib import Path
+from urllib.parse import urlsplit
+
+from .logging_utils import build_logging_dict
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -82,6 +85,7 @@ INSTALLED_APPS = [
     "users.apps.UsersConfig",
     "dat.apps.DatConfig",
     "account.apps.AccountConfig",
+    "configuration.apps.ConfigurationConfig",
 
 ]
 
@@ -112,15 +116,18 @@ TEMPLATES = [
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
         'DIRS': [
                 BASE_DIR / "templates",
-                 PROJECT_DIR / "templates",
+                PROJECT_DIR / "templates",
+                BASE_DIR / "cintafactory" / "templates",
                  ],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
                 'django.template.context_processors.request',
+                'django.template.context_processors.csrf',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 "material.frontend.context_processors.modules",
+                "workflows.context_processors.workflow_notifications",
             ],
         },
     },
@@ -189,9 +196,34 @@ STATIC_ROOT = Path(os.getenv("DJANGO_STATIC_ROOT", BASE_DIR / "staticfiles"))
 MEDIA_URL = "/media/"
 MEDIA_ROOT = Path(os.getenv("DJANGO_MEDIA_ROOT", BASE_DIR / "media"))
 
+DRAWIO_BASE_URL = os.getenv("DRAWIO_BASE_URL", "http://drawio:8080").rstrip("/")
+if not DRAWIO_BASE_URL:
+    DRAWIO_BASE_URL = "http://drawio:8080"
+
+DRAWIO_PUBLIC_URL = os.getenv("DRAWIO_PUBLIC_URL", DRAWIO_BASE_URL).rstrip("/")
+if not DRAWIO_PUBLIC_URL:
+    DRAWIO_PUBLIC_URL = DRAWIO_BASE_URL
+
+DRAWIO_LIBS = os.getenv("DRAWIO_LIBS", "general").strip() or "general"
+DRAWIO_CLIBS = tuple(
+    item.strip()
+    for item in os.getenv("DRAWIO_CLIBS", "").split(",")
+    if item.strip()
+)
+DRAWIO_EXPORT_URL = "http://drawio-export:8000/export"
+
+def _origin_from_url(url: str) -> str:
+    parts = urlsplit(url)
+    if parts.scheme and parts.netloc:
+        return f"{parts.scheme}://{parts.netloc}"
+    return url
+
+
+DRAWIO_PUBLIC_ORIGIN = _origin_from_url(DRAWIO_PUBLIC_URL)
+
 # Content Security Policy (effective when django-csp is installed)
-CSP_FRAME_SRC = ["'self'", "https://embed.diagrams.net"]
-CSP_CONNECT_SRC = ["'self'", "https://embed.diagrams.net"]
+CSP_FRAME_SRC = ["'self'", DRAWIO_PUBLIC_ORIGIN]
+CSP_CONNECT_SRC = ["'self'", DRAWIO_PUBLIC_ORIGIN]
 CSP_IMG_SRC = ["'self'", "data:", "blob:"]
 CSP_SCRIPT_SRC = ["'self'"]
 CSP_STYLE_SRC = ["'self'", "'unsafe-inline'"]
@@ -202,17 +234,5 @@ CSP_STYLE_SRC = ["'self'", "'unsafe-inline'"]
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Observability / logging
-LOGGING_CONFIG = "logging.config.dictConfig"
-LOGGING = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "handlers": {
-        "console": {
-            "class": "logging.StreamHandler",
-        },
-    },
-    "root": {
-        "handlers": ["console"],
-        "level": os.getenv("DJANGO_LOG_LEVEL", "INFO").upper(),
-    },
-}
+LOGGING_CONFIG = "cintafactory.logging_utils.configure_logging"
+LOGGING = build_logging_dict(BASE_DIR)

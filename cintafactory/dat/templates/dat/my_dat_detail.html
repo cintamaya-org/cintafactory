@@ -1,190 +1,608 @@
 {% extends current_module.base_template %}
-{% load material_frontend %}
+{% load material_frontend dat_extras %}
+
+{% block extrahead %}
+{{ block.super }}
+<link
+  rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24..48,400..700,0..1,-50..200"
+/>
+<style>
+.material-symbols-outlined {
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.dat-section-part-icon {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+</style>
+{% endblock %}
 
 {% block content %}
+{% include "dat/components/drawio_viewer_loader.html" %}
+<style>
+.dat-section-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+.dat-section-link.active-section {
+  background-color: #e3f2fd !important;
+  color: #0d47a1 !important;
+}
+.dat-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 998;
+}
+.dat-modal-overlay.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.dat-modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  z-index: 999;
+}
+.dat-modal.open {
+  visibility: visible;
+  opacity: 1;
+}
+.dat-modal-card {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.12);
+  max-height: 85vh;
+  width: 100%;
+  max-width: 960px;
+  display: flex;
+  flex-direction: column;
+}
+.dat-modal-card .dat-modal-content {
+  padding: 1.5rem;
+  overflow-y: auto;
+}
+.dat-modal-card .dat-modal-footer {
+  padding: 0 1.5rem 1.25rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+body.dat-modal-open {
+  overflow: hidden;
+}
+.dat-drawio-action-button {
+  border-radius: 999px;
+  padding: 0 1.25rem;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  background-color: #ffffff;
+  border: 1px solid rgba(13, 71, 161, 0.25);
+  color: #0d47a1;
+  box-shadow: none;
+}
+.dat-drawio-action-button .material-icons {
+  font-size: 1.1rem;
+}
+.dat-section-sticky-card {
+  position: sticky;
+  top: 1rem;
+  z-index: 5;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.dat-section-sticky-card .card-content {
+  padding: 0.75rem 1rem;
+  border-radius: inherit;
+}
+.dat-sub-section.dat-sub-section-editing {
+  border: 1px dashed #90caf9;
+  border-radius: 12px;
+  padding: 1.25rem;
+  background: #f5faff;
+}
+.dat-sub-section-updated {
+  animation: datSubSectionPulse 1.4s ease-out;
+}
+@keyframes datSubSectionPulse {
+  0% { box-shadow: 0 0 0 0 rgba(13, 71, 161, 0.35); }
+  100% { box-shadow: 0 0 0 22px rgba(13, 71, 161, 0); }
+}
+.dat-subsection-edit-btn.disabled {
+  pointer-events: none;
+  opacity: 0.45;
+}
+.dat-subsection-edit-btn.editing {
+  cursor: progress;
+}
+.dat-section-status-icon {
+  font-size: 1.15rem;
+  line-height: 1;
+}
+</style>
+
 <div class="card cinta-card">
   <div class="card-content">
-    <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:1rem;">
-      <div style="display:flex; flex-direction:column; gap:0.5rem;">
-        <a href="{% url 'dat:my_list' %}" class="btn-flat waves-effect" style="padding-left:0;">
-          <i class="material-icons left" aria-hidden="true">arrow_back</i>
-          Retour à la liste
-        </a>
-        <h5 style="margin:0; display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
-          <span>{{ dat.reference }}</span>
-          <span style="color:#9e9e9e;">·</span>
-          <span>{{ dat.title }}</span>
-        </h5>
-      </div>
-      <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
-        <span class="chip blue lighten-4" title="Statut actuel">{{ dat.get_status_display }}</span>
-        {% if can_progress_dat and next_status %}
-          <form method="post" action="{% url 'dat:my_advance' dat.pk %}">
-            {% csrf_token %}
-            <button type="submit" class="btn waves-effect waves-light cinta-btn-primary">
-              Passer à l'étape suivante
-              {% if next_status_label %}
-                <span style="margin-left:0.5rem; font-size:0.85em;">({{ next_status_label }})</span>
-              {% endif %}
-            </button>
-          </form>
-        {% endif %}
-      </div>
-    </div>
-
-    {% if participant_overview %}
-    <div class="section" style="margin-top:1.5rem;">
-      <h6 style="margin-top:0;">Participants</h6>
-      {% if current_responsibles %}
-        <p style="margin:0 0 0.75rem 0; color:#424242;">
-          Validation actuelle :
-          {% for item in current_responsibles %}
-            <strong>{{ item.role_label }}</strong>
-            {% if item.is_assigned %}
-              &nbsp;→ {{ item.user_display }}
-            {% else %}
-              &nbsp;→ <span style="color:#c62828;">Non affecte</span>
-            {% endif %}
-            {% if not forloop.last %}&nbsp;| {% endif %}
+    {% if section_nav %}
+    <div class="card dat-section-sticky-card">
+      <div class="card-content">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; flex-wrap:wrap;">
+        <div class="dat-section-nav" style="display:flex; flex-wrap:wrap; gap:0.5rem; align-items:center;">
+          {% for entry in section_nav %}
+            {% random_section_status_icon as section_status_icon %}
+            <a
+              href="?section={{ entry.slug }}"
+              class="chip dat-section-link {% if selected_section_slug == entry.slug %}active-section{% else %}grey lighten-4{% endif %}"
+            >
+              <span
+                class="material-symbols-outlined dat-section-status-icon"
+                aria-hidden="true"
+                style="color: {{ section_status_icon.color|default:'#546e7a' }};"
+              >
+                {{ section_status_icon.name|default:section_status_icon }}
+              </span>
+              {{ entry.title }}
+            </a>
           {% endfor %}
-        </p>
-      {% endif %}
-      <div class="responsive-table">
-        <table class="highlight">
-          <thead>
-            <tr>
-              <th>Role</th>
-              <th>Utilisateur</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for item in participant_overview %}
-              <tr>
-                <th scope="row">{{ item.role_label }}</th>
-                <td>
-                  {% if item.user %}
-                    {{ item.user_display }}
-                    {% if item.is_responsible %}
-                      <span class="chip green lighten-4" title="Acteur attendu" style="margin-left:0.5rem;">Responsable</span>
-                    {% endif %}
-                  {% else %}
-                    <span class="chip red lighten-4" title="Affectation requise">Non affecte</span>
-                  {% endif %}
-                </td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+        </div>
+      </div>
       </div>
     </div>
     {% endif %}
 
-    <div class="section" style="margin-top:1.5rem;">
-      <h6 style="margin-top:0;">Informations principales</h6>
-      <div class="responsive-table">
-        <table class="highlight">
-          <tbody>
-            <tr>
-              <th scope="row" style="width:220px;">Application</th>
-              <td>{{ dat.application|default:"—" }}</td>
-            </tr>
-            <tr>
-              <th scope="row">Responsable</th>
-              <td>{{ dat.owner|default:"—" }}</td>
-            </tr>
-            <tr>
-              <th scope="row">Créé le</th>
-              <td>{{ dat.created_at|date:"d/m/Y \\à H\\hi" }}</td>
-            </tr>
-            <tr>
-              <th scope="row">Mis à jour le</th>
-              <td>{{ dat.updated_at|date:"d/m/Y \\à H\\hi" }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="section" style="margin-top:1.5rem;">
-      <h6 style="margin-top:0;">Description</h6>
-      <p style="white-space:pre-wrap;">{{ dat.description|default:"Aucune description renseignée." }}</p>
-    </div>
-
-    <div class="section" style="margin-top:1.5rem;">
-      <h6 style="margin-top:0;">Informations complémentaires</h6>
-      <p style="margin:0; color:#616161;">LOREM</p>
+    <div class="dat-section-body" style="margin-top:1.5rem;">
+      {% if selected_section_slug == "overview" %}
+        {% include "dat/partials/dat_overview.html" %}
+      {% else %}
+        {% for container in selected_sections %}
+          {% include "dat/partials/dat_section_card.html" with container=container dat=dat wrap=False %}
+        {% empty %}
+          <p style="margin:0;">Aucune donnée n'est disponible pour cette section.</p>
+        {% endfor %}
+      {% endif %}
     </div>
   </div>
 </div>
 
-<div class="card cinta-card">
-  <div class="card-content">
-    <span class="card-title" style="display:flex; align-items:center; gap:0.5rem;">
-      <i class="material-icons" aria-hidden="true">history</i>
-      Historique du dossier
-    </span>
-
-    {% if history_entries %}
-      <div class="responsive-table" style="margin-top:1rem;">
-        <table class="highlight">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Action</th>
-              <th>Statut</th>
-              <th>Utilisateur</th>
-              <th>Détails</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for entry in history_entries %}
+<div id="dat-modal-overlay" class="dat-modal-overlay"></div>
+<div id="dat-history-modal" class="dat-modal" role="dialog" aria-modal="true" aria-labelledby="dat-history-modal-title">
+  <div class="dat-modal-card">
+    <div class="dat-modal-content">
+      <span id="dat-history-modal-title" class="card-title" style="display:flex; align-items:center; gap:0.5rem;">
+        <i class="material-icons" aria-hidden="true">history</i>
+        Historique du dossier
+      </span>
+      {% if history_entries %}
+        <div class="responsive-table" style="margin-top:1rem;">
+          <table class="highlight">
+            <thead>
               <tr>
-                <td>{{ entry.performed_at|date:"d/m/Y" }} à {{ entry.performed_at|time:"H\\hi" }}</td>
-                <td>{{ entry.get_action_display }}</td>
-                <td>
-                  {% if entry.status_before or entry.status_after %}
-                    {% if entry.status_before %}
-                      <span class="chip grey lighten-3" title="Avant">{{ entry.get_status_before_display }}</span>
-                    {% endif %}
-                    {% if entry.status_after and entry.status_after != entry.status_before %}
-                      <span style="padding:0 0.25rem;">→</span>
-                      <span class="chip blue lighten-4" title="Après">{{ entry.get_status_after_display }}</span>
-                    {% endif %}
-                  {% else %}
-                    —
-                  {% endif %}
-                </td>
-                <td>{{ entry.actor_name }}</td>
-                <td>
-                  {% if entry.action == entry.action.STATUS_CHANGED %}
-                    Passage de <strong>{{ entry.details.from|default:"-" }}</strong> à <strong>{{ entry.details.to|default:"-" }}</strong>.
-                  {% elif entry.action == entry.action.OWNER_CHANGED %}
-                    Responsable : <strong>{{ entry.details.from_username|default:"-" }}</strong> -> <strong>{{ entry.details.to_username|default:"-" }}</strong>.
-                  {% elif entry.action == entry.action.UPDATED %}
-                    {% if entry.details.changes %}
-                      <ul style="margin:0; padding-left:1.2rem;">
-                        {% for field, data in entry.details.changes.items %}
-                          <li>
-                            <strong>{{ field|capfirst }}</strong> :
-                            <span>{{ data.from|default:"-" }}</span> -> <span>{{ data.to|default:"-" }}</span>
-                          </li>
-                        {% endfor %}
-                      </ul>
+                <th>Date</th>
+                <th>Action</th>
+                <th>Statut</th>
+                <th>Utilisateur</th>
+                <th>Détails</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for entry in history_entries %}
+                <tr>
+                  <td>{{ entry.performed_at|date:"d/m/Y" }} à {{ entry.performed_at|time:"H\\hi" }}</td>
+                  <td>{{ entry.get_action_display }}</td>
+                  <td>
+                    {% if entry.status_before or entry.status_after %}
+                      {% if entry.status_before %}
+                        <span class="chip grey lighten-3" title="Avant">{{ entry.get_status_before_display }}</span>
+                      {% endif %}
+                      {% if entry.status_after and entry.status_after != entry.status_before %}
+                        <span style="padding:0 0.25rem;">→</span>
+                        <span class="chip blue lighten-4" title="Après">{{ entry.get_status_after_display }}</span>
+                      {% endif %}
                     {% else %}
                       —
                     {% endif %}
-                  {% else %}
-                    —
-                  {% endif %}
-                </td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    {% else %}
-      <p style="margin:0;">Aucun événement n'a encore été enregistré.</p>
-    {% endif %}
+                  </td>
+                  <td>{{ entry.actor_name }}</td>
+                  <td>
+                    {% if entry.action == history_actions.STATUS_CHANGED %}
+                      Passage de <strong>{{ entry.details.from|default:"-" }}</strong> à <strong>{{ entry.details.to|default:"-" }}</strong>.
+                    {% elif entry.action == history_actions.OWNER_CHANGED %}
+                      Responsable : <strong>{{ entry.details.from_username|default:"-" }}</strong> -> <strong>{{ entry.details.to_username|default:"-" }}</strong>.
+                    {% elif entry.action == history_actions.UPDATED %}
+                      {% if entry.details.changes %}
+                        <ul style="margin:0; padding-left:1.2rem;">
+                          {% for field, data in entry.details.changes.items %}
+                            <li>
+                              <strong>{{ field|capfirst }}</strong> :
+                              <span>{{ data.from|default:"-" }}</span> -> <span>{{ data.to|default:"-" }}</span>
+                            </li>
+                          {% endfor %}
+                        </ul>
+                      {% else %}
+                        —
+                      {% endif %}
+                    {% elif entry.action == history_actions.SECTION_UPDATED %}
+                      {% with details=entry.details %}
+                        {% if details.section %}
+                          Section <strong>{{ details.section.title|default:details.section.slug }}</strong>
+                          {% if details.section.slug %}
+                            (<code>{{ details.section.slug }}</code>)
+                          {% endif %}
+                          :
+                        {% endif %}
+                        {% if details.changes %}
+                          <ul style="margin:0; padding-left:1.2rem;">
+                            {% for key, change in details.changes.items %}
+                              <li>
+                                {% if change.part %}<strong>{{ change.part }}</strong> · {% endif %}
+                                <span>{{ change.label|default:key }}</span> :
+                                <span>{{ change.from|default:"-" }}</span> -> <span>{{ change.to|default:"-" }}</span>
+                              </li>
+                            {% endfor %}
+                          </ul>
+                        {% else %}
+                          —
+                        {% endif %}
+                      {% endwith %}
+                    {% else %}
+                      —
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p style="margin:0;">Aucun événement n'a encore été enregistré.</p>
+      {% endif %}
+    </div>
+    <div class="dat-modal-footer">
+      <button type="button" class="btn-flat waves-effect dat-modal-close">
+        Fermer
+      </button>
+    </div>
   </div>
 </div>
+
+<script>
+(function () {
+  if (window.__cintaDatModalHandlersBound) {
+    bindOverlay();
+    return;
+  }
+
+  window.__cintaDatModalHandlersBound = true;
+
+  function getOverlay() {
+    return document.getElementById("dat-modal-overlay");
+  }
+
+  function openModal(modal) {
+    if (!modal) {
+      return;
+    }
+    modal.classList.add("open");
+    const overlay = getOverlay();
+    if (overlay) {
+      overlay.classList.add("visible");
+    }
+    document.body.classList.add("dat-modal-open");
+  }
+
+  function closeModal(modal) {
+    if (!modal) {
+      return;
+    }
+    modal.classList.remove("open");
+    if (!document.querySelector(".dat-modal.open")) {
+      const overlay = getOverlay();
+      if (overlay) {
+        overlay.classList.remove("visible");
+      }
+      document.body.classList.remove("dat-modal-open");
+    }
+  }
+
+  function closeAllModals() {
+    document.querySelectorAll(".dat-modal.open").forEach((modal) => {
+      modal.classList.remove("open");
+    });
+    const overlay = getOverlay();
+    if (overlay) {
+      overlay.classList.remove("visible");
+    }
+    document.body.classList.remove("dat-modal-open");
+  }
+
+  function handleTriggerClick(event) {
+    const trigger = event.target.closest(".dat-modal-trigger");
+    if (!trigger) {
+      return;
+    }
+    if (trigger.hasAttribute("aria-disabled") || trigger.classList.contains("disabled")) {
+      return;
+    }
+    event.preventDefault();
+    const href = trigger.getAttribute("href");
+    const targetId = trigger.dataset.modalTarget || (href && href.startsWith("#") ? href.substring(1) : null);
+    if (!targetId) {
+      return;
+    }
+    const modal = document.getElementById(targetId);
+    openModal(modal);
+  }
+
+  function handleCloseClick(event) {
+    const closeButton = event.target.closest(".dat-modal-close");
+    if (!closeButton) {
+      return;
+    }
+    event.preventDefault();
+    const modal = closeButton.closest(".dat-modal");
+    closeModal(modal);
+  }
+
+  function bindOverlay() {
+    const overlay = getOverlay();
+    if (overlay && !overlay.__datModalOverlayBound) {
+      overlay.addEventListener("click", closeAllModals);
+      overlay.__datModalOverlayBound = true;
+    }
+  }
+
+  bindOverlay();
+  document.addEventListener("turbolinks:load", bindOverlay);
+  document.addEventListener("turbolinks:before-cache", closeAllModals);
+  document.addEventListener("click", handleTriggerClick);
+  document.addEventListener("click", handleCloseClick);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeAllModals();
+    }
+  });
+})();
+</script>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const editState = { slug: null };
+
+  function executeEmbeddedScripts(target) {
+    if (!target) {
+      return;
+    }
+    const scripts = target.querySelectorAll("script");
+    scripts.forEach((oldScript) => {
+      const newScript = document.createElement("script");
+      Array.from(oldScript.attributes).forEach((attr) => {
+        newScript.setAttribute(attr.name, attr.value);
+      });
+      newScript.textContent = oldScript.textContent;
+      oldScript.replaceWith(newScript);
+    });
+  }
+
+  function refreshMaterializeFields(target) {
+    if (!target) {
+      return;
+    }
+    if (window.M && typeof M.updateTextFields === "function") {
+      M.updateTextFields();
+    }
+    if (window.M && typeof M.textareaAutoResize === "function") {
+      target.querySelectorAll("textarea").forEach((textarea) => {
+        M.textareaAutoResize(textarea);
+      });
+    }
+  }
+
+  function disableOtherEditButtons(activeSlug) {
+    document.querySelectorAll(".dat-subsection-edit-btn").forEach((button) => {
+      if (button.dataset.subSectionSlug !== activeSlug) {
+        button.classList.add("disabled");
+        button.setAttribute("aria-disabled", "true");
+        button.setAttribute("tabindex", "-1");
+      } else {
+        button.classList.add("editing");
+      }
+    });
+  }
+
+  function enableAllEditButtons() {
+    document.querySelectorAll(".dat-subsection-edit-btn").forEach((button) => {
+      button.classList.remove("disabled", "editing");
+      button.removeAttribute("aria-disabled");
+      button.removeAttribute("tabindex");
+    });
+  }
+
+  function restoreView(container) {
+    if (!container || typeof container.dataset.viewHtml === "undefined") {
+      return;
+    }
+    container.innerHTML = container.dataset.viewHtml;
+    delete container.dataset.viewHtml;
+    container.classList.remove("dat-sub-section-editing");
+    editState.slug = null;
+    enableAllEditButtons();
+  }
+
+  function cancelActiveInlineEdit() {
+    if (!editState.slug) {
+      return;
+    }
+    const activeContainer = document.querySelector(`.dat-sub-section[data-sub-section-slug="${editState.slug}"]`);
+    if (activeContainer) {
+      restoreView(activeContainer);
+    } else {
+      editState.slug = null;
+      enableAllEditButtons();
+    }
+  }
+
+  function attachInlineFormHandlers(container, slug) {
+    if (window.CintaDatRepeater && typeof window.CintaDatRepeater.scan === "function") {
+      window.CintaDatRepeater.scan();
+    }
+    const cancelBtn = container.querySelector(".dat-sub-section-cancel-btn");
+    if (cancelBtn) {
+      cancelBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        restoreView(container);
+      });
+    }
+    const form = container.querySelector("form");
+    if (!form) {
+      return;
+    }
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const formData = new FormData(form);
+      form.classList.add("is-saving");
+      fetch(form.action, {
+        method: "POST",
+        body: formData,
+        headers: {"X-Requested-With": "XMLHttpRequest"},
+      })
+        .then((response) => response.json())
+        .then((data) => {
+          if (!data.success) {
+            if (data.form_html) {
+              renderInlineForm(container, data.form_html, slug);
+            }
+            return;
+          }
+          const nextSlug = data.sub_section_slug || slug;
+          const nextHtml = data.sub_section_html;
+          delete container.dataset.viewHtml;
+          container.classList.remove("dat-sub-section-editing");
+          enableAllEditButtons();
+          editState.slug = null;
+          if (nextHtml) {
+            container.outerHTML = nextHtml;
+            const updated = document.querySelector(`[data-sub-section-slug="${nextSlug}"]`);
+            if (updated) {
+              updated.classList.add("dat-sub-section-updated");
+              setTimeout(() => updated.classList.remove("dat-sub-section-updated"), 1800);
+            }
+          } else {
+            restoreView(container);
+          }
+          if (data.message && window.M && M.toast) {
+            M.toast({html: data.message});
+          }
+        })
+        .catch(() => {
+          alert("Une erreur est survenue lors de l'enregistrement de la sous-section.");
+          restoreView(container);
+        })
+        .finally(() => {
+          form.classList.remove("is-saving");
+        });
+    });
+  }
+
+  function renderInlineForm(container, html, slug) {
+    container.innerHTML = html;
+    executeEmbeddedScripts(container); // ensure widgets (e.g. repeaters) initialise correctly
+    refreshMaterializeFields(container);
+    container.classList.add("dat-sub-section-editing");
+    attachInlineFormHandlers(container, slug);
+  }
+
+  function beginInlineEdit(button) {
+    const slug = button.dataset.subSectionSlug;
+    if (!slug || (editState.slug && editState.slug !== slug)) {
+      return;
+    }
+    const container = button.closest(".dat-sub-section");
+    if (!container || typeof container.dataset.viewHtml !== "undefined") {
+      return;
+    }
+    editState.slug = slug;
+    disableOtherEditButtons(slug);
+    container.dataset.viewHtml = container.innerHTML;
+    container.classList.add("dat-sub-section-editing");
+    container.innerHTML = `
+      <div class="dat-sub-section-loading" style="padding:1.5rem; text-align:center;">
+        <div class="preloader-wrapper small active">
+          <div class="spinner-layer spinner-blue-only">
+            <div class="circle-clipper left"><div class="circle"></div></div>
+            <div class="gap-patch"><div class="circle"></div></div>
+            <div class="circle-clipper right"><div class="circle"></div></div>
+          </div>
+        </div>
+        <p style="margin-top:0.5rem; color:#616161;">Chargement du formulaire…</p>
+      </div>
+    `;
+    const url = button.dataset.editUrl || button.getAttribute("href");
+    fetch(url, {headers: {"X-Requested-With": "XMLHttpRequest"}})
+      .then((response) => response.json())
+      .then((data) => {
+        if (data.form_html) {
+          renderInlineForm(container, data.form_html, slug);
+        } else {
+          throw new Error("missing_form");
+        }
+      })
+      .catch(() => {
+        alert("Impossible de charger cette sous-section.");
+        restoreView(container);
+      });
+  }
+
+  document.addEventListener("click", (event) => {
+    const editBtn = event.target.closest(".dat-subsection-edit-btn");
+    if (!editBtn || editBtn.classList.contains("disabled")) {
+      return;
+    }
+    event.preventDefault();
+    beginInlineEdit(editBtn);
+  });
+
+  document.addEventListener("click", (event) => {
+    const sectionLink = event.target.closest(".dat-section-link");
+    if (sectionLink) {
+      cancelActiveInlineEdit();
+    }
+  });
+
+  document.addEventListener("click", (event) => {
+    const viewerBtn = event.target.closest(".dat-viewer-trigger");
+    if (!viewerBtn) {
+      return;
+    }
+    event.preventDefault();
+    const diagramId = viewerBtn.getAttribute("data-diagram-id");
+    if (window.CintaDatViewer && typeof window.CintaDatViewer.open === "function") {
+      window.CintaDatViewer.open(diagramId);
+    } else if (diagramId) {
+      alert("Affichage du diagramme indisponible pour le moment.");
+    }
+  });
+
+  document.addEventListener("turbolinks:before-visit", cancelActiveInlineEdit);
+  document.addEventListener("turbolinks:before-cache", cancelActiveInlineEdit);
+});
+</script>
 {% endblock %}
