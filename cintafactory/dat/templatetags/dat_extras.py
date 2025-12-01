@@ -13,6 +13,29 @@ DEFAULT_ICON_VARIANT = "material-icons"
 MATERIAL_SYMBOLS_VARIANT = "material-symbols-outlined"
 
 SECTION_PART_ICON_MAP = {
+    "informations-generales": {
+        "informations-administratives": {"name": "badge", "variant": MATERIAL_SYMBOLS_VARIANT},
+        "description-solution": {"name": "description", "variant": MATERIAL_SYMBOLS_VARIANT},
+    },
+    "besoins": {
+        "typologie-besoin": {"name": "category", "variant": MATERIAL_SYMBOLS_VARIANT},
+        "detail-besoin": {"name": "list_alt", "variant": MATERIAL_SYMBOLS_VARIANT},
+    },
+    "urbanisme": {
+        "mapping-urbanisation-si": {"name": "map", "variant": MATERIAL_SYMBOLS_VARIANT},
+        "conformite-urbanisme": {"name": "rule", "variant": MATERIAL_SYMBOLS_VARIANT},
+        "impact-si-existant": {"name": "device_hub", "variant": MATERIAL_SYMBOLS_VARIANT},
+    },
+    "exploitation": {
+        "ressources-solution": {"name": "dns", "variant": MATERIAL_SYMBOLS_VARIANT},
+        "supervision-monitoring": {"name": "monitor", "variant": MATERIAL_SYMBOLS_VARIANT},
+        "sauvegardes-restauration": {"name": "cloud_sync", "variant": MATERIAL_SYMBOLS_VARIANT},
+        "securite-conformite-exploitation": {"name": "shield_lock", "variant": MATERIAL_SYMBOLS_VARIANT},
+        "support-exploitation": {"name": "support_agent", "variant": MATERIAL_SYMBOLS_VARIANT},
+    },
+    "validation": {
+        "suivi-validation": {"name": "task_alt", "variant": MATERIAL_SYMBOLS_VARIANT},
+    },
     "architecture": {
         "presentation-generale": "content_paste",
         "hebergement-environnements": "location_on",

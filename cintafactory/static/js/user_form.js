@@ -1,13 +1,17 @@
 (function () {
   function applyRoleFilter(form) {
-    var directionField = form.querySelector('[data-direction-selector]');
+    var groupField = form.querySelector('[data-group-selector]');
     var roleField = form.querySelector('[data-role-selector]');
-    if (!directionField || !roleField) {
+    if (!groupField || !roleField) {
       return;
     }
 
     function runFilter() {
-      var selectedDirection = directionField.value || "";
+      var selectedDirection = "";
+      var selectedOption = groupField.options[groupField.selectedIndex];
+      if (selectedOption) {
+        selectedDirection = selectedOption.getAttribute("data-direction") || "";
+      }
       var options = roleField.options;
       var hasVisible = false;
       Array.prototype.forEach.call(options, function (option) {
@@ -16,13 +20,12 @@
           option.disabled = false;
           return;
         }
-        var isAdminRole = option.getAttribute("data-role-admin") === "1";
-        var optionDirection = option.getAttribute("data-direction");
+        var optionDirection = option.getAttribute("data-direction") || "";
         var matches;
         if (!selectedDirection) {
-          matches = isAdminRole;
+          matches = optionDirection === "";
         } else {
-          matches = isAdminRole || optionDirection === selectedDirection;
+          matches = optionDirection === selectedDirection;
         }
         option.hidden = !matches;
         option.disabled = !matches;
@@ -41,7 +44,7 @@
       roleField.disabled = !hasVisible;
     }
 
-    directionField.addEventListener("change", runFilter);
+    groupField.addEventListener("change", runFilter);
     runFilter();
   }
 
@@ -51,7 +54,7 @@
       if (form.__cintaRoleFilterReady) {
         return;
       }
-      if (!form.querySelector('[data-direction-selector]') || !form.querySelector('[data-role-selector]')) {
+      if (!form.querySelector('[data-group-selector]') || !form.querySelector('[data-role-selector]')) {
         return;
       }
       form.__cintaRoleFilterReady = true;

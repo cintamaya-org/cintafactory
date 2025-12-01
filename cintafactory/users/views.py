@@ -10,7 +10,7 @@ from django.db.models import Count
 
 from .forms import BusinessDirectionForm, BusinessGroupForm, RoleForm, TechnicalDirectionForm, UserForm
 from .models import BusinessDirection, BusinessGroup, TechnicalDirection, Role, User
-from .utils import build_group_dependency_graph, build_role_dependency_graph, build_user_dependency_graph
+from .utils import build_group_dependency_graph, build_user_dependency_graph
 from django.views.generic import ListView, DetailView
 
 User = get_user_model()
@@ -261,9 +261,14 @@ class RoleDetail(ModuleContextMixin, SuperAdminRequiredMixin, DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        role = context.get("role_obj") or context.get("object")
+        role = context.get("role_obj") or context.get("object") or getattr(self, "object", None)
+        if role is None:
+            try:
+                role = self.get_object()
+            except Exception:
+                role = None
+        context["role_obj"] = role
         if role:
-            context["role_dependency_graph"] = build_role_dependency_graph(role)
             context["member_list"] = role.users.select_related(
                 "business_group",
                 "business_group__direction",
@@ -271,7 +276,6 @@ class RoleDetail(ModuleContextMixin, SuperAdminRequiredMixin, DetailView):
                 "business_group__responsible",
             ).order_by("username")
         else:
-            context["role_dependency_graph"] = {"nodes": [], "links": []}
             context.setdefault("member_list", [])
         return context
 

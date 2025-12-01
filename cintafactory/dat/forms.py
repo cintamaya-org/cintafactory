@@ -5,6 +5,7 @@ from typing import Dict, List, Optional, Set
 
 from django import forms
 from django.contrib.auth import get_user_model
+from django.core.validators import RegexValidator
 from django.urls import reverse, reverse_lazy
 from django.utils.safestring import mark_safe
 
@@ -22,9 +23,22 @@ from .models import DAT, DATParticipant, DATPart, DATPartEntryType, DATSubSectio
 class RepeatableTableWidget(forms.Widget):
     template_name = "dat/widgets/repeater.html"
 
-    def __init__(self, *, columns: list[dict], attrs: Optional[dict] = None):
+    def __init__(
+        self,
+        *,
+        columns: list[dict],
+        min_rows: int | None = None,
+        max_rows: int | None = None,
+        allow_row_addition: bool = True,
+        allow_row_removal: bool = True,
+        attrs: Optional[dict] = None,
+    ):
         super().__init__(attrs)
         self.columns = columns or []
+        self.min_rows = min_rows
+        self.max_rows = max_rows
+        self.allow_row_addition = allow_row_addition
+        self.allow_row_removal = allow_row_removal
 
     def format_value(self, value):
         if value in (None, "", []):
@@ -45,7 +59,29 @@ class RepeatableTableWidget(forms.Widget):
         context["widget"]["columns_json"] = json.dumps(self.columns, ensure_ascii=False)
         context["widget"]["value"] = serialised_value
         context["widget"]["value_json"] = json.dumps(serialised_value, ensure_ascii=False)
+        context["widget"]["min_rows"] = self.min_rows
+        context["widget"]["max_rows"] = self.max_rows
+        context["widget"]["allow_row_addition"] = self.allow_row_addition
+        context["widget"]["allow_row_removal"] = self.allow_row_removal
         return context
+
+
+class MaterialCheckboxSelectMultiple(forms.CheckboxSelectMultiple):
+    """
+    Custom checkbox group aligned with Material Design markup.
+    """
+
+    template_name = "dat/widgets/material_checkbox_select.html"
+    option_template_name = "dat/widgets/material_checkbox_option.html"
+
+
+class MaterialRadioSelect(forms.RadioSelect):
+    """
+    Custom radio group aligned with Material Design markup.
+    """
+
+    template_name = "dat/widgets/material_radio_select.html"
+    option_template_name = "dat/widgets/material_radio_option.html"
 
 
 def _attach_drawio_support(entry: DATPart, widget: RepeatableTableWidget) -> None:
@@ -54,7 +90,9 @@ def _attach_drawio_support(entry: DATPart, widget: RepeatableTableWidget) -> Non
     dat = getattr(section, "dat", None)
     if not (sub_section and section and dat):
         return
-    if section.slug != "architecture" or sub_section.slug != "schemas" or entry.key != "schemas":
+    columns = widget.columns or []
+    has_drawio_column = any(isinstance(col, dict) and col.get("drawio") for col in columns)
+    if not has_drawio_column:
         return
     attrs = widget.attrs or {}
     attrs["data_drawio_create_url"] = reverse("dat:schema_create_diagram", args=[dat.pk])
@@ -66,6 +104,7 @@ def _attach_drawio_support(entry: DATPart, widget: RepeatableTableWidget) -> Non
     export_template = reverse("diagrams:export_xml", args=[0]).replace("/0/", "/{id}/")
     attrs["data_drawio_import_template"] = import_template
     attrs["data_drawio_export_template"] = export_template
+    # Mark every Draw.io-enabled repeater so the bulk import UI can attach to it.
     attrs["data_schema_repeater"] = "true"
     widget.attrs = attrs
 
@@ -330,23 +369,34 @@ def build_dat_part_field(entry: DATPart) -> forms.Field:
     field_kwargs = {"label": entry.label, "required": required, "help_text": help_text}
 
     choices = None
+    widget_type = None
+    multiple_choices = False
     if isinstance(config, dict):
         choices = config.get("choices")
+        widget_type = config.get("widget")
+        multiple_choices = bool(config.get("multiple"))
     if choices:
         choice_list = [
             (item.get("value"), item.get("label", item.get("value")))
             for item in choices
         ]
-        if config.get("multiple"):
-            return forms.MultipleChoiceField(choices=choice_list, **field_kwargs)
-        if not required:
-            choice_list = [("", "---------")] + choice_list
-        return forms.ChoiceField(choices=choice_list, **field_kwargs)
+        if multiple_choices:
+            widget = MaterialCheckboxSelectMultiple() if widget_type in ("checkbox", "checkboxes") else None
+            return forms.MultipleChoiceField(choices=choice_list, widget=widget, **field_kwargs)
+        widget = MaterialRadioSelect() if widget_type == "radio" else None
+        return forms.ChoiceField(choices=choice_list, widget=widget, **field_kwargs)
 
     if entry.data_type == DATPartEntryType.TEXT:
         max_length = config.get("max_length") if isinstance(config, dict) else None
         if max_length:
             field_kwargs["max_length"] = max_length
+        pattern = config.get("pattern") if isinstance(config, dict) else None
+        pattern_message = config.get("pattern_message") if isinstance(config, dict) else None
+        if pattern:
+            validator = RegexValidator(regex=pattern, message=pattern_message or "Format invalide.")
+            field_kwargs.setdefault("validators", []).append(validator)
+            attrs = {"pattern": pattern, "title": pattern_message or "Format attendu."}
+            field_kwargs.setdefault("widget", forms.TextInput(attrs=attrs))
         return forms.CharField(**field_kwargs)
     if entry.data_type == DATPartEntryType.LONG_TEXT:
         rows = config.get("rows") if isinstance(config, dict) else None
@@ -381,7 +431,17 @@ def build_dat_part_field(entry: DATPart) -> forms.Field:
         return forms.URLField(**field_kwargs)
     if entry.data_type == DATPartEntryType.REPEATER:
         columns = config.get("columns", []) if isinstance(config, dict) else []
-        widget = RepeatableTableWidget(columns=columns)
+        min_rows = config.get("min_rows") if isinstance(config, dict) else None
+        max_rows = config.get("max_rows") if isinstance(config, dict) else None
+        allow_row_addition = config.get("allow_row_addition", True) if isinstance(config, dict) else True
+        allow_row_removal = config.get("allow_row_removal", True) if isinstance(config, dict) else True
+        widget = RepeatableTableWidget(
+            columns=columns,
+            min_rows=min_rows,
+            max_rows=max_rows,
+            allow_row_addition=allow_row_addition,
+            allow_row_removal=allow_row_removal,
+        )
         _attach_drawio_support(entry, widget)
         return forms.JSONField(
             required=False,

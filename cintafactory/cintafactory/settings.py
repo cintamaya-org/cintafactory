@@ -85,6 +85,7 @@ INSTALLED_APPS = [
     "users.apps.UsersConfig",
     "dat.apps.DatConfig",
     "account.apps.AccountConfig",
+    "configuration.apps.ConfigurationConfig",
 
 ]
 

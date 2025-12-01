@@ -183,7 +183,7 @@ class NotificationType(models.Model):
 class NotificationMessage(models.Model):
     """Stores deduplicated notification message payloads."""
 
-    content = models.TextField(blank=True, default="", unique=True)
+    content = models.TextField(blank=True, null=True, default=None, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

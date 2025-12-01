@@ -9,7 +9,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.db.models import Count, Prefetch
+from django.db.models import Count, Prefetch, Q
 from django.db.models.functions import TruncMonth
 from django.http import FileResponse, HttpResponse, JsonResponse
 from django.utils import timezone
@@ -206,7 +206,50 @@ def build_dat_overview_context(dat: DAT, user):
 
 
 def build_section_payload(dat: DAT, user, section_slug: str | None = None, sub_section_slug: str | None = None):
+    def extract_lock_rule(part: DATPart) -> dict[str, object] | None:
+        config = part.config if isinstance(part.config, dict) else None
+        if not config:
+            return None
+        rule = config.get("locked_when")
+        if not isinstance(rule, dict):
+            return None
+        controller = rule.get("field")
+        raw_values = rule.get("values")
+        if not controller or not raw_values:
+            return None
+        values = raw_values if isinstance(raw_values, (list, tuple)) else [raw_values]
+        cleaned = [str(value) for value in values if value not in (None, "")]
+        if not cleaned:
+            return None
+        payload: dict[str, object] = {"field": str(controller), "values": cleaned}
+        message = rule.get("message")
+        if message not in (None, ""):
+            payload["message"] = str(message)
+        return payload
+
+    def should_lock_part(part: DATPart, value_map: dict[str, object]) -> bool:
+        rule = extract_lock_rule(part)
+        if not rule:
+            return False
+        controller = rule.get("field")
+        expected_values = {str(value) for value in rule.get("values", []) if value not in (None, "")}
+        if not controller or not expected_values:
+            return False
+        current_value = value_map.get(str(controller))
+        if isinstance(current_value, (list, tuple)):
+            return any(str(value) in expected_values for value in current_value if value not in (None, ""))
+        if current_value in (None, ""):
+            return False
+        return str(current_value) in expected_values
+
     sync_dat_sections_if_needed(dat)
+    validation_rows = None
+    try:
+        validation_rows = list(
+            dat.sections.exclude(slug="validation").order_by("order", "id").values_list("title", flat=True)
+        )
+    except Exception:
+        validation_rows = []
     sections_payload = []
     entry_prefetch = Prefetch(
         "entries",
@@ -228,17 +271,27 @@ def build_section_payload(dat: DAT, user, section_slug: str | None = None, sub_s
     sections_list = list(sections_qs)
     if section_slug and not sections_list:
         return []
+    entry_value_map: dict[str, object] = {}
+    for section in sections_list:
+        for sub_section in section.sub_sections.all():
+            for entry in sub_section.parts.all():
+                entry_value_map[entry.key] = entry.value
     for section in sections_list:
         parts_payload = []
         for sub_section in section.sub_sections.all():
             if sub_section_slug and sub_section.slug != sub_section_slug:
                 continue
-            entries = list(sub_section.parts.all())
+            entries = [entry for entry in sub_section.parts.all() if not should_lock_part(entry, entry_value_map)]
+            if section.slug == "validation":
+                for entry in entries:
+                    if entry.key == "suivi_sections":
+                        rows = [{"section": title, "statut": "en_cours", "commentaire": ""} for title in validation_rows]
+                        entry.update_value(rows)
             parts_payload.append(
                 {
                     "section_part": sub_section,
                     "entries": entries,
-                    "can_edit": sub_section.can_user_edit(user),
+                    "can_edit": False if section.slug == "validation" else sub_section.can_user_edit(user),
                 }
             )
         if sub_section_slug and not parts_payload:
@@ -247,7 +300,7 @@ def build_section_payload(dat: DAT, user, section_slug: str | None = None, sub_s
             {
                 "section": section,
                 "parts": parts_payload,
-                "can_edit": section.can_user_edit(user),
+                "can_edit": False if section.slug == "validation" else section.can_user_edit(user),
             }
         )
         if sub_section_slug:
@@ -506,15 +559,26 @@ class DatList(ModuleContextMixin, LoginRequiredMixin, ListView):
     model = DAT
     template_name = "dat/dat_list.html"
     context_object_name = "object_list"
+    paginate_by = 10
 
     owner_editable_statuses = OWNER_EDITABLE_STATUSES
 
     def get_queryset(self):
+        self.raw_search_query = self.request.GET.get("q", "")
+        cleaned_query = self.raw_search_query.strip()
+        self.search_query = cleaned_query if len(cleaned_query) >= 3 else ""
+        self.search_too_short = bool(cleaned_query and not self.search_query)
         base_queryset = (
             DAT.objects.select_related("application", "application__business_direction", "business_direction", "owner")
             .order_by("-created_at")
         )
-        return filter_dat_queryset_for_user(base_queryset, self.request.user)
+        queryset = filter_dat_queryset_for_user(base_queryset, self.request.user)
+        if self.search_query:
+            queryset = queryset.filter(
+                Q(reference__icontains=self.search_query)
+                | Q(title__icontains=self.search_query)
+            )
+        return queryset
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -522,6 +586,13 @@ class DatList(ModuleContextMixin, LoginRequiredMixin, ListView):
         user = self.request.user
         context["owner_can_edit"] = user_is_dat_admin(user)
         context["can_create_dat"] = user_can_create_dat_entities(user)
+        search_query = getattr(self, "search_query", "")
+        context["search_query"] = getattr(self, "raw_search_query", "")
+        context["search_too_short"] = getattr(self, "search_too_short", False)
+        base_params = {}
+        if search_query:
+            base_params["q"] = search_query
+        context["base_querystring"] = urlencode(base_params)
         return context
 
 
@@ -563,6 +634,7 @@ class DatDetail(ModuleContextMixin, LoginRequiredMixin, DetailView):
         context["pdf_export_in_progress"] = self.object.pdf_export_in_progress
         context["pdf_export_requested_at"] = self.object.pdf_export_requested_at
         context["pdf_export_requested_by_display"] = self.object.pdf_export_requested_by_display
+        sync_dat_sections_if_needed(self.object)
         context.update(build_dat_overview_context(self.object, self.request.user))
         section_nav = [{"slug": "overview", "title": "DETAILS DU DAT"}]
         section_nav.extend(

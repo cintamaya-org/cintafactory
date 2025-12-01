@@ -69,43 +69,7 @@
                                             <span class="chip grey lighten-3">—</span>
                                           {% endif %}
                                         {% elif column.render == "drawio_diagram" %}
-                                          {% if cell %}
-                                            {% diagram_links cell as drawio %}
-                                            {% if drawio %}
-                                              <div style="display:flex; flex-wrap:wrap; gap:0.5rem; align-items:center;">
-                                                <span class="chip blue lighten-5 blue-text text-darken-4" style="margin:0;">
-                                                  {{ drawio.title|default:"Diagramme" }} (#{{ drawio.pk }})
-                                                </span>
-                                                <button type="button" class="btn-flat waves-effect cinta-btn-secondary dat-drawio-view-button dat-drawio-action-button dat-viewer-trigger"
-                                                        data-diagram-id="{{ drawio.pk }}">
-                                                  <i class="material-icons left" aria-hidden="true">visibility</i>Voir
-                                                </button>
-                                                {% if part.can_edit %}
-                                                  {% if part.section_part.slug != "schemas" %}
-                                                    <button type="button"
-                                                            class="btn-flat waves-effect cinta-btn-secondary dat-drawio-view-button dat-drawio-action-button dat-viewer-trigger"
-                                                            data-diagram-id="{{ drawio.pk }}"
-                                                            data-import-url="{{ drawio.import_url }}"
-                                                            data-diagram-title="{{ drawio.title|default_if_none:'Diagramme' }}">
-                                                      <i class="material-icons left" aria-hidden="true">file_upload</i>
-                                                      <span class="dat-drawio-button-label">Importer</span>
-                                                    </button>
-                                                  {% endif %}
-                                                  <button type="button"
-                                                          class="btn-flat waves-effect cinta-btn-secondary dat-drawio-export-button dat-drawio-action-button"
-                                                          data-diagram-id="{{ drawio.pk }}"
-                                                          data-export-url="{{ drawio.export_url }}"
-                                                          data-diagram-title="{{ drawio.title|default_if_none:'Diagramme' }}">
-                                                    <i class="material-icons left" aria-hidden="true">file_download</i>Exporter
-                                                  </button>
-                                                {% endif %}
-                                              </div>
-                                            {% else %}
-                                              <span class="chip red lighten-5 red-text text-darken-2">ID de diagramme invalide</span>
-                                            {% endif %}
-                                          {% else %}
-                                            <span class="chip grey lighten-3">Aucun diagramme</span>
-                                          {% endif %}
+                                          {% include "dat/components/drawio_diagram_cell.html" with cell=cell part=part column=column %}
                                         {% elif column.type == "textarea" %}
                                           <p style="margin:0; white-space:pre-wrap;">{{ cell|default:"—" }}</p>
                                         {% else %}

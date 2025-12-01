@@ -8,15 +8,6 @@
           <span class="{{ part_icon.variant }} dat-section-part-icon" aria-hidden="true">{{ part_icon.name }}</span>
         {% endif %}
         {{ sub_section.title }}
-        {% if sub_section.slug == "schemas" %}
-          <button type="button"
-                  class="btn waves-effect waves-light cinta-btn-primary dat-schema-import-trigger"
-                  style="margin-left:auto;"
-                  data-schema-import="true">
-            <i class="material-icons left" aria-hidden="true">file_upload</i>
-            Importer un schéma
-          </button>
-        {% endif %}
       </h6>
       {% if sub_section.description %}
         <p style="margin:0.35rem 0 0; color:#616161;">{{ sub_section.description }}</p>
@@ -46,9 +37,20 @@
               </label>
             </div>
           {% else %}
-            <label for="{{ field.id_for_label }}" class="active" style="display:block; margin-bottom:0.5rem;">
-              {{ field.label }}
-            </label>
+            <div style="display:flex; align-items:center; gap:0.75rem; justify-content:space-between;">
+              <label for="{{ field.id_for_label }}" class="active" style="display:block; margin-bottom:0.5rem;">
+                {{ field.label }}
+              </label>
+              {% if field.field.widget.attrs.data_schema_repeater %}
+                <button type="button"
+                        class="btn waves-effect waves-light cinta-btn-primary dat-schema-import-trigger"
+                        data-schema-import="true"
+                        data-schema-target="{{ field.id_for_label }}">
+                  <i class="material-icons left" aria-hidden="true">file_upload</i>
+                  Importer un schéma
+                </button>
+              {% endif %}
+            </div>
             {{ field }}
           {% endif %}
           {% if field.help_text %}
@@ -210,7 +212,6 @@
 })();
 </script>
 
-{% if sub_section.slug == "schemas" %}
 <script>
 (function () {
   if (window.CintaDatSchemaBulkImport) {
@@ -284,6 +285,13 @@
     const form = button.closest(".dat-sub-section-form");
     if (!form) {
       return null;
+    }
+    const target = button.dataset.schemaTarget;
+    if (target) {
+      const scoped = form.querySelector(`.dat-repeater[data-field-id="${target}"]`);
+      if (scoped) {
+        return scoped;
+      }
     }
     return form.querySelector('.dat-repeater[data-schema-repeater="true"]');
   }
@@ -443,4 +451,3 @@
   window.CintaDatSchemaBulkImport = true;
 })();
 </script>
-{% endif %}

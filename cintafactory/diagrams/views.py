@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import json
 import logging
 from pathlib import Path
@@ -220,6 +221,27 @@ def _save_thumbnail_from_data_uri(diagram: Diagram, data_uri: str) -> bool:
         raw = base64.b64decode(b64)
     except (ValueError, TypeError):
         return False
+    new_hash = hashlib.sha256(raw).hexdigest()
+    current_hash = None
+    field = getattr(diagram, "thumbnail", None)
+    if field and getattr(field, "name", None):
+        try:
+            field.open("rb")
+            current_hash = hashlib.sha256(field.read()).hexdigest()
+        except FileNotFoundError:
+            current_hash = None
+        except Exception:  # pragma: no cover - best effort
+            logger.warning("diagram %s: unable to read existing thumbnail for diffing", diagram.pk)
+            current_hash = None
+        finally:
+            try:
+                field.close()
+            except Exception:
+                pass
+    if current_hash and current_hash == new_hash:
+        diagram.updated_at = timezone.now()
+        diagram.save(update_fields=["updated_at"])
+        return True
     diagram.thumbnail.save("thumb.png", ContentFile(raw), save=False)
     diagram.updated_at = timezone.now()
     diagram.save(update_fields=["thumbnail", "updated_at"])

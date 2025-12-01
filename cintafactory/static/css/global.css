@@ -290,6 +290,11 @@ dmc-sidenav .sidenav .user-view .my-account__link {
         0 10px 25px rgba(15, 23, 42, 0.25);
 }
 
+body.dat-drawio-modal-open .dat-sub-section-edit-actions__card.is-floating {
+    z-index: 900;
+    pointer-events: none;
+}
+
 .dat-sub-section-edit-actions__content {
     display: flex;
     align-items: center;

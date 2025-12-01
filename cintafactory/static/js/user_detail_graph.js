@@ -4,7 +4,6 @@
   var BOX = { width: 220, height: 86 };
   var DEFAULT_LAYOUT = {
     user: { x: 20, y: 70 },
-    role: { x: 20, y: 70 },
     group: { x: 280, y: 70 },
     business_direction: { x: 560, y: 10 },
     technical_direction: { x: 560, y: 190 },

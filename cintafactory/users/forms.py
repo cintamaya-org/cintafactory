@@ -22,6 +22,23 @@ class RoleSelect(forms.Select):
         return option
 
 
+class BusinessGroupSelect(forms.Select):
+    """
+    Expose the technical direction on each option to align roles and groupes côté UI.
+    """
+
+    def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
+        option = super().create_option(name, value, label, selected, index, subindex=subindex, attrs=attrs)
+        group = getattr(value, "instance", None)
+        if group is None and isinstance(value, BusinessGroup):
+            group = value
+        if group is not None and option["value"]:
+            option_attrs = option.setdefault("attrs", {})
+            if group.direction_id:
+                option_attrs["data-direction"] = str(group.direction_id)
+        return option
+
+
 class UserForm(forms.ModelForm):
     password1 = forms.CharField(
         label="Mot de passe",
@@ -56,9 +73,17 @@ class UserForm(forms.ModelForm):
             role_field.queryset = Role.objects.select_related("technical_direction").order_by("name")
             role_field.widget = RoleSelect(attrs={"data-role-selector": "1"})
             role_field.help_text = (
-                "Le rôle doit appartenir à la même direction technique que le groupe métier sélectionné."
+                "Si le rôle est rattaché à une direction technique, l'utilisateur doit appartenir à un groupe de cette direction."
             )
             role_field.required = True
+        business_group = self.fields.get("business_group")
+        if business_group:
+            business_group.required = False
+            business_group.queryset = business_group.queryset.select_related("direction").order_by("name")
+            business_group.widget = BusinessGroupSelect(attrs={"data-group-selector": "1"})
+            business_group.help_text = (
+                "Sélectionnez un groupe uniquement si le rôle choisi est associé à une direction technique."
+            )
 
     def clean(self):
         cleaned_data = super().clean()
@@ -67,14 +92,13 @@ class UserForm(forms.ModelForm):
         business_group = cleaned_data.get("business_group")
         role = cleaned_data.get("role")
 
-        if role and business_group:
-            group_direction = getattr(business_group, "direction", None)
-            if not role.technical_direction_id:
+        if role and role.technical_direction_id:
+            if not business_group:
                 self.add_error(
-                    "role",
-                    "Ce rôle n'est pas configuré avec une direction technique. Merci de le mettre à jour.",
+                    "business_group",
+                    "Ce rôle requiert un groupe rattaché à sa direction technique.",
                 )
-            elif group_direction and role.technical_direction_id != group_direction.id:
+            elif business_group.direction_id != role.technical_direction_id:
                 self.add_error(
                     "role",
                     (
@@ -82,6 +106,13 @@ class UserForm(forms.ModelForm):
                         f"« {role.technical_direction.name} ». Merci d'ajuster votre sélection."
                     ),
                 )
+        elif business_group:
+            self.add_error(
+                "business_group",
+                "Les rôles sans direction technique ne peuvent pas être associés à un groupe.",
+            )
+        elif not role:
+            self.add_error("role", "Chaque utilisateur doit avoir un rôle.")
 
         if password1 or password2:
             if not password1:
@@ -147,14 +178,9 @@ class RoleForm(forms.ModelForm):
         technical_direction = self.fields.get("technical_direction")
         if technical_direction:
             technical_direction.queryset = technical_direction.queryset.order_by("name")
-            technical_direction.help_text = "Direction technique propriétaire de ce rôle."
+            technical_direction.help_text = (
+                "Direction technique propriétaire de ce rôle. Laissez vide pour un rôle sans rattachement de groupe."
+            )
         is_admin = self.fields.get("is_admin_role")
         if is_admin:
             is_admin.help_text = "Cochez pour les rôles disposant de privilèges administrateur."
-
-    def clean(self):
-        cleaned_data = super().clean()
-        technical_direction = cleaned_data.get("technical_direction")
-        if not technical_direction:
-            self.add_error("technical_direction", "La direction technique est obligatoire.")
-        return cleaned_data

@@ -179,7 +179,7 @@ def create_user_notification(
         title=title,
         level=level or UserNotification.LEVEL_INFO,
     )
-    message_content = message or ""
+    message_content = message or None
     notification_message, _ = NotificationMessage.objects.get_or_create(
         content=message_content,
     )

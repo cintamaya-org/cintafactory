@@ -1,11 +1,6 @@
 {% extends "material/frontend/base_module.html" %}
 {% load static %}
 
-{% block extrahead %}
-  {{ block.super }}
-  <script src="{% static 'js/user_detail_graph.js' %}" defer></script>
-{% endblock %}
-
 {% block content %}
 {% with role=role_obj|default:object %}
 {% with members=member_list|default:role.users.all %}
@@ -58,20 +53,6 @@
     </div>
 
     <div class="divider" style="margin:1.5rem 0;"></div>
-
-    <div>
-      <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:0.5rem; align-items:center;">
-        <div>
-          <h6 style="font-weight:600; margin:0;">Dépendances du rôle</h6>
-          <p style="margin:0; color:#666;">Visualise le lien entre le rôle et sa direction technique.</p>
-        </div>
-        <span style="font-size:0.85rem; color:#777;">Les éléments sont cliquables pour accéder au détail.</span>
-      </div>
-      <div id="role-dependency-graph"
-           class="user-relationship-graph"
-           data-graph-source="role-dependency-graph-data">
-      </div>
-    </div>
 
     <div class="divider" style="margin:1.5rem 0;"></div>
 
@@ -129,38 +110,6 @@
     </div>
   </div>
 </div>
-{% if role_dependency_graph %}
-  {{ role_dependency_graph|json_script:"role-dependency-graph-data" }}
-  <script>
-    (function () {
-      function renderRoleGraph() {
-        var container = document.getElementById("role-dependency-graph");
-        var source = document.getElementById("role-dependency-graph-data");
-        if (!container || !source || (container && container.__userGraphReady)) {
-          return;
-        }
-        if (!window.CintaUserGraph || typeof window.CintaUserGraph.render !== "function") {
-          window.setTimeout(renderRoleGraph, 80);
-          return;
-        }
-        try {
-          var payload = JSON.parse(source.textContent);
-          window.CintaUserGraph.render(container, payload);
-          container.__userGraphReady = true;
-        } catch (err) {
-          console.error("Unable to render role dependency graph", err);
-        }
-      }
-
-      if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", renderRoleGraph, { once: true });
-      } else {
-        renderRoleGraph();
-      }
-      document.addEventListener("turbolinks:load", renderRoleGraph);
-    })();
-  </script>
-{% endif %}
 {% endwith %}
 {% endwith %}
 {% endwith %}

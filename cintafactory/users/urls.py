@@ -34,6 +34,5 @@ urlpatterns = [
 
     # Business Directions
     path("manage/business-directions/", views.BusinessDirectionList.as_view(), name="business_direction_list"),
-    path("manage/business-directions/crud/", RedirectView.as_view(url="/users/manage/business-directions/", permanent=False)),
     path("manage/business-directions/crud/", include(views.BusinessDirectionViewSet().urls)),
 ]

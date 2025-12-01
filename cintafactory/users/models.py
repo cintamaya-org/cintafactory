@@ -21,7 +21,10 @@ def _get_default_group_responsible():
 def _get_default_role_for_group(group=None):
     try:
         if group and group.direction_id:
-            return Role.objects.filter(technical_direction=group.direction).order_by("id").first()
+            role = Role.objects.filter(technical_direction=group.direction).order_by("id").first()
+            if role:
+                return role
+            return None
         return Role.objects.order_by("id").first()
     except (ProgrammingError, OperationalError):
         return None
@@ -159,11 +162,6 @@ class Role(models.Model):
     def __str__(self):
         return self.name
 
-    def clean(self):
-        super().clean()
-        if not self.technical_direction_id:
-            raise ValidationError({"technical_direction": "La direction technique est obligatoire pour chaque rôle."})
-
 class User(AbstractUser):
     role = models.ForeignKey(
         Role, on_delete=models.PROTECT, null=True, blank=True, related_name="users"
@@ -173,6 +171,8 @@ class User(AbstractUser):
         on_delete=models.PROTECT,
         related_name="users",
         help_text="Groupe métier auquel appartient l'utilisateur.",
+        null=True,
+        blank=True,
     )
 
     def is_role(self, slug: str) -> bool:
@@ -182,14 +182,6 @@ class User(AbstractUser):
         super().clean()
 
         try:
-            groups_exist = BusinessGroup.objects.exists()
-        except (ProgrammingError, OperationalError):
-            groups_exist = False
-
-        if not self.business_group_id and groups_exist:
-            raise ValidationError({"business_group": "Chaque utilisateur doit appartenir à un groupe."})
-
-        try:
             roles_exist = Role.objects.exists()
         except (ProgrammingError, OperationalError):
             roles_exist = False
@@ -197,35 +189,43 @@ class User(AbstractUser):
         if not self.role_id and roles_exist:
             raise ValidationError({"role": "Chaque utilisateur doit avoir un rôle."})
 
-        if self.role_id and self.business_group_id:
+        role = None
+        if self.role_id:
             role = getattr(self, "role", None)
             if role and role.pk != self.role_id:
                 role = None
             if role is None:
                 role = Role.objects.filter(pk=self.role_id).only("technical_direction_id").first()
+
+        group = None
+        if self.business_group_id:
             group = getattr(self, "business_group", None)
             if group and group.pk != self.business_group_id:
                 group = None
             if group is None:
                 group = BusinessGroup.objects.filter(pk=self.business_group_id).only("direction_id").first()
-            role_direction_id = getattr(role, "technical_direction_id", None) if role else None
-            group_direction_id = getattr(group, "direction_id", None) if group else None
-            if role_direction_id and group_direction_id and role_direction_id != group_direction_id:
+
+        role_direction_id = getattr(role, "technical_direction_id", None) if role else None
+        group_direction_id = getattr(group, "direction_id", None) if group else None
+
+        if role_direction_id:
+            if not group_direction_id:
+                raise ValidationError(
+                    {"business_group": "Ce rôle requiert un groupe rattaché à sa direction technique."}
+                )
+            if group_direction_id != role_direction_id:
                 raise ValidationError(
                     {"role": "Le rôle sélectionné doit appartenir à la même direction technique que le groupe métier."}
                 )
+        elif self.business_group_id:
+            raise ValidationError(
+                {"business_group": "Les rôles sans direction technique ne peuvent pas être rattachés à un groupe."}
+            )
 
     def save(self, *args, **kwargs):
         if not self.password:
             # Ensure new users created without an explicit password get an unusable one
             self.set_unusable_password()
-        if not self.business_group_id:
-            try:
-                default_group = BusinessGroup.objects.order_by("id").first()
-            except (ProgrammingError, OperationalError):
-                default_group = None
-            if default_group and not self.business_group_id:
-                self.business_group = default_group
         if not self.role_id:
             group = getattr(self, "business_group", None)
             if not group and self.business_group_id:
@@ -236,5 +236,29 @@ class User(AbstractUser):
             default_role = _get_default_role_for_group(group)
             if default_role and not self.role_id:
                 self.role = default_role
+        if not self.business_group_id and self.role_id:
+            role = getattr(self, "role", None)
+            if role and role.pk != self.role_id:
+                role = None
+            if role is None:
+                try:
+                    role = Role.objects.select_related("technical_direction").filter(pk=self.role_id).first()
+                except (ProgrammingError, OperationalError):
+                    role = None
+            direction = getattr(role, "technical_direction", None)
+            if direction:
+                try:
+                    direction.ensure_default_group()
+                except Exception:
+                    pass
+                try:
+                    default_group = (
+                        BusinessGroup.objects.filter(direction=direction, is_default=True).order_by("id").first()
+                        or BusinessGroup.objects.filter(direction=direction).order_by("id").first()
+                    )
+                except (ProgrammingError, OperationalError):
+                    default_group = None
+                if default_group:
+                    self.business_group = default_group
         self.full_clean()
         super().save(*args, **kwargs)

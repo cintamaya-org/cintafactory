@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import copy
 from typing import Any, Dict, Iterable, Tuple, Optional
 
 from django.db import transaction
@@ -43,24 +44,357 @@ def _normalise_parts(section_slug: str, raw_parts: Iterable[Dict[str, Any]] | No
     return tuple(normalised_parts)
 
 
-SECTION_BLUEPRINTS: Tuple[Dict[str, Any], ...] = (
+DRAWIO_DIAGRAM_COLUMNS: Tuple[Dict[str, Any], ...] = (
+    {"key": "nom_schema", "label": "Nom du schéma", "type": "text"},
     {
-        "slug": "besoins",
-        "title": "BESOIN(S)",
-        "description": "Capture des besoins exprimés par le porteur.",
-        "allowed_roles": ["porteur-demande"],
+        "key": "diagramme_id",
+        "label": "Diagramme Draw.io",
+        "type": "text",
+        "placeholder": "ID du diagramme (ex: 42)",
+        "render": "drawio_diagram",
+        "drawio": True,
+        "drawio_name_key": "nom_schema",
+        "button_label": "Éditer",
     },
+    {
+        "key": "description",
+        "label": "Description",
+        "type": "textarea",
+        "rows": 3,
+        "minHeight": 140,
+    },
+)
+
+
+def _build_drawio_repeater_entry(key: str, label: str, *, allow_import: bool = True) -> Dict[str, Any]:
+    columns = [copy.deepcopy(column) for column in DRAWIO_DIAGRAM_COLUMNS]
+    if not allow_import:
+        for column in columns:
+            if column.get("key") == "diagramme_id":
+                column["drawio_allow_import"] = False
+                break
+    return {
+        "key": key,
+        "label": label,
+        "type": "repeater",
+        "config": {"columns": columns},
+    }
+
+
+SECTION_BLUEPRINTS: Tuple[Dict[str, Any], ...] = (
     {
         "slug": "informations-generales",
         "title": "INFORMATIONS GÉNÉRALES",
         "description": "Informations de référence partagées avec l'ensemble des acteurs.",
         "allowed_roles": ["porteur-demande", "architecte-referent"],
+        "parts": (
+            {
+                "slug": "informations-administratives",
+                "title": "Informations Administratives",
+                "entries": (
+                    {
+                        "key": "nom_projet",
+                        "label": "Nom du projet",
+                        "type": "long_text",
+                        "config": {"rows": 4},
+                    },
+                    {
+                        "key": "historique_versions",
+                        "label": "Historique des versions du document",
+                        "type": "repeater",
+                        "config": {
+                            "help_text": "Ajoutez une ligne par version validée du document (format JJ/MM/AA).",
+                            "columns": [
+                                {"key": "version", "label": "Version", "type": "text", "placeholder": "V1, V2…"},
+                                {"key": "date_validation", "label": "Date de validation", "type": "date"},
+                                {
+                                    "key": "responsable",
+                                    "label": "Responsable",
+                                    "type": "text",
+                                    "placeholder": "Nom Prénom (utilisateur référentiel)",
+                                },
+                            ],
+                        },
+                    },
+                    {
+                        "key": "intervenants",
+                        "label": "Intervenants du DAT",
+                        "type": "repeater",
+                        "config": {
+                            "help_text": "Liste des utilisateurs contribuant au DAT (référentiel existant).",
+                            "columns": [
+                                {"key": "role", "label": "Rôle / fonction", "type": "text"},
+                                {
+                                    "key": "utilisateur",
+                                    "label": "Utilisateur",
+                                    "type": "text",
+                                    "placeholder": "Nom Prénom",
+                                },
+                            ],
+                        },
+                    },
+                ),
+            },
+            {
+                "slug": "description-solution",
+                "title": "Description de la solution",
+                "entries": (
+                    {
+                        "key": "raison_etre",
+                        "label": "Raison d’être de la solution",
+                        "type": "long_text",
+                        "config": {"rows": 6},
+                    },
+                    {
+                        "key": "typologie",
+                        "label": "Typologie",
+                        "type": "long_text",
+                        "config": {
+                            "rows": 4,
+                            "help_text": "Application web, mobile, batch, API, plateforme Data…",
+                        },
+                    },
+                    {
+                        "key": "analyse_dict",
+                        "label": "Analyse DICT",
+                        "type": "repeater",
+                        "config": {
+                            "help_text": "Saisir les notes (1 à 4) pour D, I, C, T.",
+                            "min_rows": 1,
+                            "max_rows": 1,
+                            "allow_row_addition": False,
+                            "allow_row_removal": False,
+                            "columns": [
+                                {
+                                    "key": "d",
+                                    "label": "D",
+                                    "type": "select",
+                                    "choices": [
+                                        {"value": 1, "label": "1"},
+                                        {"value": 2, "label": "2"},
+                                        {"value": 3, "label": "3"},
+                                        {"value": 4, "label": "4"},
+                                    ],
+                                },
+                                {
+                                    "key": "i",
+                                    "label": "I",
+                                    "type": "select",
+                                    "choices": [
+                                        {"value": 1, "label": "1"},
+                                        {"value": 2, "label": "2"},
+                                        {"value": 3, "label": "3"},
+                                        {"value": 4, "label": "4"},
+                                    ],
+                                },
+                                {
+                                    "key": "c",
+                                    "label": "C",
+                                    "type": "select",
+                                    "choices": [
+                                        {"value": 1, "label": "1"},
+                                        {"value": 2, "label": "2"},
+                                        {"value": 3, "label": "3"},
+                                        {"value": 4, "label": "4"},
+                                    ],
+                                },
+                                {
+                                    "key": "t",
+                                    "label": "T",
+                                    "type": "select",
+                                    "choices": [
+                                        {"value": 1, "label": "1"},
+                                        {"value": 2, "label": "2"},
+                                        {"value": 3, "label": "3"},
+                                        {"value": 4, "label": "4"},
+                                    ],
+                                },
+                            ],
+                        },
+                    },
+                ),
+            },
+        ),
+    },
+    {
+        "slug": "besoins",
+        "title": "BESOIN(S)",
+        "description": "Capture des besoins exprimés par le porteur.",
+        "allowed_roles": ["porteur-demande"],
+        "parts": (
+            {
+                "slug": "typologie-besoin",
+                "title": "Typologie de Besoin",
+                "entries": (
+                    {
+                        "key": "typologie_besoin",
+                        "label": "Décrire le type de besoin",
+                        "type": "text",
+                        "config": {
+                            "help_text": "Précisez s'il s'agit d'une nouvelle application ou d'une modification (un seul choix possible).",
+                            "widget": "radio",
+                            "choices": [
+                                {"value": "nouvelle_app", "label": "Nouvelle application"},
+                                {
+                                    "value": "modification_mineure",
+                                    "label": "Modification mineure d'une application existante (ajout d'un flux, petite modification d'un composant)",
+                                },
+                                {
+                                    "value": "evolution_majeure",
+                                    "label": "Évolution majeure d'une application existante (modification complète du socle technique, ajout de fonctionnalité majeure)",
+                                },
+                            ],
+                        },
+                    },
+                ),
+            },
+            {
+                "slug": "detail-besoin",
+                "title": "Détail du Besoin",
+                "entries": (
+                    {
+                        "key": "besoin_creation",
+                        "label": "Besoin de création",
+                        "type": "long_text",
+                        "config": {"rows": 6, "help_text": "Description libre du besoin de création."},
+                    },
+                    {
+                        "key": "besoin_modification",
+                        "label": "Besoin de modification",
+                        "type": "long_text",
+                        "config": {"rows": 6, "help_text": "Description libre du besoin de modification."},
+                    },
+                ),
+            },
+        ),
     },
     {
         "slug": "urbanisme",
         "title": "URBANISME",
         "description": "Analyse urbanisme et cohérence d'ensemble.",
         "allowed_roles": ["urbaniste"],
+        "parts": (
+            {
+                "slug": "mapping-urbanisation-si",
+                "title": "Mapping dans l’urbanisation du SI",
+                "entries": (
+                    {
+                        "key": "domaine_metier_concerne",
+                        "label": "Domaine métier concerné",
+                        "type": "long_text",
+                        "config": {"rows": 6, "help_text": "Description narrative du domaine métier impacté."},
+                    },
+                    {
+                        "key": "sous_domaines_impactes",
+                        "label": "Sous-domaines impactés",
+                        "type": "long_text",
+                        "config": {"rows": 6, "help_text": "Liste ou description des sous-domaines touchés."},
+                    },
+                    _build_drawio_repeater_entry("cartographie", "Cartographie", allow_import=False),
+                ),
+            },
+            {
+                "slug": "tableau-des-flux",
+                "title": "Tableau des flux",
+                "entries": (
+                    {
+                        "key": "flux_urbanisme",
+                        "label": "Tableau des flux",
+                        "type": "repeater",
+                        "config": {
+                            "columns": [
+                                {
+                                    "key": "statut",
+                                    "label": "Statut",
+                                    "type": "select",
+                                    "choices": [
+                                        {"value": "propose", "label": "Proposé"},
+                                        {"value": "valide", "label": "Validé"},
+                                        {"value": "deprecie", "label": "Déprécié"},
+                                    ],
+                                },
+                                {"key": "flux_id", "label": "ID", "type": "text"},
+                                {"key": "source", "label": "Source", "type": "text"},
+                                {"key": "cible", "label": "Cible", "type": "text"},
+                                {
+                                    "key": "protocole",
+                                    "label": "Protocole",
+                                    "type": "text",
+                                    "placeholder": "TCP, UDP, HTTP, etc.",
+                                },
+                                {"key": "port", "label": "Port", "type": "text"},
+                                {
+                                    "key": "chiffrement",
+                                    "label": "Chiffrement",
+                                    "type": "select",
+                                    "choices": [
+                                        {"value": "oui", "label": "Oui"},
+                                        {"value": "non", "label": "Non"},
+                                    ],
+                                },
+                                {
+                                    "key": "authentification",
+                                    "label": "Authentification",
+                                    "type": "select",
+                                    "choices": [
+                                        {"value": "oui", "label": "Oui"},
+                                        {"value": "non", "label": "Non"},
+                                    ],
+                                },
+                            ]
+                        },
+                    },
+                ),
+            },
+            {
+                "slug": "conformite-urbanisme",
+                "title": "Conformité Urbanisme",
+                "entries": (
+                    {
+                        "key": "respect_principes_architecture",
+                        "label": "Respect des principes d’architecture",
+                        "type": "long_text",
+                        "config": {"rows": 5},
+                    },
+                    {
+                        "key": "ecart_principes_architecture",
+                        "label": "Écart avec les principes d’architecture",
+                        "type": "long_text",
+                        "config": {"rows": 5},
+                    },
+                    {
+                        "key": "pattern_utilise",
+                        "label": "Pattern utilisé (microservices, CQRS, event-driven, etc.)",
+                        "type": "long_text",
+                        "config": {"rows": 5},
+                    },
+                    {
+                        "key": "usage_brique_transverse",
+                        "label": "Usage de brique SI transverse (ESB, IAM, etc.)",
+                        "type": "long_text",
+                        "config": {"rows": 5},
+                    },
+                ),
+            },
+            {
+                "slug": "impact-si-existant",
+                "title": "Impact sur le SI existant",
+                "entries": (
+                    {
+                        "key": "evolution_ou_remplacement",
+                        "label": "Évolution ou remplacement d’application existante",
+                        "type": "long_text",
+                        "config": {"rows": 5},
+                    },
+                    {
+                        "key": "nouvelles_interfaces",
+                        "label": "Nouvelles interfaces",
+                        "type": "long_text",
+                        "config": {"rows": 5},
+                    },
+                ),
+            },
+        ),
     },
     {
         "slug": "architecture",
@@ -238,35 +572,7 @@ SECTION_BLUEPRINTS: Tuple[Dict[str, Any], ...] = (
             {
                 "slug": "schemas",
                 "title": "Schémas",
-                "entries": (
-                    {
-                        "key": "schemas",
-                        "label": "Schémas",
-                        "type": "repeater",
-                        "config": {
-                            "columns": [
-                                {"key": "nom_schema", "label": "Nom du schéma", "type": "text"},
-                                {
-                                    "key": "diagramme_id",
-                                    "label": "Diagramme Draw.io",
-                                    "type": "text",
-                                    "placeholder": "ID du diagramme (ex: 42)",
-                                    "render": "drawio_diagram",
-                                    "drawio": True,
-                                    "drawio_name_key": "nom_schema",
-                                    "button_label": "Éditer",
-                                },
-                                {
-                                    "key": "description",
-                                    "label": "Description",
-                                    "type": "textarea",
-                                    "rows": 3,
-                                    "minHeight": 140,
-                                },
-                            ]
-                        },
-                    },
-                ),
+                "entries": (_build_drawio_repeater_entry("schemas", "Schémas", allow_import=False),),
             },
             {
                 "slug": "flux",
@@ -478,12 +784,541 @@ SECTION_BLUEPRINTS: Tuple[Dict[str, Any], ...] = (
         "title": "EXPLOITATION",
         "description": "Préparation à l'exploitation et à l'exploitation continue.",
         "allowed_roles": ["infra-exploitation"],
+        "parts": (
+            {
+                "slug": "ressources-solution",
+                "title": "Ressources de la solution",
+                "entries": (
+                    {
+                        "key": "ressources_existantes",
+                        "label": "Ressources sans modification",
+                        "type": "repeater",
+                        "config": {
+                            "columns": [
+                                {"key": "id", "label": "ID", "type": "text"},
+                                {
+                                    "key": "environnement",
+                                    "label": "Environnement (test, préprod…)",
+                                    "type": "select",
+                                    "choices": [
+                                        {"value": "production", "label": "Production"},
+                                        {"value": "preproduction", "label": "Préproduction"},
+                                        {"value": "recette", "label": "Recette"},
+                                        {"value": "integration", "label": "Intégration"},
+                                        {"value": "developpement", "label": "Développement"},
+                                        {"value": "autre", "label": "Autre"},
+                                    ],
+                                },
+                                {
+                                    "key": "clouder",
+                                    "label": "Clouder",
+                                    "type": "select",
+                                    "choices": [
+                                        {"value": "on_prem", "label": "On-prem"},
+                                        {"value": "cloud", "label": "Cloud"},
+                                    ],
+                                },
+                                {
+                                    "key": "type_service",
+                                    "label": "Type de Service",
+                                    "type": "select",
+                                    "choices": [
+                                        {"value": "iaas", "label": "IaaS"},
+                                        {"value": "paas", "label": "PaaS"},
+                                        {"value": "saas", "label": "SaaS"},
+                                        {"value": "caas", "label": "CaaS"},
+                                        {"value": "faas", "label": "FaaS"},
+                                        {"value": "autre", "label": "Autre"},
+                                    ],
+                                },
+                                {"key": "type_gabarit", "label": "Type de gabarit", "type": "text"},
+                                {
+                                    "key": "type_serveur",
+                                    "label": "Type de serveur",
+                                    "type": "select",
+                                    "choices": [
+                                        {"value": "virtuel", "label": "Virtuel"},
+                                        {"value": "physique", "label": "Physique"},
+                                    ],
+                                },
+                                {
+                                    "key": "nb_instances",
+                                    "label": "Nombre d’instances",
+                                    "type": "text",
+                                    "placeholder": "Ex: 3",
+                                },
+                                {
+                                    "key": "anti_affinite",
+                                    "label": "Anti-Affinité",
+                                    "type": "select",
+                                    "choices": [
+                                        {"value": "oui", "label": "Oui"},
+                                        {"value": "non", "label": "Non"},
+                                    ],
+                                },
+                                {
+                                    "key": "compute",
+                                    "label": "Compute",
+                                    "type": "text",
+                                    "placeholder": "Ex: 4 vCPU",
+                                },
+                                {
+                                    "key": "compute_garanti",
+                                    "label": "Compute Garanti",
+                                    "type": "select",
+                                    "choices": [
+                                        {"value": "oui", "label": "Oui"},
+                                        {"value": "non", "label": "Non"},
+                                    ],
+                                },
+                                {
+                                    "key": "quantite_memoire_go",
+                                    "label": "Quantité Mémoire (Go)",
+                                    "type": "text",
+                                    "placeholder": "Ex: 16",
+                                },
+                                {
+                                    "key": "quantite_stockage_go",
+                                    "label": "Quantité Stockage (Go)",
+                                    "type": "text",
+                                    "placeholder": "Ex: 200",
+                                },
+                                {
+                                    "key": "haute_disponibilite",
+                                    "label": "Haute disponibilité",
+                                    "type": "select",
+                                    "choices": [
+                                        {"value": "oui", "label": "Oui"},
+                                        {"value": "non", "label": "Non"},
+                                    ],
+                                },
+                            ]
+                        },
+                    },
+                    {
+                        "key": "ressources_a_ajouter",
+                        "label": "Ressources à ajouter",
+                        "type": "repeater",
+                        "config": {
+                            "columns": [
+                                {"key": "id", "label": "ID", "type": "text"},
+                                {
+                                    "key": "environnement",
+                                    "label": "Environnement (test, préprod…)",
+                                    "type": "select",
+                                    "choices": [
+                                        {"value": "production", "label": "Production"},
+                                        {"value": "preproduction", "label": "Préproduction"},
+                                        {"value": "recette", "label": "Recette"},
+                                        {"value": "integration", "label": "Intégration"},
+                                        {"value": "developpement", "label": "Développement"},
+                                        {"value": "autre", "label": "Autre"},
+                                    ],
+                                },
+                                {
+                                    "key": "clouder",
+                                    "label": "Clouder",
+                                    "type": "select",
+                                    "choices": [
+                                        {"value": "on_prem", "label": "On-prem"},
+                                        {"value": "cloud", "label": "Cloud"},
+                                    ],
+                                },
+                                {
+                                    "key": "type_service",
+                                    "label": "Type de Service",
+                                    "type": "select",
+                                    "choices": [
+                                        {"value": "iaas", "label": "IaaS"},
+                                        {"value": "paas", "label": "PaaS"},
+                                        {"value": "saas", "label": "SaaS"},
+                                        {"value": "caas", "label": "CaaS"},
+                                        {"value": "faas", "label": "FaaS"},
+                                        {"value": "autre", "label": "Autre"},
+                                    ],
+                                },
+                                {"key": "type_gabarit", "label": "Type de gabarit", "type": "text"},
+                                {
+                                    "key": "type_serveur",
+                                    "label": "Type de serveur",
+                                    "type": "select",
+                                    "choices": [
+                                        {"value": "virtuel", "label": "Virtuel"},
+                                        {"value": "physique", "label": "Physique"},
+                                    ],
+                                },
+                                {
+                                    "key": "nb_instances",
+                                    "label": "Nombre d’instances",
+                                    "type": "text",
+                                    "placeholder": "Ex: 3",
+                                },
+                                {
+                                    "key": "anti_affinite",
+                                    "label": "Anti-Affinité",
+                                    "type": "select",
+                                    "choices": [
+                                        {"value": "oui", "label": "Oui"},
+                                        {"value": "non", "label": "Non"},
+                                    ],
+                                },
+                                {
+                                    "key": "compute",
+                                    "label": "Compute",
+                                    "type": "text",
+                                    "placeholder": "Ex: 4 vCPU",
+                                },
+                                {
+                                    "key": "compute_garanti",
+                                    "label": "Compute Garanti",
+                                    "type": "select",
+                                    "choices": [
+                                        {"value": "oui", "label": "Oui"},
+                                        {"value": "non", "label": "Non"},
+                                    ],
+                                },
+                                {
+                                    "key": "quantite_memoire_go",
+                                    "label": "Quantité Mémoire (Go)",
+                                    "type": "text",
+                                    "placeholder": "Ex: 16",
+                                },
+                                {
+                                    "key": "quantite_stockage_go",
+                                    "label": "Quantité Stockage (Go)",
+                                    "type": "text",
+                                    "placeholder": "Ex: 200",
+                                },
+                                {
+                                    "key": "haute_disponibilite",
+                                    "label": "Haute disponibilité",
+                                    "type": "select",
+                                    "choices": [
+                                        {"value": "oui", "label": "Oui"},
+                                        {"value": "non", "label": "Non"},
+                                    ],
+                                },
+                            ]
+                        },
+                    },
+                    {
+                        "key": "ressources_a_supprimer",
+                        "label": "Ressources à supprimer",
+                        "type": "repeater",
+                        "config": {
+                            "columns": [
+                                {"key": "id", "label": "ID", "type": "text"},
+                                {
+                                    "key": "environnement",
+                                    "label": "Environnement (test, préprod…)",
+                                    "type": "select",
+                                    "choices": [
+                                        {"value": "production", "label": "Production"},
+                                        {"value": "preproduction", "label": "Préproduction"},
+                                        {"value": "recette", "label": "Recette"},
+                                        {"value": "integration", "label": "Intégration"},
+                                        {"value": "developpement", "label": "Développement"},
+                                        {"value": "autre", "label": "Autre"},
+                                    ],
+                                },
+                                {
+                                    "key": "clouder",
+                                    "label": "Clouder",
+                                    "type": "select",
+                                    "choices": [
+                                        {"value": "on_prem", "label": "On-prem"},
+                                        {"value": "cloud", "label": "Cloud"},
+                                    ],
+                                },
+                                {
+                                    "key": "type_service",
+                                    "label": "Type de Service",
+                                    "type": "select",
+                                    "choices": [
+                                        {"value": "iaas", "label": "IaaS"},
+                                        {"value": "paas", "label": "PaaS"},
+                                        {"value": "saas", "label": "SaaS"},
+                                        {"value": "caas", "label": "CaaS"},
+                                        {"value": "faas", "label": "FaaS"},
+                                        {"value": "autre", "label": "Autre"},
+                                    ],
+                                },
+                                {"key": "type_gabarit", "label": "Type de gabarit", "type": "text"},
+                                {
+                                    "key": "type_serveur",
+                                    "label": "Type de serveur",
+                                    "type": "select",
+                                    "choices": [
+                                        {"value": "virtuel", "label": "Virtuel"},
+                                        {"value": "physique", "label": "Physique"},
+                                    ],
+                                },
+                                {
+                                    "key": "nb_instances",
+                                    "label": "Nombre d’instances",
+                                    "type": "text",
+                                    "placeholder": "Ex: 3",
+                                },
+                                {
+                                    "key": "anti_affinite",
+                                    "label": "Anti-Affinité",
+                                    "type": "select",
+                                    "choices": [
+                                        {"value": "oui", "label": "Oui"},
+                                        {"value": "non", "label": "Non"},
+                                    ],
+                                },
+                                {
+                                    "key": "compute",
+                                    "label": "Compute",
+                                    "type": "text",
+                                    "placeholder": "Ex: 4 vCPU",
+                                },
+                                {
+                                    "key": "compute_garanti",
+                                    "label": "Compute Garanti",
+                                    "type": "select",
+                                    "choices": [
+                                        {"value": "oui", "label": "Oui"},
+                                        {"value": "non", "label": "Non"},
+                                    ],
+                                },
+                                {
+                                    "key": "quantite_memoire_go",
+                                    "label": "Quantité Mémoire (Go)",
+                                    "type": "text",
+                                    "placeholder": "Ex: 16",
+                                },
+                                {
+                                    "key": "quantite_stockage_go",
+                                    "label": "Quantité Stockage (Go)",
+                                    "type": "text",
+                                    "placeholder": "Ex: 200",
+                                },
+                                {
+                                    "key": "haute_disponibilite",
+                                    "label": "Haute disponibilité",
+                                    "type": "select",
+                                    "choices": [
+                                        {"value": "oui", "label": "Oui"},
+                                        {"value": "non", "label": "Non"},
+                                    ],
+                                },
+                            ]
+                        },
+                    },
+                ),
+            },
+            {
+                "slug": "supervision-monitoring",
+                "title": "Supervision & Monitoring",
+                "entries": (
+                    {
+                        "key": "kpi_a_superviser",
+                        "label": "KPI à superviser",
+                        "type": "long_text",
+                        "config": {"rows": 5},
+                    },
+                    {
+                        "key": "logs_attendus",
+                        "label": "Logs attendus (format, volumétrie…)",
+                        "type": "long_text",
+                        "config": {"rows": 5},
+                    },
+                    {
+                        "key": "alerting_attendu",
+                        "label": "Alerting attendu",
+                        "type": "long_text",
+                        "config": {"rows": 5},
+                    },
+                    {
+                        "key": "outillage_monitoring",
+                        "label": "Outillage",
+                        "type": "long_text",
+                        "config": {"rows": 5},
+                    },
+                ),
+            },
+            {
+                "slug": "sauvegardes-restauration",
+                "title": "Sauvegardes & Restauration",
+                "entries": (
+                    {
+                        "key": "donnees_a_sauvegarder",
+                        "label": "Données à sauvegarder",
+                        "type": "long_text",
+                        "config": {"rows": 5},
+                    },
+                    {
+                        "key": "frequence_sauvegarde",
+                        "label": "Fréquence",
+                        "type": "long_text",
+                        "config": {"rows": 5},
+                    },
+                    {
+                        "key": "procedure_restoration",
+                        "label": "Procédure de restauration",
+                        "type": "long_text",
+                        "config": {"rows": 5},
+                    },
+                    {
+                        "key": "tests_restoration_envisages",
+                        "label": "Tests de restauration envisagés",
+                        "type": "long_text",
+                        "config": {"rows": 5},
+                    },
+                ),
+            },
+            {
+                "slug": "securite-conformite-exploitation",
+                "title": "Sécurité / Conformité",
+                "entries": (
+                    {
+                        "key": "gestion_des_acces",
+                        "label": "Gestion des accès",
+                        "type": "long_text",
+                        "config": {"rows": 5},
+                    },
+                    {
+                        "key": "traces_audit",
+                        "label": "Traces d’audit",
+                        "type": "long_text",
+                        "config": {"rows": 5},
+                    },
+                    {
+                        "key": "chiffrement",
+                        "label": "Chiffrement (repos, transit)",
+                        "type": "long_text",
+                        "config": {"rows": 5},
+                    },
+                ),
+            },
+            {
+                "slug": "support-exploitation",
+                "title": "Support & Exploitation",
+                "entries": (
+                    {
+                        "key": "niveau_support",
+                        "label": "Niveau de support (N1 / N2 / N3)",
+                        "type": "long_text",
+                        "config": {"rows": 4},
+                    },
+                    {
+                        "key": "raci_exploitation",
+                        "label": "RACI exploitation",
+                        "type": "long_text",
+                        "config": {"rows": 4},
+                    },
+                    {
+                        "key": "criticite",
+                        "label": "Criticité",
+                        "type": "text",
+                        "config": {
+                            "widget": "radio",
+                            "choices": [
+                                {"value": "standard", "label": "Standard"},
+                                {"value": "sensible", "label": "Sensible"},
+                                {"value": "critique", "label": "Critique"},
+                            ],
+                        },
+                    },
+                    {
+                        "key": "sous_astreinte",
+                        "label": "Sous-astreinte",
+                        "type": "text",
+                        "config": {
+                            "widget": "radio",
+                            "choices": [
+                                {"value": "oui", "label": "Oui"},
+                                {"value": "non", "label": "Non"},
+                            ],
+                        },
+                    },
+                    {
+                        "key": "obligation_pra",
+                        "label": "Obligation de PRA",
+                        "type": "text",
+                        "config": {
+                            "widget": "radio",
+                            "choices": [
+                                {"value": "oui", "label": "Oui"},
+                                {"value": "non", "label": "Non"},
+                            ],
+                        },
+                    },
+                    {
+                        "key": "dima",
+                        "label": "DIMA",
+                        "type": "text",
+                        "config": {
+                            "help_text": "Durée en jours/heures (ex: 2j / 6h).",
+                            "placeholder": "Ex: 2j / 6h",
+                            "pattern": r"^\s*\d+\s*(j|jour|jours|h|heure|heures)(\s*/\s*\d+\s*(j|jour|jours|h|heure|heures))?\s*$",
+                            "pattern_message": "Saisir une durée en jours/heures (ex: 2j / 6h).",
+                        },
+                    },
+                    {
+                        "key": "pdma",
+                        "label": "PDMA",
+                        "type": "text",
+                        "config": {
+                            "help_text": "Durée en jours/heures (ex: 3j / 12h).",
+                            "placeholder": "Ex: 3j / 12h",
+                            "pattern": r"^\s*\d+\s*(j|jour|jours|h|heure|heures)(\s*/\s*\d+\s*(j|jour|jours|h|heure|heures))?\s*$",
+                            "pattern_message": "Saisir une durée en jours/heures (ex: 3j / 12h).",
+                        },
+                    },
+                ),
+            },
+        ),
     },
     {
         "slug": "validation",
         "title": "VALIDATION",
         "description": "Synthèse des validations et arbitrages.",
-        "allowed_roles": ["comite-validation", "architecte-referent"],
+        "allowed_roles": [],
+        "parts": (
+            {
+                "slug": "suivi-validation",
+                "title": "Suivi des sections",
+                "description": "Liste des sections et de leur statut (validé, en cours, bloqué...).",
+                "entries": (
+                    {
+                        "key": "suivi_sections",
+                        "label": "Statuts des sections",
+                        "type": "repeater",
+                        "config": {
+                            "columns": [
+                                {
+                                    "key": "section",
+                                    "label": "Section",
+                                    "type": "text",
+                                    "placeholder": "Ex: Urbanisme, Architecture...",
+                                },
+                                {
+                                    "key": "statut",
+                                    "label": "Statut",
+                                    "type": "select",
+                                    "choices": [
+                                        {"value": "valide", "label": "Validé"},
+                                        {"value": "en_cours", "label": "En cours"},
+                                        {"value": "bloque", "label": "Bloqué"},
+                                        {"value": "non_demarre", "label": "Non démarré"},
+                                    ],
+                                },
+                                {
+                                    "key": "commentaire",
+                                    "label": "Commentaire",
+                                    "type": "textarea",
+                                    "rows": 2,
+                                    "minHeight": 120,
+                                },
+                            ]
+                        },
+                    },
+                ),
+            },
+        ),
     },
 )
 
@@ -547,6 +1382,27 @@ def _sub_section_entries_manager(sub_section):
 def _dat_part_fk_field(dat_part_model):
     field_names = {field.name for field in dat_part_model._meta.get_fields()}
     return "sub_section" if "sub_section" in field_names else "part"
+
+
+def _initialise_validation_statuses(entry, section) -> None:
+    """
+    Populate the validation status table with default "en cours" rows for each section.
+    """
+    if not entry or entry.key != "suivi_sections":
+        return
+    dat = getattr(section, "dat", None)
+    if dat is None:
+        return
+    try:
+        sections = (
+            dat.sections.exclude(slug="validation")
+            .order_by("order", "id")
+            .values("title")
+        )
+    except Exception:
+        sections = ()
+    rows = [{"section": item["title"], "statut": "en_cours", "commentaire": ""} for item in sections]
+    entry.update_value(rows)
 
 
 def ensure_default_sections(dat, *, apps=None) -> None:
@@ -634,7 +1490,8 @@ def ensure_default_sections(dat, *, apps=None) -> None:
                             "key": entry_definition["key"],
                             **entry_defaults,
                         }
-                        DATPartModel.objects.using(db_alias).create(**creation_kwargs)
+                        entry = DATPartModel.objects.using(db_alias).create(**creation_kwargs)
+                        _initialise_validation_statuses(entry, section)
                     else:
                         entry_updates = []
                         for field, value in entry_defaults.items():
@@ -643,6 +1500,7 @@ def ensure_default_sections(dat, *, apps=None) -> None:
                                 entry_updates.append(field)
                         if entry_updates:
                             entry.save(update_fields=entry_updates + ["updated_at"])
+                        _initialise_validation_statuses(entry, section)
 
                 # Remove entries no longer defined
                 removable_entries = [
@@ -673,6 +1531,13 @@ def dat_sections_need_sync(dat) -> bool:
     """
     Determine whether the DAT sections deviate from the expected blueprint definitions.
     """
+    expected_section_order = [blueprint["slug"] for blueprint in SECTION_BLUEPRINTS]
+    actual_section_order = list(
+        dat.sections.order_by("order", "id").values_list("slug", flat=True)
+    )
+    if actual_section_order != expected_section_order[: len(actual_section_order)] or len(actual_section_order) != len(expected_section_order):
+        return True
+
     sections = dat.sections.all()
     for section in sections:
         blueprint = SECTION_BLUEPRINT_MAP.get(section.slug)

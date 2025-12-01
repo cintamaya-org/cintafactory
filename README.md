@@ -8,8 +8,8 @@
 | Component           | Technology           |
 | ------------------- | -------------------- |
 | **Framework**       | Django 5.2.5         |
-| **Database**        | SQLite (/PostgreSQL) |
-| **Language**        | Python TODO VE       |
+| **Database**        | PostgreSQL |
+| **Language**        | Python TODO VERSION       |
 
 ---
 

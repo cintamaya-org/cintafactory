@@ -3,6 +3,10 @@
 <div class="dat-repeater"
      data-columns="{{ widget.columns_json|escape }}"
      data-field-id="{{ widget.attrs.id }}"
+     {% if widget.min_rows is not None %}data-min-rows="{{ widget.min_rows }}"{% endif %}
+     {% if widget.max_rows is not None %}data-max-rows="{{ widget.max_rows }}"{% endif %}
+     data-allow-add="{{ widget.allow_row_addition|yesno:"1,0" }}"
+     data-allow-remove="{{ widget.allow_row_removal|yesno:"1,0" }}"
      {% if widget.attrs.data_schema_repeater %}data-schema-repeater="{{ widget.attrs.data_schema_repeater }}"{% endif %}
      {% if widget.attrs.data_drawio_create_url %}data-drawio-create-url="{{ widget.attrs.data_drawio_create_url }}"{% endif %}
      {% if widget.attrs.data_drawio_edit_template %}data-drawio-edit-template="{{ widget.attrs.data_drawio_edit_template }}"{% endif %}
@@ -458,6 +462,7 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
   }
 
   function addRow(container, columns, initialValues) {
+    const config = container.__datRepeaterConfig || {};
     const tbody = container.querySelector("tbody");
     const row = document.createElement("tr");
     columns.forEach((column) => {
@@ -471,7 +476,7 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
       }
       row.appendChild(cell);
     });
-    if (container.closest("form")) {
+    if (container.closest("form") && config.allowRemove !== false) {
       const actionCell = document.createElement("td");
       actionCell.style.textAlign = "right";
       const removeButton = document.createElement("button");
@@ -479,8 +484,14 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
       removeButton.className = "btn-flat waves-effect red-text dat-repeater-remove-row";
       removeButton.innerHTML = '<i class="material-icons" aria-hidden="true">delete</i>';
       removeButton.addEventListener("click", () => {
+        const minRows = Number.isInteger(config.minRows) ? config.minRows : 0;
+        const currentRows = getRowCount(tbody);
+        if (minRows && currentRows <= minRows) {
+          return;
+        }
         row.remove();
         syncHiddenInput(container, columns);
+        updateAddButton(container);
       });
       actionCell.appendChild(removeButton);
       row.appendChild(actionCell);
@@ -490,28 +501,93 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
     return row;
   }
 
+  function getRowCount(tbody) {
+    return tbody ? tbody.querySelectorAll("tr").length : 0;
+  }
+
+  function updateAddButton(container) {
+    const config = container.__datRepeaterConfig || {};
+    const addBtn = container.querySelector(".dat-repeater-add-row");
+    if (!addBtn) {
+      return;
+    }
+    if (config.allowAdd === false) {
+      addBtn.style.display = "none";
+      return;
+    }
+    const tbody = container.querySelector("tbody");
+    const maxRows = Number.isInteger(config.maxRows) ? config.maxRows : null;
+    const currentRows = getRowCount(tbody);
+    const disabled = maxRows !== null && currentRows >= maxRows;
+    addBtn.disabled = disabled;
+    addBtn.classList.toggle("disabled", disabled);
+    addBtn.style.display = "";
+  }
+
   function initialise(container) {
     if (!container || container.dataset.initialised) {
       return;
     }
     container.dataset.initialised = "true";
     const columns = parseJSON(container.getAttribute("data-columns") || "[]");
+    const minRows = parseInt(container.getAttribute("data-min-rows") || "", 10);
+    const maxRows = parseInt(container.getAttribute("data-max-rows") || "", 10);
+    const allowAdd = container.getAttribute("data-allow-add") !== "0";
+    const allowRemove = container.getAttribute("data-allow-remove") !== "0";
     container.__datRepeaterColumns = columns;
+    container.__datRepeaterConfig = {
+      columns,
+      minRows: Number.isNaN(minRows) ? null : minRows,
+      maxRows: Number.isNaN(maxRows) ? null : maxRows,
+      allowAdd,
+      allowRemove,
+    };
     const input = container.querySelector("input[type=hidden]");
     const tbody = container.querySelector("tbody");
-    const existingRows = parseJSON(input.value);
+    let existingRows = parseJSON(input.value);
+    if (container.__datRepeaterConfig.maxRows !== null && existingRows.length > container.__datRepeaterConfig.maxRows) {
+      existingRows = existingRows.slice(0, container.__datRepeaterConfig.maxRows);
+    }
     existingRows.forEach((row) => {
       addRow(container, columns, row);
     });
-    if (!existingRows.length) {
+    const minRowsEnforced = Number.isInteger(container.__datRepeaterConfig.minRows)
+      ? container.__datRepeaterConfig.minRows
+      : 0;
+    const maxRowsLimit = Number.isInteger(container.__datRepeaterConfig.maxRows)
+      ? container.__datRepeaterConfig.maxRows
+      : null;
+    if (!existingRows.length && (!maxRowsLimit || maxRowsLimit > 0)) {
+      addRow(container, columns);
+    }
+    while (minRowsEnforced && getRowCount(tbody) < minRowsEnforced) {
+      const currentRows = getRowCount(tbody);
+      if (maxRowsLimit !== null && currentRows >= maxRowsLimit) {
+        break;
+      }
       addRow(container, columns);
     }
     tbody.querySelectorAll("tr").forEach(updateRowDrawioActions);
-    container.querySelector(".dat-repeater-add-row").addEventListener("click", () => {
-      addRow(container, columns);
-      syncHiddenInput(container, columns);
-    });
+    const addBtn = container.querySelector(".dat-repeater-add-row");
+    if (addBtn) {
+      addBtn.addEventListener("click", () => {
+        const currentRows = getRowCount(tbody);
+        const maxRows = Number.isInteger(container.__datRepeaterConfig.maxRows)
+          ? container.__datRepeaterConfig.maxRows
+          : null;
+        if (maxRows !== null && currentRows >= maxRows) {
+          return;
+        }
+        if (container.__datRepeaterConfig.allowAdd === false) {
+          return;
+        }
+        addRow(container, columns);
+        syncHiddenInput(container, columns);
+        updateAddButton(container);
+      });
+    }
     syncHiddenInput(container, columns);
+    updateAddButton(container);
   }
 
   function scanAndInit() {
@@ -543,6 +619,17 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
 
   function resetDrawioState() {
     runtime.drawioState = null;
+  }
+
+  function setDrawioModalOpen(isOpen) {
+    if (!document || !document.body) {
+      return;
+    }
+    if (isOpen) {
+      document.body.classList.add("dat-drawio-modal-open");
+    } else {
+      document.body.classList.remove("dat-drawio-modal-open");
+    }
   }
 
   function ensureDrawioModal() {
@@ -592,10 +679,12 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
     const initModal = () => {
       if (typeof M !== "undefined" && M.Modal) {
         instance = M.Modal.init(modal, {
+          onOpenStart: () => setDrawioModalOpen(true),
           onCloseEnd: () => {
             iframe.src = "about:blank";
             resetDrawioState();
             showDrawioLoader();
+            setDrawioModalOpen(false);
           },
         });
       }
@@ -764,6 +853,7 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
     ensureDrawioMessageHandler();
     const modal = ensureDrawioModal();
     showDrawioLoader();
+    setDrawioModalOpen(true);
     if (modal.instance && modal.instance.open) {
       modal.instance.open();
     } else {
@@ -813,6 +903,7 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
         } else {
           modal.modal.style.display = "none";
         }
+        setDrawioModalOpen(false);
       });
   }
 

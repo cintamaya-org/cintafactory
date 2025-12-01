@@ -66,6 +66,7 @@ class UserModelConstraintTests(TestCase):
         self.direction_b = TechnicalDirection.objects.create(name="Direction B", slug="direction-b")
         self.role_a = Role.objects.create(name="Role A", slug="role-a", technical_direction=self.direction_a)
         self.role_b = Role.objects.create(name="Role B", slug="role-b", technical_direction=self.direction_b)
+        self.role_transverse = Role.objects.create(name="Role Transverse", slug="role-transverse")
         self.group_a = BusinessGroup.objects.create(
             name="Groupe A",
             direction=self.direction_a,
@@ -109,3 +110,24 @@ class UserModelConstraintTests(TestCase):
         )
         self.assertEqual(user.business_group, self.group_a)
         self.assertEqual(user.role, self.role_a)
+
+    def test_role_requires_group_when_direction_is_set(self):
+        user = self.UserModel(
+            username="needs-group",
+            email="needs-group@example.com",
+            role=self.role_a,
+        )
+        user.set_password("pwd")
+        with self.assertRaises(ValidationError):
+            user.full_clean()
+
+    def test_directionless_role_cannot_have_group(self):
+        user = self.UserModel(
+            username="transverse-grouped",
+            email="transverse@example.com",
+            role=self.role_transverse,
+            business_group=self.group_a,
+        )
+        user.set_password("pwd")
+        with self.assertRaises(ValidationError):
+            user.full_clean()

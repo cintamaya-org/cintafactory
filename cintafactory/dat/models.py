@@ -1,3 +1,4 @@
+import hashlib
 import json
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
@@ -317,6 +318,8 @@ class DATSubSection(models.Model):
         return f"{self.section.dat.reference} - {self.section.title} - {self.title}"
 
     def can_user_edit(self, user) -> bool:
+        if getattr(self, "section", None) and getattr(self.section, "slug", None) == "validation":
+            return False
         if self.section is None:
             return False
         if not getattr(user, "is_authenticated", False):
@@ -424,7 +427,7 @@ class DATPart(models.Model):
         entry = self._get_current_entry()
         if entry is None:
             return None
-        return entry.value
+        return entry.resolved_value
 
     @value.setter
     def value(self, new_value):
@@ -497,12 +500,16 @@ class DATPart(models.Model):
         return value
 
     def update_value(self, prepared):
+        payload = DATPartPayload.get_or_create_for_value(prepared)
         entry = self._get_current_entry()
         if entry is None:
-            entry = DATPartEntry.objects.create(part=self, value=prepared)
+            entry = DATPartEntry.objects.create(
+                part=self,
+                payload=payload,
+            )
         else:
-            entry.value = prepared
-            entry.save(update_fields=["value", "updated_at"])
+            entry.payload = payload
+            entry.save(update_fields=["payload", "updated_at"])
         self._set_entry_cache(entry)
         return entry
 
@@ -548,6 +555,14 @@ class DATPart(models.Model):
 
 
 class DATPartEntry(models.Model):
+    payload = models.ForeignKey(
+        "DATPartPayload",
+        on_delete=models.PROTECT,
+        related_name="entries",
+        null=True,
+        blank=True,
+        verbose_name="Payload dédupliqué",
+    )
     part = models.ForeignKey(
         DATPart,
         on_delete=models.CASCADE,
@@ -555,7 +570,6 @@ class DATPartEntry(models.Model):
         verbose_name="Partie",
         db_index=False,
     )
-    value = models.JSONField(blank=True, null=True, verbose_name="Valeur")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Créé le")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Mis à jour le")
 
@@ -570,3 +584,57 @@ class DATPartEntry(models.Model):
 
     def __str__(self) -> str:
         return f"{self.part}"
+
+    @property
+    def resolved_value(self):
+        if self.payload_id:
+            return getattr(self.payload, "data", None)
+        return None
+
+    @property
+    def value(self):  # backwards compatibility
+        return self.resolved_value
+
+    @value.setter
+    def value(self, new_value):
+        payload = DATPartPayload.get_or_create_for_value(new_value)
+        self.payload = payload
+
+
+class DATPartPayload(models.Model):
+    hash = models.CharField(max_length=64, unique=True, db_index=True)
+    data = models.JSONField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "dat_part_payload"
+        ordering = ["hash"]
+
+    def __str__(self) -> str:
+        return self.hash
+
+    def save(self, *args, **kwargs):
+        # Payloads are immutable once created to avoid breaking entries that share them.
+        if self.pk:
+            existing = type(self).objects.filter(pk=self.pk).values_list("data", flat=True).first()
+            if existing is not None:
+                self.data = existing
+        super().save(*args, **kwargs)
+
+    @staticmethod
+    def _normalize_for_hash(value) -> str:
+        if value is None:
+            return "null"
+        try:
+            return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        except TypeError:
+            return json.dumps(str(value), ensure_ascii=False)
+
+    @classmethod
+    def get_or_create_for_value(cls, value):
+        if value in (None, "", [], {}, ()):
+            return None
+        normalized = cls._normalize_for_hash(value)
+        payload_hash = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+        obj, _ = cls.objects.get_or_create(hash=payload_hash, defaults={"data": value})
+        return obj
