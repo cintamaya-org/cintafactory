@@ -1,11 +1,10 @@
 {% extends current_module.base_template %}
 
 {% block content %}
-  <div class="card">
+  <div class="card cinta-card">
     <div class="card-content">
       <h5>Importer un DAT</h5>
       <p class="flow-text" style="font-size:1rem; color:#555;">
-       JSON - TODO
       </p>
       <form method="post" enctype="multipart/form-data" class="cinta-form" style="margin-top:1.5rem;">
         {% csrf_token %}
@@ -18,12 +17,12 @@
             {{ form.data_file }}
           </div>
           <div class="file-path-wrapper">
-            <input class="file-path validate" type="text" placeholder="Fichier JSON du DAT" />
+            <input class="file-path validate" type="text" placeholder="Fichier JSON du DAT" disabled />
           </div>
           {% if form.data_file.errors %}
             <span class="helper-text red-text text-darken-2">{{ form.data_file.errors|join:" " }}</span>
           {% else %}
-            <span class="helper-text">.............</span>
+            <span class="helper-text"></span>
           {% endif %}
         </div>
         <div class="input-field">

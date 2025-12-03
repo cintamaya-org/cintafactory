@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+from typing import List, Tuple
 
 from django import template
 from django.urls import NoReverseMatch, reverse
@@ -140,3 +141,25 @@ def diagram_links(diagram_id):
         }
     except NoReverseMatch:
         return None
+
+
+@register.filter
+def unique_messages(messages) -> list:
+    """
+    Deduplicate messages by (level, text) while preserving order.
+    """
+    if messages is None:
+        return []
+
+    unique: List = []
+    seen: set[Tuple] = set()
+
+    for msg in messages:
+        key = (getattr(msg, "level", None), getattr(msg, "message", repr(msg)))
+        
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(msg)
+
+    return unique

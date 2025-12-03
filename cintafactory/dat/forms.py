@@ -518,7 +518,7 @@ class DATImportForm(forms.Form):
     data_file = forms.FileField(label="Fichier JSON du DAT")
     reference_override = forms.CharField(
         label="Référence du DAT",
-        help_text="Laisser vide pour garder la référence présente dans le fichier importé.",
+        help_text="Inséré la référence du nouveau DAT",
         required=False,
         widget=forms.TextInput(attrs={"class": "validate"}),
     )

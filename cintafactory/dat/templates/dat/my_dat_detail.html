@@ -171,15 +171,18 @@ body.dat-modal-open {
     {% endif %}
 
     <div class="dat-section-body" style="margin-top:1.5rem;">
-      {% if selected_section_slug == "overview" %}
+      {% if selected_section_slug == "informations-generales" %}
         {% include "dat/partials/dat_overview.html" %}
-      {% else %}
+      {% endif %}
+      <div {% if selected_section_slug == "informations-generales" %}style="margin-top:1.5rem;"{% endif %}>
         {% for container in selected_sections %}
           {% include "dat/partials/dat_section_card.html" with container=container dat=dat wrap=False %}
         {% empty %}
-          <p style="margin:0;">Aucune donnée n'est disponible pour cette section.</p>
+          {% if selected_section_slug != "informations-generales" %}
+            <p style="margin:0;">Aucune donnée n'est disponible pour cette section.</p>
+          {% endif %}
         {% endfor %}
-      {% endif %}
+      </div>
     </div>
   </div>
 </div>

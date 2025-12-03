@@ -117,6 +117,23 @@ class ModuleAwareListView(ModuleContextMixin, ListModelView):
     pass
 
 
+class ApplicationListView(ModuleAwareListView):
+    template_name = "dat/application_list.html"
+
+    def get_queryset(self):
+        return Application.objects.select_related("business_direction").order_by("name")
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        object_list = context.get("object_list")
+        if object_list is None:
+            # Material's ListModelView may not expose object_list; populate it to keep the template simple.
+            object_list = list(self.get_queryset())
+            context["object_list"] = object_list
+        context["total_applications"] = len(object_list)
+        return context
+
+
 def get_required_roles_for_status(status: str) -> tuple[str, ...]:
     return DAT_STATUS_REQUIRED_ROLES.get(status, ())
 
@@ -536,6 +553,7 @@ class ApplicationViewSet(BaseSecuredViewSet):
     model = Application
     queryset = Application.objects.all()
     paginate_by = None
+    list_view_class = ApplicationListView
     create_view_class = ApplicationCreateView
     update_view_class = ApplicationUpdateView
     detail_view_class = ApplicationDetailView
@@ -636,22 +654,27 @@ class DatDetail(ModuleContextMixin, LoginRequiredMixin, DetailView):
         context["pdf_export_requested_by_display"] = self.object.pdf_export_requested_by_display
         sync_dat_sections_if_needed(self.object)
         context.update(build_dat_overview_context(self.object, self.request.user))
-        section_nav = [{"slug": "overview", "title": "DETAILS DU DAT"}]
-        section_nav.extend(
-            list(
-                self.object.sections.order_by("order", "id").values("slug", "title")
-            )
+        section_nav = list(
+            self.object.sections.order_by("order", "id").values("slug", "title")
         )
         valid_slugs = {entry["slug"] for entry in section_nav}
-        selected_slug = self.request.GET.get("section") or "overview"
+        default_slug = (
+            "informations-generales"
+            if "informations-generales" in valid_slugs
+            else (section_nav[0]["slug"] if section_nav else None)
+        )
+        selected_slug = self.request.GET.get("section") or default_slug
+        if selected_slug == "overview" and "informations-generales" in valid_slugs:
+            selected_slug = "informations-generales"
         if selected_slug not in valid_slugs:
-            selected_slug = "overview"
+            selected_slug = default_slug
         context["section_nav"] = section_nav
         context["selected_section_slug"] = selected_slug
-        if selected_slug == "overview":
-            context["selected_sections"] = []
-        else:
-            context["selected_sections"] = build_section_payload(self.object, self.request.user, section_slug=selected_slug)
+        context["selected_sections"] = (
+            build_section_payload(self.object, self.request.user, section_slug=selected_slug)
+            if selected_slug
+            else []
+        )
         return context
 
 
@@ -909,6 +932,25 @@ class DatImportView(ModuleContextMixin, DatManagerAccessMixin, FormView):
     form_class = DATImportForm
     success_url = reverse_lazy("dat:import")
 
+    def _deduplicate_messages(self):
+        """
+        Ensure the outgoing response only carries unique messages to avoid
+        repeated toasts when the storage unexpectedly accumulates duplicates.
+        """
+        storage = messages.get_messages(self.request)
+        unique = []
+        seen = set()
+
+        for msg in storage:
+            key = (msg.level, msg.message, msg.extra_tags)
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(msg)
+
+        for msg in unique:
+            messages.add_message(self.request, msg.level, msg.message, extra_tags=msg.extra_tags)
+
     def form_valid(self, form):
         importer = DATImportService(actor=self.request.user if self.request.user.is_authenticated else None)
         payload = form.payload or {}
@@ -931,6 +973,7 @@ class DatImportView(ModuleContextMixin, DatManagerAccessMixin, FormView):
         )
         for warning in result.warnings:
             messages.warning(self.request, warning)
+        self._deduplicate_messages()
         return super().form_valid(form)
 
 
@@ -1036,7 +1079,11 @@ class DatDashboardView(ModuleContextMixin, DatManagerAccessMixin, TemplateView):
 def application_options(request):
     if not (user_can_manage_dat(request.user) or user_can_create_dat_entities(request.user)):
         raise PermissionDenied
-    applications = Application.objects.order_by("name").values("id", "name")
+    applications = (
+        Application.objects.filter(business_direction__isnull=False)
+        .order_by("name")
+        .values("id", "name")
+    )
     options = [
         {"value": application["id"], "label": application["name"]}
         for application in applications
