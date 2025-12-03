@@ -1,4 +1,4 @@
-{% load i18n static %}
+{% load i18n static dat_extras %}
 {% get_current_language as LANGUAGE_CODE %}
 <!DOCTYPE html>
 <html lang="{{ LANGUAGE_CODE|default:"fr" }}">
@@ -144,10 +144,93 @@
         {% endblock %}
         {% block messages %}
         <dmc-snackbar>
-            {% for message in messages %}
-            <p class="alert-{{ message.tags }}">{{ message|capfirst }}</p>
-            {% endfor %}
+            {% with messages|unique_messages as unique_messages %}
+                {% for message in unique_messages %}
+                <p class="alert-{{ message.tags }}">{{ message|capfirst }}</p>
+                {% endfor %}
+            {% endwith %}
         </dmc-snackbar>
+        <script>
+          (function () {
+            function snapshot() {
+              var container = document.querySelector("dmc-snackbar");
+              var items = container ? Array.prototype.slice.call(container.querySelectorAll("p")) : [];
+              var texts = items.map(function (el) { return (el.textContent || "").trim(); });
+              var counts = texts.reduce(function (acc, text) {
+                acc[text] = (acc[text] || 0) + 1;
+                return acc;
+              }, {});
+              var duplicates = Object.keys(counts).filter(function (key) { return counts[key] > 1; }).map(function (key) {
+                return { text: key, count: counts[key] };
+              });
+              return { count: items.length, unique: texts.length ? Object.keys(counts).length : 0, duplicates: duplicates, texts: texts, counts: counts };
+            }
+
+            function report(label, extra) {
+              var snap = snapshot();
+              console.log("[cinta-messages]", label, "count:", snap.count, "unique:", snap.unique, "duplicates:", snap.duplicates);
+              if (snap.duplicates.length) {
+                console.table(snap.duplicates);
+              }
+              if (extra && extra.added && extra.added.length) {
+                console.log("[cinta-messages] added nodes:", extra.added);
+              }
+            }
+
+            document.addEventListener("DOMContentLoaded", function () { report("DOMContentLoaded"); });
+            document.addEventListener("turbolinks:load", function () { report("turbolinks:load"); });
+
+            var container = document.querySelector("dmc-snackbar");
+            if (container && window.MutationObserver) {
+              var observer = new MutationObserver(function (mutations) {
+                var added = [];
+                Array.prototype.forEach.call(mutations, function (mutation) {
+                  Array.prototype.forEach.call(mutation.addedNodes || [], function (node) {
+                    if (node.nodeType === 1 && node.matches("p")) {
+                      added.push((node.textContent || "").trim());
+                    }
+                  });
+                });
+                if (added.length) {
+                  report("mutation", { added: added });
+                }
+              });
+              observer.observe(container, { childList: true });
+            }
+
+            // Instrument Materialize toast to spot duplicate invocations and call stacks
+            if (window.M && typeof M.toast === "function" && !M.toast.__cintaPatched) {
+              var originalToast = M.toast;
+              var toastSeen = {};
+              var SKIP_WINDOW_MS = 2000;
+              M.toast = function () {
+                try {
+                  var args = Array.prototype.slice.call(arguments);
+                  var content = args[0] && args[0].html ? args[0].html : args[0];
+                  var now = Date.now();
+                  var last = toastSeen[content];
+                  var isDuplicate = last && (now - last < SKIP_WINDOW_MS);
+                  toastSeen[content] = now;
+                  console.log("[cinta-messages] M.toast called", {
+                    content: content,
+                    args: args,
+                    duplicate: isDuplicate,
+                    sinceLastMs: last ? now - last : null,
+                    stack: new Error().stack,
+                  });
+                  if (isDuplicate) {
+                    console.warn("[cinta-messages] toast skipped (duplicate within window)", content);
+                    return;
+                  }
+                } catch (err) {
+                  console.warn("[cinta-messages] toast logging failed", err);
+                }
+                return originalToast.apply(this, arguments);
+              };
+              M.toast.__cintaPatched = true;
+            }
+          })();
+        </script>
         {% endblock messages %}
     </body>
 </html>

@@ -39,7 +39,7 @@
   {% if export_urls %}
   <div class="section" style="margin-top:1.5rem;">
     <div
-      class="card"
+      class="card cinta-card"
       style="border-radius:16px;"
       data-pdf-export-card="true"
       data-status-url="{{ export_urls.status }}"
@@ -95,7 +95,7 @@
               {% if pdf_export_requested_by_display %}par {{ pdf_export_requested_by_display }}{% endif %}
               {% if pdf_export_requested_at %}le {{ pdf_export_requested_at|date:"d/m/Y H:i" }}{% endif %}.
             </p>
-          {% else %}
+          {% endif %}
             <p style="margin:0;">
               {% if pdf_export_generated_at %}
                 Dernier PDF généré le {{ pdf_export_generated_at|date:"d/m/Y H:i" }}.
@@ -103,7 +103,7 @@
                 Aucun export PDF enregistré pour l'instant.
               {% endif %}
             </p>
-          {% endif %}
+          
         </div>
       </div>
     </div>
@@ -157,11 +157,23 @@
   {% endif %}
 
   {% if participant_overview %}
-  <div class="section" style="margin-top:1.5rem;">
-    <h6 style="margin-top:0;">Participants</h6>
+      <div
+      class="card cinta-card"
+      style="border-radius:16px;"
+      data-pdf-export-card="true"
+      data-status-url="{{ export_urls.status }}"
+      data-in-progress="{{ pdf_export_in_progress|yesno:'true,false' }}"
+    >
+    <div class="card-content">
+      <div class="section">
+        <div>
+          <span class="card-title" style="margin:0;">Participants</span>
+
+          
+
     {% if current_responsibles %}
       <p style="margin:0 0 0.75rem 0; color:#424242;">
-        Validation actuelle :
+        Validation actuelle : 
         {% for item in current_responsibles %}
           <strong>{{ item.role_label }}</strong>
           {% if item.is_assigned %}
@@ -172,6 +184,7 @@
           {% if not forloop.last %}&nbsp;| {% endif %}
         {% endfor %}
       </p>
+      </div>
     {% endif %}
     <div class="responsive-table">
       <table class="highlight">
@@ -201,10 +214,22 @@
       </table>
     </div>
   </div>
-  {% endif %}
+</div>
+</div>
 
-  <div class="section" style="margin-top:1.5rem;">
-    <h6 style="margin-top:0;">Informations principales</h6>
+  {% endif %}
+      <div
+      class="card cinta-card"
+      style="border-radius:16px;"
+      data-pdf-export-card="true"
+      data-status-url="{{ export_urls.status }}"
+      data-in-progress="{{ pdf_export_in_progress|yesno:'true,false' }}"
+    >
+    <div class="card-content">
+      <div class="section">
+        <div>
+          <span class="card-title" style="margin:0;">Informations principales</span>
+        </div>
     <div class="responsive-table">
       <table class="highlight">
         <tbody>
@@ -232,9 +257,6 @@
       </table>
     </div>
   </div>
-
-  <div class="section" style="margin-top:1.5rem;">
-    <h6 style="margin-top:0;">Description</h6>
-    <p style="white-space:pre-wrap;">{{ dat.description|default:"Aucune description renseignée." }}</p>
-  </div>
+</div>
+</div>
 </div>

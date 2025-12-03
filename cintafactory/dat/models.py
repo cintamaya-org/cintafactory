@@ -30,6 +30,7 @@ class Application(models.Model):
         "users.BusinessDirection",
         on_delete=models.PROTECT,
         related_name="applications",
+        null=True,
         verbose_name="Direction métier",
     )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Créé le")

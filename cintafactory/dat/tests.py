@@ -140,6 +140,15 @@ class ApplicationOptionsViewTest(TestCase):
         labels = [option["label"] for option in payload["options"]]
         self.assertEqual(labels, sorted(labels))
 
+    def test_skips_applications_without_direction(self):
+        Application.objects.create(code="app-3", name="Sans direction", business_direction=None)
+        self.client.force_login(self.staff)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        option_labels = [option["label"] for option in payload["options"]]
+        self.assertNotIn("Sans direction", option_labels)
+
 
 class DatCreationPermissionTest(TestCase):
     def setUp(self) -> None:

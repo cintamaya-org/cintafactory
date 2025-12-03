@@ -116,23 +116,6 @@ SECTION_BLUEPRINTS: Tuple[Dict[str, Any], ...] = (
                             ],
                         },
                     },
-                    {
-                        "key": "intervenants",
-                        "label": "Intervenants du DAT",
-                        "type": "repeater",
-                        "config": {
-                            "help_text": "Liste des utilisateurs contribuant au DAT (référentiel existant).",
-                            "columns": [
-                                {"key": "role", "label": "Rôle / fonction", "type": "text"},
-                                {
-                                    "key": "utilisateur",
-                                    "label": "Utilisateur",
-                                    "type": "text",
-                                    "placeholder": "Nom Prénom",
-                                },
-                            ],
-                        },
-                    },
                 ),
             },
             {

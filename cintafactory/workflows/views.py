@@ -23,7 +23,7 @@ from .notifications import (
 class WorkflowOverviewView(LoginRequiredMixin, TemplateView):
     """Static overview describing the workflow journey."""
 
-    template_name = "workflows/overview.html"
+    # template_name = "workflows/overview.html"
 
 
 class WorkflowBoardView(LoginRequiredMixin, TemplateView):
