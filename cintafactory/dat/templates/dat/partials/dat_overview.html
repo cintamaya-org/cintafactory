@@ -14,17 +14,6 @@
     </div>
     <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
       <span class="chip blue lighten-4" title="Statut actuel">{{ dat.get_status_display }}</span>
-      {% if can_progress_dat and next_status %}
-        <form method="post" action="{% url 'dat:my_advance' dat.pk %}">
-          {% csrf_token %}
-          <button type="submit" class="btn waves-effect waves-light cinta-btn-primary">
-            Passer à l'étape suivante
-            {% if next_status_label %}
-              <span style="margin-left:0.5rem; font-size:0.85em;">({{ next_status_label }})</span>
-            {% endif %}
-          </button>
-        </form>
-        {% endif %}
         <a
           href="#dat-history-modal"
           class="btn waves-effect waves-light cinta-btn-primary dat-modal-trigger"

@@ -33,7 +33,7 @@
 .dat-section-link.active-section {
   background-color: #e3f2fd !important;
   color: #0d47a1 !important;
-}
+} 
 .dat-modal-overlay {
   position: fixed;
   inset: 0;
@@ -106,14 +106,36 @@ body.dat-modal-open {
 }
 .dat-section-sticky-card {
   position: sticky;
-  top: 1rem;
+  top: 0;
   z-index: 5;
-  border-radius: 999px;
+  border-radius: 16px;
   overflow: hidden;
+  display: block;
+  box-sizing: border-box;
+  width: calc(100% + 8rem); /* stretch across card-content + cinta-card horizontal padding on desktop */
+  margin-left: -4rem;
+  margin-right: -4rem;
+  margin-top: -4rem; /* pull up to align with top of the outer card */
 }
 .dat-section-sticky-card .card-content {
   padding: 0.75rem 1rem;
   border-radius: inherit;
+}
+@media (max-width: 1024px) {
+  .dat-section-sticky-card {
+    width: calc(100% + 7rem); /* 2rem card padding + 1.5rem card-content padding per side */
+    margin-left: -3.5rem;
+    margin-right: -3.5rem;
+    margin-top: -3.5rem;
+  }
+}
+@media (max-width: 640px) {
+  .dat-section-sticky-card {
+    width: calc(100% + 6rem); /* 1.5rem card padding + 1.5rem card-content padding per side */
+    margin-left: -3rem;
+    margin-right: -3rem;
+    margin-top: -3rem;
+  }
 }
 .dat-sub-section.dat-sub-section-editing {
   border: 1px dashed #90caf9;
@@ -149,20 +171,28 @@ body.dat-modal-open {
       <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; flex-wrap:wrap;">
         <div class="dat-section-nav" style="display:flex; flex-wrap:wrap; gap:0.5rem; align-items:center;">
           {% for entry in section_nav %}
-            {% random_section_status_icon as section_status_icon %}
-            <a
-              href="?section={{ entry.slug }}"
-              class="chip dat-section-link {% if selected_section_slug == entry.slug %}active-section{% else %}grey lighten-4{% endif %}"
-            >
-              <span
-                class="material-symbols-outlined dat-section-status-icon"
-                aria-hidden="true"
-                style="color: {{ section_status_icon.color|default:'#546e7a' }};"
+            {% with status_info=section_status_map|get_item:entry.slug %}
+              <a
+                href="?section={{ entry.slug }}"
+                class="chip dat-section-link {% if selected_section_slug == entry.slug %}active-section{% else %}grey lighten-4{% endif %}"
+                title="{% if status_info.has_status %}Statut : {{ status_info.label|default:'—' }}{% else %}Pas de statut{% endif %}"
               >
-                {{ section_status_icon.name|default:section_status_icon }}
-              </span>
-              {{ entry.title }}
-            </a>
+                {% if status_info.has_status %}
+                  {% section_status_icon status_info.value as section_status_icon %}
+                  <span
+                    class="{{ section_status_icon.variant }} dat-section-status-icon"
+                    aria-hidden="true"
+                    style="color: {{ section_status_icon.color|default:'#546e7a' }};"
+                  >
+                    {{ section_status_icon.name|default:'radio_button_unchecked' }}
+                  </span>
+                {% endif %}
+                {{ entry.title }}
+                {% if status_info.has_status %}
+                  <span class="dat-section-status-pill">{{ status_info.label|default:"—" }}</span>
+                {% endif %}
+              </a>
+            {% endwith %}
           {% endfor %}
         </div>
       </div>
@@ -390,6 +420,14 @@ body.dat-modal-open {
 document.addEventListener("DOMContentLoaded", () => {
   const editState = { slug: null };
 
+  function emitSectionEditEvent(name, slug) {
+    if (!name) {
+      return;
+    }
+    const detail = slug ? { slug } : {};
+    document.dispatchEvent(new CustomEvent(name, { detail }));
+  }
+
   function executeEmbeddedScripts(target) {
     if (!target) {
       return;
@@ -443,9 +481,11 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!container || typeof container.dataset.viewHtml === "undefined") {
       return;
     }
+    const slug = (container.dataset && container.dataset.subSectionSlug) || editState.slug || null;
     container.innerHTML = container.dataset.viewHtml;
     delete container.dataset.viewHtml;
     container.classList.remove("dat-sub-section-editing");
+    emitSectionEditEvent("dat:section-edit-end", slug);
     editState.slug = null;
     enableAllEditButtons();
   }
@@ -458,6 +498,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (activeContainer) {
       restoreView(activeContainer);
     } else {
+      emitSectionEditEvent("dat:section-edit-end", editState.slug);
       editState.slug = null;
       enableAllEditButtons();
     }
@@ -508,6 +549,7 @@ document.addEventListener("DOMContentLoaded", () => {
               updated.classList.add("dat-sub-section-updated");
               setTimeout(() => updated.classList.remove("dat-sub-section-updated"), 1800);
             }
+            emitSectionEditEvent("dat:section-edit-end", nextSlug);
           } else {
             restoreView(container);
           }
@@ -546,6 +588,7 @@ document.addEventListener("DOMContentLoaded", () => {
     disableOtherEditButtons(slug);
     container.dataset.viewHtml = container.innerHTML;
     container.classList.add("dat-sub-section-editing");
+    emitSectionEditEvent("dat:section-edit-start", slug);
     container.innerHTML = `
       <div class="dat-sub-section-loading" style="padding:1.5rem; text-align:center;">
         <div class="preloader-wrapper small active">

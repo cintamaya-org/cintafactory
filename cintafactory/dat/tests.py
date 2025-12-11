@@ -72,7 +72,7 @@ class DATApplicationRelationTest(TestCase):
             reference="DAT-001",
             title="Integration Test",
             application=self.application,
-            status=DATStatus.DEMANDE_INITIALE,
+            status=DATStatus.NOUVELLE_DEMANDE,
             owner=self.user,
         )
         self.assertEqual(dat.application, self.application)
@@ -83,7 +83,7 @@ class DATApplicationRelationTest(TestCase):
             reference="DAT-002",
             title="Deletion Test",
             application=self.application,
-            status=DATStatus.DEMANDE_INITIALE,
+            status=DATStatus.NOUVELLE_DEMANDE,
         )
         with self.assertRaisesMessage(ProtectedError, "protected"):
             self.application.delete()
@@ -96,7 +96,7 @@ class DATApplicationRelationTest(TestCase):
             reference="DAT-003",
             title="Direction Test",
             application=self.application,
-            status=DATStatus.DEMANDE_INITIALE,
+            status=DATStatus.NOUVELLE_DEMANDE,
             owner=self.user,
         )
         self.assertEqual(dat.business_direction, self.business_direction)
@@ -210,14 +210,14 @@ class DatAdminListViewTest(TestCase):
             reference="DAT-ADMIN-1",
             title="Admin DAT 1",
             application=self.application,
-            status=DATStatus.DEMANDE_INITIALE,
+            status=DATStatus.NOUVELLE_DEMANDE,
             owner=self.staff,
         )
         DAT.objects.create(
             reference="DAT-ADMIN-2",
             title="Admin DAT 2",
             application=self.application,
-            status=DATStatus.INSTRUCTION_ARCHITECTURE,
+            status=DATStatus.EN_COURS,
             owner=self.regular,
         )
 
@@ -261,7 +261,7 @@ class DatImportViewTest(TestCase):
             reference="DAT-EXPORT-IMPORT",
             title="DAT pour export",
             application=self.application,
-            status=DATStatus.DEMANDE_INITIALE,
+            status=DATStatus.NOUVELLE_DEMANDE,
             owner=self.porteur,
         )
         sync_dat_sections_if_needed(dat)
@@ -312,7 +312,7 @@ class DatImportViewTest(TestCase):
             reference=payload["dat"]["reference"],
             title="Existing DAT",
             application=self.application,
-            status=DATStatus.DEMANDE_INITIALE,
+            status=DATStatus.NOUVELLE_DEMANDE,
             owner=self.porteur,
         )
         upload = SimpleUploadedFile(
@@ -353,7 +353,7 @@ class DatVisibilityRestrictionTest(TestCase):
             reference="DAT-VIS-1",
             title="Visibility DAT",
             application=self.application,
-            status=DATStatus.DEMANDE_INITIALE,
+            status=DATStatus.NOUVELLE_DEMANDE,
             owner=self.owner,
         )
 
@@ -424,20 +424,13 @@ class DatVisibilityRestrictionTest(TestCase):
         )
         return role
 
-    def test_owner_with_role_can_advance_to_next_status(self):
+    def test_manual_advance_endpoint_is_disabled(self):
         self._bind_participant(self.dat, DAT_PORTEUR_ROLE_SLUG, self.owner)
-        self.client.force_login(self.owner)
-        response = self.client.post(reverse("dat:my_advance", args=[self.dat.pk]))
-        self.assertRedirects(response, reverse("dat:my_detail", args=[self.dat.pk]))
-        self.dat.refresh_from_db()
-        self.assertEqual(self.dat.status, DATStatus.VALIDATION_REFERENT)
-
-    def test_owner_without_role_cannot_advance(self):
         self.client.force_login(self.owner)
         response = self.client.post(reverse("dat:my_advance", args=[self.dat.pk]))
         self.assertEqual(response.status_code, 403)
         self.dat.refresh_from_db()
-        self.assertEqual(self.dat.status, DATStatus.DEMANDE_INITIALE)
+        self.assertEqual(self.dat.status, DATStatus.NOUVELLE_DEMANDE)
 
     def test_unassigned_user_cannot_advance(self):
         self._assign_role(self.other, DAT_PORTEUR_ROLE_SLUG)
@@ -445,51 +438,53 @@ class DatVisibilityRestrictionTest(TestCase):
         response = self.client.post(reverse("dat:my_advance", args=[self.dat.pk]))
         self.assertEqual(response.status_code, 404)
         self.dat.refresh_from_db()
-        self.assertEqual(self.dat.status, DATStatus.DEMANDE_INITIALE)
+        self.assertEqual(self.dat.status, DATStatus.NOUVELLE_DEMANDE)
 
-    def test_button_visibility_depends_on_permissions(self):
+    def test_progress_button_is_hidden(self):
         detail_url = reverse("dat:my_detail", args=[self.dat.pk])
 
         self.client.force_login(self.owner)
         response = self.client.get(detail_url)
-        self.assertNotContains(response, "Passer �� l'Ǹtape suivante")
+        self.assertNotContains(response, "Passer à l'étape suivante")
 
         self._bind_participant(self.dat, DAT_PORTEUR_ROLE_SLUG, self.owner)
         response_with_role = self.client.get(detail_url)
-        self.assertContains(response_with_role, "Passer")
-        self.assertContains(response_with_role, self.owner.username)
+        self.assertNotContains(response_with_role, "Passer à l'étape suivante")
 
-    def test_referent_can_advance_current_step(self):
+    def test_reviewer_can_validate_from_validation_section(self):
         referent = get_user_model().objects.create_user(username="referent-user", password="pwd")
         dat = DAT.objects.create(
             reference="DAT-VIS-REFERENT",
             title="Referent DAT",
             application=self.application,
-            status=DATStatus.VALIDATION_REFERENT,
+            status=DATStatus.EN_ATTENTE_DE_REVUE,
             owner=self.owner,
         )
         self._bind_participant(dat, DAT_PORTEUR_ROLE_SLUG, self.owner)
         self._bind_participant(dat, "architecte-referent", referent)
 
         self.client.force_login(referent)
-        response = self.client.post(reverse("dat:my_advance", args=[dat.pk]))
+        response = self.client.post(
+            reverse("dat:my_validation_decision", args=[dat.pk]),
+            {"decision": "valider"},
+        )
         self.assertRedirects(response, reverse("dat:my_detail", args=[dat.pk]))
         dat.refresh_from_db()
-        self.assertEqual(dat.status, DATStatus.INSTRUCTION_ARCHITECTURE)
+        self.assertEqual(dat.status, DATStatus.VALIDER)
 
     def test_list_only_shows_assigned_dats(self):
         DAT.objects.create(
             reference="DAT-VIS-2",
             title="Other DAT",
             application=self.application,
-            status=DATStatus.INSTRUCTION_ARCHITECTURE,
+            status=DATStatus.EN_COURS,
             owner=self.other,
         )
         shared_dat = DAT.objects.create(
             reference="DAT-VIS-3",
             title="Shared DAT",
             application=self.application,
-            status=DATStatus.VALIDATION_REFERENT,
+            status=DATStatus.EN_ATTENTE_DE_REVUE,
             owner=self.other,
         )
         self._bind_participant(shared_dat, DAT_PORTEUR_ROLE_SLUG, self.owner)
@@ -553,7 +548,7 @@ class DatParticipantAssignmentFormTest(TestCase):
             "title": title,
             "application": self.application.pk,
             "description": description,
-            "status": status or DATStatus.DEMANDE_INITIALE,
+            "status": status or DATStatus.NOUVELLE_DEMANDE,
         }
         for slug in DAT_REQUIRED_PARTICIPANT_ROLE_SLUGS:
             user = self.users[slug]
@@ -653,7 +648,7 @@ class DatHistoryTest(TestCase):
             reference="DAT-HIST-1",
             title="History Tracking",
             application=self.application,
-            status=DATStatus.DEMANDE_INITIALE,
+            status=DATStatus.NOUVELLE_DEMANDE,
         )
         dat._history_actor = self.user  # type: ignore[attr-defined]
         dat.save()
@@ -666,23 +661,23 @@ class DatHistoryTest(TestCase):
         entry = entries.first()
         self.assertIsNotNone(entry)
         self.assertEqual(entry.action, DATHistoryAction.CREATED)
-        self.assertEqual(entry.status_after, DATStatus.DEMANDE_INITIALE)
+        self.assertEqual(entry.status_after, DATStatus.NOUVELLE_DEMANDE)
         self.assertEqual(entry.performed_by, self.user)
         self.assertEqual(entry.actor_name(), self.user.username)
 
     def test_status_change_records_history_entry(self):
         dat = self._create_dat()
-        dat.status = DATStatus.VALIDATION_REFERENT
+        dat.status = DATStatus.EN_ATTENTE_DE_REVUE
         dat._history_actor = self.manager  # type: ignore[attr-defined]
         dat.save()
         status_entries = dat.history_entries.filter(action=DATHistoryAction.STATUS_CHANGED)
         self.assertEqual(status_entries.count(), 1)
         entry = status_entries.first()
         self.assertIsNotNone(entry)
-        self.assertEqual(entry.status_before, DATStatus.DEMANDE_INITIALE)
-        self.assertEqual(entry.status_after, DATStatus.VALIDATION_REFERENT)
-        self.assertEqual(entry.details.get("from"), DATStatus.DEMANDE_INITIALE.label)
-        self.assertEqual(entry.details.get("to"), DATStatus.VALIDATION_REFERENT.label)
+        self.assertEqual(entry.status_before, DATStatus.NOUVELLE_DEMANDE)
+        self.assertEqual(entry.status_after, DATStatus.EN_ATTENTE_DE_REVUE)
+        self.assertEqual(entry.details.get("from"), DATStatus.NOUVELLE_DEMANDE.label)
+        self.assertEqual(entry.details.get("to"), DATStatus.EN_ATTENTE_DE_REVUE.label)
         self.assertEqual(entry.performed_by, self.manager)
         self.assertEqual(entry.actor_name(), self.manager.username)
         self.assertEqual(
@@ -692,7 +687,7 @@ class DatHistoryTest(TestCase):
 
     def test_detail_view_displays_history(self):
         dat = self._create_dat()
-        dat.status = DATStatus.VALIDATION_REFERENT
+        dat.status = DATStatus.EN_ATTENTE_DE_REVUE
         dat._history_actor = self.manager  # type: ignore[attr-defined]
         dat.save()
         self.client.force_login(self.manager)
@@ -702,7 +697,7 @@ class DatHistoryTest(TestCase):
         content = response.content.decode()
         self.assertIn("Historique du dossier", content)
         self.assertIn(self.manager.username, content)
-        self.assertIn(DATStatus.VALIDATION_REFERENT.label, content)
+        self.assertIn(DATStatus.EN_ATTENTE_DE_REVUE.label, content)
         self.assertIn("Passage de", content)
 
     def test_history_uses_request_context_when_actor_not_set(self):
@@ -711,7 +706,7 @@ class DatHistoryTest(TestCase):
             reference="DAT-HIST-CTX",
             title="Request Context Actor",
             application=self.application,
-            status=DATStatus.DEMANDE_INITIALE,
+            status=DATStatus.NOUVELLE_DEMANDE,
         )
         entry = dat.history_entries.first()
         self.assertIsNotNone(entry)
@@ -754,7 +749,7 @@ class DatSectionIntegrationTest(TestCase):
             reference="DAT-SECT-1",
             title="DAT Sections",
             application=self.application,
-            status=DATStatus.DEMANDE_INITIALE,
+            status=DATStatus.NOUVELLE_DEMANDE,
             owner=self.porteur,
         )
         DATParticipant.objects.create(dat=self.dat, role=self.roles["porteur-demande"], user=self.porteur)
@@ -874,7 +869,7 @@ class CreateSchemaDiagramViewTest(TestCase):
             reference="DAT-DIAG-1",
             title="Schema DAT",
             application=self.application,
-            status=DATStatus.DEMANDE_INITIALE,
+            status=DATStatus.NOUVELLE_DEMANDE,
             owner=self.user,
         )
         DATSection.objects.create(
@@ -946,7 +941,7 @@ class DatPdfExportNotificationTest(TestCase):
             reference="DAT-PDF",
             title="DAT PDF",
             application=self.application,
-            status=DATStatus.DEMANDE_INITIALE,
+            status=DATStatus.NOUVELLE_DEMANDE,
             owner=self.user,
         )
         self.client.force_login(self.user)

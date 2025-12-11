@@ -168,7 +168,7 @@ class DATForm(forms.ModelForm):
     def _determine_required_roles(self) -> Set[str]:
         current_status = getattr(self.instance, "status", None)
         if not current_status:
-            current_status = DATStatus.DEMANDE_INITIALE
+            current_status = DATStatus.NOUVELLE_DEMANDE
         required = set(DAT_STATUS_REQUIRED_ROLES.get(current_status, ()))
         required.add(DAT_PORTEUR_ROLE_SLUG)
         return required
@@ -309,7 +309,7 @@ class DATForm(forms.ModelForm):
                 instance.owner = porteur_user
             elif self.user is not None:
                 instance.owner = self.user
-            instance.status = DATStatus.DEMANDE_INITIALE
+            instance.status = DATStatus.NOUVELLE_DEMANDE
         else:
             if porteur_user is not None and porteur_user != instance.owner:
                 instance.owner = porteur_user

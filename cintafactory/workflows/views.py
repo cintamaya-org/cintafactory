@@ -31,10 +31,10 @@ class WorkflowBoardView(LoginRequiredMixin, TemplateView):
 
     template_name = "workflows/board.html"
     workflow_code = "dat-validation"
-    initial_status = DATStatus.DEMANDE_INITIALE
+    initial_status = DATStatus.NOUVELLE_DEMANDE
     completed_statuses = {
-        DATStatus.DAT_VALIDE,
-        DATStatus.DAT_REFUSE,
+        DATStatus.VALIDER,
+        DATStatus.REFUSE,
     }
     column_titles = {
         "initial": "Nouveau besoin",
@@ -340,12 +340,11 @@ class MyTasksBoardView(WorkflowBoardView):
         user_step_index_set = set(user_step_indices)
 
         validation_statuses = {
-            DATStatus.VALIDATION_FINALE,
-            DATStatus.VALIDATION_RESERVE,
+            DATStatus.EN_ATTENTE_DE_REVUE,
         }
         final_statuses = {
-            DATStatus.DAT_REFUSE,
-            DATStatus.DAT_VALIDE,
+            DATStatus.VALIDER,
+            DATStatus.REFUSE,
         }
 
         columns = {
@@ -376,16 +375,11 @@ class MyTasksBoardView(WorkflowBoardView):
                     # Skip DAT items unrelated to the user's responsibilities.
                     continue
 
-                if getattr(dat, "can_progress", False):
-                    columns["in_progress"].append(dat)
-                    continue
-
-                next_status = getattr(dat, "next_status", None)
-                if dat.status in validation_statuses or next_status in final_statuses:
+                if dat.status in validation_statuses:
                     columns["validation"].append(dat)
                     continue
 
-                columns["blocked"].append(dat)
+                columns["in_progress"].append(dat)
 
         ordered_keys = ["blocked", "in_progress", "validation"]
         return [

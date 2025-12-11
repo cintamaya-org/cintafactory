@@ -57,15 +57,17 @@ SECTION_PART_ICON_MAP = {
 
 DEFAULT_STATUS_ICON_COLOR = "#546e7a"
 
-# TODO later: switch to conditional icons when section status tracking becomes available.
-SECTION_STATUS_ICON_CHOICES = (
-    {"name": "check_circle", "color": "#2c8f31"},
-    {"name": "border_color", "color": "#1565c0"},
-    {"name": "timer", "color": "#0097ef"},
-    {"name": "plagiarism", "color": "#6a1b9a"},
-    {"name": "error", "color": "#000000"},
-    {"name": "cancel", "color": "#FF0000"},
-)
+
+SECTION_STATUS_ICON_MAP = {
+    "valide": {"name": "task_alt", "color": "#2e7d32", "variant": MATERIAL_SYMBOLS_VARIANT},
+    "en_cours": {"name": "pending", "color": "#1565c0", "variant": MATERIAL_SYMBOLS_VARIANT},
+    "bloque": {"name": "block", "color": "#c62828", "variant": MATERIAL_SYMBOLS_VARIANT},
+}
+SECTION_STATUS_ICON_DEFAULT = {
+    "name": "radio_button_unchecked",
+    "color": DEFAULT_STATUS_ICON_COLOR,
+    "variant": MATERIAL_SYMBOLS_VARIANT,
+}
 
 
 @register.filter
@@ -107,14 +109,13 @@ def section_part_icon(section_slug, part_slug):
 
 
 @register.simple_tag
-def random_section_status_icon():
-    choice = random.choice(SECTION_STATUS_ICON_CHOICES)
-    if isinstance(choice, dict):
-        return {
-            "name": choice.get("name"),
-            "color": choice.get("color") or DEFAULT_STATUS_ICON_COLOR,
-        }
-    return {"name": choice, "color": DEFAULT_STATUS_ICON_COLOR}
+def section_status_icon(status_value=None):
+    icon = SECTION_STATUS_ICON_MAP.get(status_value) or SECTION_STATUS_ICON_DEFAULT
+    return {
+        "name": icon.get("name"),
+        "variant": icon.get("variant", DEFAULT_ICON_VARIANT),
+        "color": icon.get("color", DEFAULT_STATUS_ICON_COLOR),
+    }
 
 
 @register.simple_tag
