@@ -63,6 +63,9 @@ CSRF_TRUSTED_ORIGINS = sorted(
     _build_csrf_trusted_origins(_csrf_trusted_env)
     | _build_csrf_trusted_origins(ALLOWED_HOSTS)
 )
+
+# Honour reverse-proxy HTTPS headers so absolute URLs use the correct scheme.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 # Application STATIC_URL 
 
 INSTALLED_APPS = [
