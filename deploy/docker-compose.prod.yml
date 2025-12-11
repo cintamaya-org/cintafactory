@@ -10,6 +10,10 @@ services:
       ALLOWED_HOSTS: "${PROD_ALLOWED_HOSTS:-example.com}"
       CSRF_TRUSTED: "${PROD_CSRF_TRUSTED:-}"
       DJANGO_DEBUG: "0"
+      DRAWIO_BASE_URL: "${PROD_DRAWIO_BASE_URL:-}"
+      DRAWIO_PUBLIC_URL: "${PROD_DRAWIO_PUBLIC_URL:-}"
+      DRAWIO_LIBS: "${PROD_DRAWIO_LIBS:-general}"
+      DRAWIO_CLIBS: "${PROD_DRAWIO_CLIBS:-}"
     volumes:
       - cinta_prod_static:/archifactory/cintafactory/staticfiles
       - cinta_prod_media:/archifactory/cintafactory/media
