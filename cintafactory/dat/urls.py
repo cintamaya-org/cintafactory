@@ -11,6 +11,7 @@ urlpatterns = [
     # Main "My DAT" list
     path("my/", views.DatList.as_view(), name="my_list"),
     path("my/<int:pk>/", views.DatDetail.as_view(), name="my_detail"),
+    path("my/<int:pk>/validation/decision/", views.submit_validation_decision, name="my_validation_decision"),
     path("my/<int:pk>/advance/", views.DatAdvanceStatusView.as_view(), name="my_advance"),
     path("my/<int:pk>/export/json/", views.DatExportJSONView.as_view(), name="my_export_json"),
     path(
@@ -42,6 +43,11 @@ urlpatterns = [
         "my/<int:dat_pk>/sections/<slug:section_slug>/<slug:sub_section_slug>/edit/",
         views.DatSubSectionUpdateView.as_view(),
         name="sub_section_edit",
+    ),
+    path(
+        "my/<int:dat_pk>/sections/<slug:section_slug>/status/",
+        views.update_section_status,
+        name="section_status",
     ),
     path(
         "my/<int:dat_pk>/schemas/create-diagram/",

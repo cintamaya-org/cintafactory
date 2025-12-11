@@ -9,17 +9,12 @@ from django.utils import timezone
 
 
 class DATStatus(models.TextChoices):
-    DEMANDE_INITIALE = "demande_initiale", "Demande initiale"
-    VALIDATION_REFERENT = "validation_referent", "Validation du referent"
-    INSTRUCTION_ARCHITECTURE = "instruction_architecture", "Instruction architecture technique"
-    INSTRUCTION_URBANISME = "instruction_urbanisme", "Instruction urbanisme"
-    ANALYSE_SECURITE = "analyse_securite", "Analyse cyber securite"
-    GENERATION_CARTOGRAPHIE = "generation_cartographie", "Generation cartographie et inventaire"
-    REVUE_INFRA_EXPLOITATION = "revue_infra_exploitation", "Revue infra / exploitation"
-    VALIDATION_FINALE = "validation_finale", "Validation finale pluridisciplinaire"
-    VALIDATION_RESERVE = "validation_reserve", "Validation avec reserve"
-    DAT_REFUSE = "dat_refuse", "DAT refuse"
-    DAT_VALIDE = "dat_valide", "DAT valide"
+    NOUVELLE_DEMANDE = "nouvelle_demande", "Nouvelle demande"
+    EN_COURS = "en_cours", "En cours"
+    EN_ATTENTE_DE_REVUE = "en_attente_de_revue", "En Attente de revue"
+    VALIDER = "valider", "Valider"
+    REFUSE = "refuse", "Refusé"
+    RESERVE = "reserve", "Reserve"
 
 
 class Application(models.Model):
@@ -74,7 +69,7 @@ class DAT(models.Model):
     status = models.CharField(
         max_length=64,
         choices=DATStatus.choices,
-        default=DATStatus.DEMANDE_INITIALE,
+        default=DATStatus.NOUVELLE_DEMANDE,
     )
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,

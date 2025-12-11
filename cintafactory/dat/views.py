@@ -11,7 +11,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db.models import Count, Prefetch, Q
 from django.db.models.functions import TruncMonth
-from django.http import FileResponse, HttpResponse, JsonResponse
+from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.utils import timezone
 from django.utils.html import format_html
 from django.utils.text import slugify
@@ -20,6 +20,7 @@ from django.template.loader import render_to_string
 from django.urls import reverse, reverse_lazy
 from django.views import View
 from django.views.generic import DetailView, ListView, TemplateView, FormView
+from django.views.decorators.http import require_POST
 
 from material import Fieldset, Layout, Row
 from material.frontend.registry import modules as module_registry
@@ -50,7 +51,14 @@ from .models import (
 )
 from .pdf import generate_dat_pdf
 from .permissions import filter_dat_queryset_for_user, user_is_dat_admin
-from .sections import sync_dat_sections_if_needed
+from .sections import (
+    SECTION_STATUS_BLOCKED_VALUE,
+    SECTION_STATUS_DEFAULT,
+    SECTION_STATUS_ENTRY_KEY,
+    SECTION_STATUS_VALIDATED_VALUE,
+    section_has_status,
+    sync_dat_sections_if_needed,
+)
 from .tasks import schedule_dat_pdf_generation
 from .utils import (
     dat_pdf_export_exists,
@@ -67,11 +75,11 @@ logger = logging.getLogger(__name__)
 
 PORTEUR_ROLE_SLUG = DAT_PORTEUR_ROLE_SLUG
 OWNER_EDITABLE_STATUSES = {
-    DATStatus.DEMANDE_INITIALE,
-    DATStatus.INSTRUCTION_ARCHITECTURE,
+    DATStatus.NOUVELLE_DEMANDE,
+    DATStatus.EN_COURS,
+    DATStatus.RESERVE,
 }
-PROGRESSABLE_STATUSES = set(DAT_STATUS_REQUIRED_ROLES.keys())
-STATUS_SEQUENCE = [choice.value for choice in DATStatus]
+FINAL_DAT_STATUSES = {DATStatus.VALIDER, DATStatus.REFUSE}
 HISTORY_ENTRIES_PREFETCH = Prefetch(
     "history_entries",
     queryset=DATHistory.objects.select_related("performed_by").order_by("-performed_at", "-id"),
@@ -136,6 +144,75 @@ class ApplicationListView(ModuleAwareListView):
 
 def get_required_roles_for_status(status: str) -> tuple[str, ...]:
     return DAT_STATUS_REQUIRED_ROLES.get(status, ())
+
+
+REVIEWER_ROLE_SLUGS = {"architecte-referent", "comite-validation"}
+
+
+def user_can_review_dat(dat: DAT, user) -> bool:
+    if dat is None or user is None or not getattr(user, "is_authenticated", False):
+        return False
+    if user_is_dat_admin(user):
+        return True
+    user_id = getattr(user, "id", None)
+    if user_id is None:
+        return False
+    for participant in dat.participants.all():
+        role = getattr(participant, "role", None)
+        if role and role.slug in REVIEWER_ROLE_SLUGS and participant.user_id == user_id:
+            return True
+    return False
+
+
+def _are_all_sections_validated(status_map: dict[str, dict] | None) -> bool:
+    if not status_map:
+        return False
+    for status_info in status_map.values():
+        if not status_info.get("has_status"):
+            continue
+        if status_info.get("value") != SECTION_STATUS_VALIDATED_VALUE:
+            return False
+    return True
+
+
+def refresh_dat_status(
+    dat: DAT,
+    *,
+    actor=None,
+    force_in_progress: bool = False,
+    status_map: dict | None = None,
+    status_choices: dict | None = None,
+) -> bool:
+    """
+    Synchronise the DAT status with the completion state of its sections.
+    """
+    if dat.status in FINAL_DAT_STATUSES:
+        return False
+
+    computed_status_map = status_map
+    if computed_status_map is None or status_choices is None:
+        computed_status_map, status_choices = build_section_status_map(dat)
+
+    all_validated = _are_all_sections_validated(computed_status_map)
+    target_status = dat.status
+
+    if dat.status == DATStatus.RESERVE:
+        target_status = DATStatus.EN_ATTENTE_DE_REVUE if all_validated else DATStatus.RESERVE
+    elif all_validated:
+        target_status = DATStatus.EN_ATTENTE_DE_REVUE
+    elif dat.status == DATStatus.EN_ATTENTE_DE_REVUE:
+        target_status = DATStatus.EN_COURS
+    elif force_in_progress:
+        target_status = DATStatus.EN_COURS
+
+    if target_status == dat.status:
+        return False
+
+    if actor is not None:
+        dat._history_actor = actor  # type: ignore[attr-defined]
+    dat.status = target_status
+    dat.save(update_fields=["status", "updated_at"])
+    return True
 
 
 def build_participant_overview(dat: DAT):
@@ -219,10 +296,190 @@ def build_dat_overview_context(dat: DAT, user):
         "next_status": next_status,
         "next_status_label": DATStatus(next_status).label if next_status else None,
         "can_progress_dat": user_can_progress_dat(dat, user),
+        "can_review_dat": user_can_review_dat(dat, user),
     }
 
 
-def build_section_payload(dat: DAT, user, section_slug: str | None = None, sub_section_slug: str | None = None):
+def _find_section_status_part(dat: DAT, sections_list: list[DATSection] | None = None) -> DATPart | None:
+    if sections_list:
+        for section in sections_list:
+            if getattr(section, "slug", None) != "validation":
+                continue
+            try:
+                sub_sections = list(section.sub_sections.all())
+            except Exception:
+                sub_sections = []
+            for sub_section in sub_sections:
+                try:
+                    parts = list(sub_section.parts.all())
+                except Exception:
+                    parts = []
+                for part in parts:
+                    if getattr(part, "key", None) == SECTION_STATUS_ENTRY_KEY:
+                        return part
+    try:
+        return (
+            DATPart.objects.select_related("sub_section__section")
+            .filter(sub_section__section__dat=dat, key=SECTION_STATUS_ENTRY_KEY)
+            .first()
+        )
+    except Exception:
+        return None
+
+
+def _status_choice_map(status_part: DATPart | None) -> dict[str, str]:
+    config = status_part.config if isinstance(status_part, DATPart) else None
+    if isinstance(config, dict):
+        columns = config.get("columns")
+        if isinstance(columns, list):
+            for column in columns:
+                if isinstance(column, dict) and column.get("key") == "statut":
+                    choices = column.get("choices")
+                    if isinstance(choices, list):
+                        mapping: dict[str, str] = {}
+                        for choice in choices:
+                            if not isinstance(choice, dict):
+                                continue
+                            value = choice.get("value")
+                            if value in (None, ""):
+                                continue
+                            mapping[str(value)] = choice.get("label", value)
+                        if mapping:
+                            return mapping
+    return {
+        SECTION_STATUS_DEFAULT: "En cours",
+        SECTION_STATUS_BLOCKED_VALUE: "Bloqué",
+        SECTION_STATUS_VALIDATED_VALUE: "Validé",
+    }
+
+
+def _default_status_value(choices: dict[str, str]) -> str:
+    if SECTION_STATUS_DEFAULT in choices:
+        return SECTION_STATUS_DEFAULT
+    if choices:
+        return next(iter(choices))
+    return SECTION_STATUS_DEFAULT
+
+
+def reset_section_statuses_to_default(
+    dat: DAT,
+    *,
+    status_map: dict | None = None,
+    status_choices: dict | None = None,
+) -> None:
+    """
+    Revert all section statuses to the default value (used when placing a DAT in réserve).
+    """
+    if status_choices is None or not status_map:
+        status_map, status_choices = build_section_status_map(dat)
+    status_part = _find_section_status_part(dat)
+    if status_part is None or status_choices is None:
+        return
+    default_status = _default_status_value(status_choices)
+    sections = list(dat.sections.order_by("order", "id"))
+    updated_rows = []
+    for section in sections:
+        if not section_has_status(section.slug):
+            continue
+        existing = status_map.get(section.slug, {}) if status_map else {}
+        comment = existing.get("commentaire", "") if isinstance(existing, dict) else ""
+        updated_rows.append(
+            {"section": section.title, "statut": default_status, "commentaire": comment}
+        )
+    if updated_rows:
+        status_part.update_value(updated_rows)
+
+
+def build_section_status_map(dat: DAT, sections_list: list[DATSection] | None = None):
+    sections = sections_list or list(dat.sections.order_by("order", "id"))
+    status_part = _find_section_status_part(dat, sections)
+    choice_map = _status_choice_map(status_part)
+    default_status = _default_status_value(choice_map)
+    try:
+        raw_rows = status_part.value if status_part else []
+    except Exception:
+        raw_rows = []
+    existing_map: dict[str, dict] = {}
+    stale_rows = False
+    for row in raw_rows:
+        if not isinstance(row, dict):
+            stale_rows = True
+            continue
+        label = row.get("section")
+        if not label:
+            stale_rows = True
+            continue
+        existing_map[str(label)] = row
+    status_map: dict[str, dict[str, object]] = {}
+    updated_rows: list[dict[str, object]] = []
+    dirty = stale_rows
+    allowed_titles: set[str] = set()
+    for section in sections:
+        has_status = section_has_status(section.slug)
+        if has_status:
+            allowed_titles.add(section.title)
+            current_row = existing_map.get(section.title)
+            statut = None
+            comment = ""
+            if isinstance(current_row, dict):
+                statut = current_row.get("statut")
+                comment = current_row.get("commentaire") or ""
+            if not statut:
+                statut = default_status
+            elif statut not in choice_map:
+                statut = default_status
+                dirty = True
+            normalised_row = {"section": section.title, "statut": statut, "commentaire": comment}
+            updated_rows.append(normalised_row)
+            if (
+                current_row is None
+                or current_row.get("section") != normalised_row["section"]
+                or current_row.get("statut") != normalised_row["statut"]
+                or (current_row.get("commentaire") or "") != normalised_row["commentaire"]
+            ):
+                dirty = True
+            status_map[section.slug] = {
+                "has_status": True,
+                "value": statut,
+                "label": choice_map.get(statut, statut),
+                "commentaire": comment,
+            }
+        else:
+            status_map[section.slug] = {
+                "has_status": False,
+                "value": None,
+                "label": None,
+                "commentaire": "",
+            }
+    for label in existing_map.keys():
+        if label not in allowed_titles:
+            dirty = True
+            break
+    if status_part and dirty:
+        status_part.update_value(updated_rows)
+    return status_map, choice_map
+
+
+def section_is_locked(status_info: dict | None, *, dat: DAT | None = None) -> bool:
+    if dat is not None:
+        if dat.status in FINAL_DAT_STATUSES:
+            return True
+        if dat.status == DATStatus.RESERVE:
+            return False
+    if not status_info or not status_info.get("has_status"):
+        return False
+    return status_info.get("value") == SECTION_STATUS_VALIDATED_VALUE
+
+
+def build_section_payload(
+    dat: DAT,
+    user,
+    section_slug: str | None = None,
+    sub_section_slug: str | None = None,
+    *,
+    section_status_map: dict | None = None,
+    section_status_choices: dict | None = None,
+):
     def extract_lock_rule(part: DATPart) -> dict[str, object] | None:
         config = part.config if isinstance(part.config, dict) else None
         if not config:
@@ -259,6 +516,23 @@ def build_section_payload(dat: DAT, user, section_slug: str | None = None, sub_s
             return False
         return str(current_value) in expected_values
 
+    def part_has_drawio_table(entries) -> bool:
+        if not entries:
+            return False
+        for entry in entries:
+            if getattr(entry, "data_type", None) != "repeater":
+                continue
+            config = getattr(entry, "config", None)
+            columns = config.get("columns") if isinstance(config, dict) else None
+            if not columns:
+                continue
+            for column in columns:
+                if not isinstance(column, dict):
+                    continue
+                if column.get("drawio") or column.get("render") in {"drawio_diagram", "drawio_actions"}:
+                    return True
+        return False
+
     sync_dat_sections_if_needed(dat)
     validation_rows = None
     try:
@@ -288,12 +562,27 @@ def build_section_payload(dat: DAT, user, section_slug: str | None = None, sub_s
     sections_list = list(sections_qs)
     if section_slug and not sections_list:
         return []
+    if section_status_map is None or section_status_choices is None:
+        status_map, status_choices = build_section_status_map(dat)
+    else:
+        status_map, status_choices = section_status_map, section_status_choices
+    default_status_value = _default_status_value(status_choices)
     entry_value_map: dict[str, object] = {}
     for section in sections_list:
         for sub_section in section.sub_sections.all():
             for entry in sub_section.parts.all():
                 entry_value_map[entry.key] = entry.value
     for section in sections_list:
+        section_status = status_map.get(
+            section.slug,
+            {"has_status": False, "value": None, "label": None, "commentaire": ""},
+        )
+        is_locked = section_is_locked(section_status, dat=dat)
+        section_can_edit = False if section.slug == "validation" else section.can_user_edit(user)
+        if dat.status in FINAL_DAT_STATUSES:
+            section_can_edit = False
+        elif is_locked:
+            section_can_edit = False
         parts_payload = []
         for sub_section in section.sub_sections.all():
             if sub_section_slug and sub_section.slug != sub_section_slug:
@@ -308,7 +597,10 @@ def build_section_payload(dat: DAT, user, section_slug: str | None = None, sub_s
                 {
                     "section_part": sub_section,
                     "entries": entries,
-                    "can_edit": False if section.slug == "validation" else sub_section.can_user_edit(user),
+                    "has_drawio_table": part_has_drawio_table(entries),
+                    "can_edit": False
+                    if section.slug == "validation" or is_locked
+                    else sub_section.can_user_edit(user),
                 }
             )
         if sub_section_slug and not parts_payload:
@@ -317,7 +609,21 @@ def build_section_payload(dat: DAT, user, section_slug: str | None = None, sub_s
             {
                 "section": section,
                 "parts": parts_payload,
-                "can_edit": False if section.slug == "validation" else section.can_user_edit(user),
+                "can_edit": section_can_edit,
+                "has_status": bool(section_status.get("has_status")),
+                "status": section_status,
+                "status_locked": is_locked,
+                "can_update_status": bool(
+                    section_status.get("has_status")
+                    and section.can_user_edit(user)
+                    and dat.status not in FINAL_DAT_STATUSES
+                ),
+                "status_choices": status_choices,
+                "status_values": {
+                    "default": default_status_value,
+                    "blocked": SECTION_STATUS_BLOCKED_VALUE,
+                    "validated": SECTION_STATUS_VALIDATED_VALUE,
+                },
             }
         )
         if sub_section_slug:
@@ -344,6 +650,99 @@ def render_sub_section_snippet(dat: DAT, user, section_slug: str, sub_section_sl
     )
 
 
+@login_required
+@require_POST
+def update_section_status(request, dat_pk: int, section_slug: str):
+    base_queryset = filter_dat_queryset_for_user(DAT.objects.all(), request.user)
+    dat = get_object_or_404(base_queryset, pk=dat_pk)
+    if dat.status in FINAL_DAT_STATUSES:
+        raise PermissionDenied
+    section = get_object_or_404(DATSection, dat=dat, slug=section_slug)
+    sync_dat_sections_if_needed(dat)
+    if not section_has_status(section.slug):
+        raise Http404("Section sans statut.")
+    if not section.can_user_edit(request.user):
+        raise PermissionDenied
+    status_map, status_choices = build_section_status_map(dat)
+    current_info = status_map.get(section.slug, {})
+    new_status = request.POST.get("status")
+    valid_statuses = set(status_choices.keys())
+    redirect_url = f"{reverse('dat:my_detail', args=[dat.pk])}?section={section.slug}#section-{section.slug}"
+    if not new_status or new_status not in valid_statuses:
+        messages.error(request, "Statut invalide pour cette section.")
+        return redirect(redirect_url)
+    if section_is_locked(current_info, dat=dat) and new_status != current_info.get("value"):
+        messages.error(request, "Cette section est validée et ne peut plus changer de statut.")
+        return redirect(redirect_url)
+    if new_status == current_info.get("value"):
+        messages.info(request, "Le statut de la section est déjà à jour.")
+        return redirect(redirect_url)
+    status_part = _find_section_status_part(dat)
+    if status_part is None:
+        messages.error(request, "Impossible de mettre à jour le statut de cette section.")
+        return redirect(redirect_url)
+    default_status = _default_status_value(status_choices)
+    sections = list(dat.sections.order_by("order", "id"))
+    updated_rows = []
+    for item in sections:
+        if not section_has_status(item.slug):
+            continue
+        existing = status_map.get(item.slug, {})
+        comment = existing.get("commentaire", "")
+        status_value = existing.get("value") or default_status
+        if item.slug == section.slug:
+            status_value = new_status
+        updated_rows.append(
+            {"section": item.title, "statut": status_value, "commentaire": comment or ""}
+        )
+    status_part.update_value(updated_rows)
+    target_label = status_choices.get(new_status, new_status)
+    refresh_dat_status(dat, actor=request.user, force_in_progress=True)
+    messages.success(request, f"Statut mis à jour : {target_label}.")
+    return redirect(redirect_url)
+
+
+@login_required
+@require_POST
+def submit_validation_decision(request, dat_pk: int):
+    base_queryset = filter_dat_queryset_for_user(
+        DAT.objects.select_related("application", "owner").prefetch_related("participants__role"),
+        request.user,
+    )
+    dat = get_object_or_404(base_queryset, pk=dat_pk)
+    if dat.status != DATStatus.EN_ATTENTE_DE_REVUE:
+        messages.error(request, "Ce DAT n'est pas en attente de revue.")
+        return redirect(reverse("dat:my_detail", args=[dat.pk]))
+    if not user_can_review_dat(dat, request.user):
+        raise PermissionDenied
+
+    decision_value = request.POST.get("decision")
+    valid_targets = {DATStatus.VALIDER, DATStatus.REFUSE, DATStatus.RESERVE}
+    try:
+        target_status = DATStatus(decision_value)
+    except Exception:
+        target_status = None
+    if target_status not in valid_targets:
+        messages.error(request, "Décision de validation invalide.")
+        return redirect(reverse("dat:my_detail", args=[dat.pk]))
+
+    status_map, status_choices = build_section_status_map(dat)
+    if target_status == DATStatus.RESERVE:
+        reset_section_statuses_to_default(dat, status_map=status_map, status_choices=status_choices)
+
+    dat.status = target_status
+    dat._history_actor = request.user  # type: ignore[attr-defined]
+    dat.save(update_fields=["status", "updated_at"])
+
+    label = dat.get_status_display()
+    if target_status in FINAL_DAT_STATUSES:
+        messages.success(request, f"Le DAT est maintenant clôturé ({label}).")
+    else:
+        messages.success(request, f"Le DAT est placé en réserve ({label}). Les sections sont à nouveau éditables.")
+
+    return redirect(reverse("dat:my_detail", args=[dat.pk]))
+
+
 def user_is_porteur_demande(user):
     is_role = getattr(user, "is_role", None)
     return bool(callable(is_role) and is_role(PORTEUR_ROLE_SLUG))
@@ -366,45 +765,15 @@ def user_can_manage_dat(user):
 
 
 def get_next_status(current_status: str) -> str | None:
-    try:
-        index = STATUS_SEQUENCE.index(current_status)
-    except ValueError:
-        return None
-    next_index = index + 1
-    if next_index < len(STATUS_SEQUENCE):
-        return STATUS_SEQUENCE[next_index]
+    if current_status == DATStatus.NOUVELLE_DEMANDE:
+        return DATStatus.EN_COURS
+    if current_status in (DATStatus.EN_COURS, DATStatus.RESERVE):
+        return DATStatus.EN_ATTENTE_DE_REVUE
     return None
 
 
 def user_can_progress_dat(dat: DAT, user) -> bool:
-    if dat is None or user is None or not getattr(user, "is_authenticated", False):
-        return False
-    if user_is_dat_admin(user):
-        return True
-    required_roles = get_required_roles_for_status(dat.status)
-    if not required_roles:
-        return False
-    if dat.status not in PROGRESSABLE_STATUSES:
-        return False
-    next_status = get_next_status(dat.status)
-    if not next_status:
-        return False
-
-    user_id = getattr(user, "id", None)
-    for participant in dat.participants.all():
-        role = getattr(participant, "role", None)
-        if role is None:
-            continue
-        if participant.user_id == user_id and role.slug in required_roles:
-            return True
-
-    if (
-        DAT_PORTEUR_ROLE_SLUG in required_roles
-        and dat.owner_id == user_id
-        and user_is_porteur_demande(user)
-    ):
-        return True
-
+    # Manual progression is disabled; status changes are automatic or handled via the validation section.
     return False
 
 
@@ -492,6 +861,7 @@ class DATDetailView(ModuleContextMixin, DetailModelView):
         context["section_nav"] = list(
             self.object.sections.order_by("order", "id").values("slug", "title")
         )
+        context["can_review_dat"] = user_can_review_dat(self.object, self.request.user)
         return context
 
 
@@ -657,6 +1027,9 @@ class DatDetail(ModuleContextMixin, LoginRequiredMixin, DetailView):
         section_nav = list(
             self.object.sections.order_by("order", "id").values("slug", "title")
         )
+        section_status_map, section_status_choices = build_section_status_map(self.object)
+        context["section_status_map"] = section_status_map
+        context["section_status_choices"] = section_status_choices
         valid_slugs = {entry["slug"] for entry in section_nav}
         default_slug = (
             "informations-generales"
@@ -671,7 +1044,13 @@ class DatDetail(ModuleContextMixin, LoginRequiredMixin, DetailView):
         context["section_nav"] = section_nav
         context["selected_section_slug"] = selected_slug
         context["selected_sections"] = (
-            build_section_payload(self.object, self.request.user, section_slug=selected_slug)
+            build_section_payload(
+                self.object,
+                self.request.user,
+                section_slug=selected_slug,
+                section_status_map=section_status_map,
+                section_status_choices=section_status_choices,
+            )
             if selected_slug
             else []
         )
@@ -798,6 +1177,9 @@ class DatSubSectionUpdateView(ModuleContextMixin, LoginRequiredMixin, FormView):
             slug=sub_section_slug,
         )
         self.section = self.sub_section.section
+        dat = self.section.dat
+        if dat.status in FINAL_DAT_STATUSES:
+            raise PermissionDenied
         if sync_dat_sections_if_needed(self.section.dat):
             self.sub_section = get_object_or_404(
                 base_queryset,
@@ -807,6 +1189,9 @@ class DatSubSectionUpdateView(ModuleContextMixin, LoginRequiredMixin, FormView):
             )
             self.section = self.sub_section.section
         if not self.sub_section.can_user_edit(request.user):
+            raise PermissionDenied
+        status_map, _choices = build_section_status_map(self.section.dat)
+        if section_is_locked(status_map.get(self.section.slug), dat=self.section.dat):
             raise PermissionDenied
         return super().dispatch(request, *args, **kwargs)
 
@@ -859,6 +1244,7 @@ class DatSubSectionUpdateView(ModuleContextMixin, LoginRequiredMixin, FormView):
             message = "Aucune modification détectée sur cette sous-section."
             if not self.is_ajax():
                 messages.info(self.request, message)
+        refresh_dat_status(dat, actor=self.request.user, force_in_progress=bool(changes))
         if self.is_ajax():
             html = render_sub_section_snippet(
                 dat,
@@ -1146,15 +1532,4 @@ class DatAdvanceStatusView(LoginRequiredMixin, View):
         )
         dat = get_object_or_404(queryset, pk=pk)
 
-        if not user_can_progress_dat(dat, request.user):
-            raise PermissionDenied
-
-        next_status = get_next_status(dat.status)
-        if not next_status:
-            raise PermissionDenied
-
-        dat.status = next_status
-        dat._history_actor = request.user  # type: ignore[attr-defined]
-        dat.save(update_fields=["status", "updated_at"])
-
-        return redirect(reverse("dat:my_detail", args=[dat.pk]))
+        raise PermissionDenied("La progression automatique du statut est désormais désactivée.")

@@ -15,6 +15,13 @@
     padding: 2.75rem 2.5rem;
 }
 
+.cinta-card--pane {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 2rem;
+}
+
 @media (max-width: 1024px) {
     .cinta-card {
         padding: 2.25rem 2rem;
@@ -22,6 +29,10 @@
 
     .cinta-card--narrow {
         padding: 2.25rem 2rem;
+    }
+
+    .cinta-card--pane {
+        padding: 1.75rem;
     }
 }
 
@@ -31,9 +42,13 @@
         box-shadow: 0 10px 25px rgba(15, 23, 42, 0.2);
     }
 
-.cinta-card--narrow {
-    padding: 1.75rem 1.5rem;
-}
+    .cinta-card--narrow {
+        padding: 1.75rem 1.5rem;
+    }
+
+    .cinta-card--pane {
+        padding: 1.35rem;
+    }
 }
 
 .content > .card {
@@ -84,8 +99,8 @@
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-    min-height: 2.5rem;
-    padding: 0.75rem 1.5rem;
+    min-height: 2.75rem;
+    padding: 0.9rem 1.75rem;
     border-radius: 9999px;
     border: 1px solid rgba(15, 23, 42, 0.25);
     background: rgba(255, 255, 255, 0.9);
@@ -257,6 +272,52 @@ dmc-sidenav .sidenav .user-view .my-account__link {
 
 .user-relationship-link__arrow {
     fill: #0f172a;
+}
+
+.dat-section-status-chip {
+    background: rgba(13, 71, 161, 0.08);
+    padding: 0.4rem 0.85rem;
+    border-radius: 999px;
+    font-weight: 600;
+    color: #0d47a1;
+}
+
+.dat-section-status-chip__label {
+    font-size: 0.95rem;
+}
+
+.dat-section-locked-chip {
+    font-weight: 600;
+}
+
+.dat-section-status-note {
+    font-size: 0.9rem;
+    line-height: 1.35;
+}
+
+.dat-section-status-icon {
+    font-size: 1.15rem;
+    line-height: 1;
+}
+
+.dat-section-status-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.1rem 0.6rem;
+    border-radius: 999px;
+    background: #e8f1ff;
+    color: #0d47a1;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+}
+
+.dat-section-status-actions__buttons form {
+    margin: 0;
+}
+
+.dat-section-status-message--locked {
+    font-weight: 600;
 }
 
 .dat-sub-section-edit-actions {

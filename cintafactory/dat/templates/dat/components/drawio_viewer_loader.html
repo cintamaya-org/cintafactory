@@ -458,4 +458,463 @@
     },
   };
 })();
+
+// Inline Draw.io preview toggler (Afficher/Cacher)
+(function () {
+  const BUTTON_SELECTOR = ".dat-subsection-show-all-btn";
+  const TARGET_SELECTOR = "[data-drawio-table=\"true\"]";
+  const PREVIEW_ROW_CLASS = "dat-drawio-preview-row";
+  const STYLE_ID = "dat-drawio-preview-style";
+  const previewCache = new Map();
+  const LOG_PREFIX = "[DAT drawio inline]";
+  const editLocks = new Set();
+
+  function logDebug(message, payload) {
+    if (!window.console || typeof console.info !== "function") {
+      return;
+    }
+    if (payload !== undefined) {
+      console.info(`${LOG_PREFIX} ${message}`, payload);
+      return;
+    }
+    console.info(`${LOG_PREFIX} ${message}`);
+  }
+
+  function logWarn(message, payload) {
+    if (!window.console || typeof console.warn !== "function") {
+      return;
+    }
+    if (payload !== undefined) {
+      console.warn(`${LOG_PREFIX} ${message}`, payload);
+      return;
+    }
+    console.warn(`${LOG_PREFIX} ${message}`);
+  }
+
+  function logError(message, payload) {
+    if (!window.console || typeof console.error !== "function") {
+      return;
+    }
+    if (payload !== undefined) {
+      console.error(`${LOG_PREFIX} ${message}`, payload);
+      return;
+    }
+    console.error(`${LOG_PREFIX} ${message}`);
+  }
+
+  function getSection(element) {
+    return element ? element.closest(".dat-sub-section") : null;
+  }
+
+  function getSectionSlug(element) {
+    const section = getSection(element);
+    if (!section || !section.dataset) {
+      return null;
+    }
+    const slug = section.dataset.subSectionSlug || section.dataset.subSection || null;
+    return slug ? String(slug) : null;
+  }
+
+  function isSectionLocked(section) {
+    if (!section) {
+      return false;
+    }
+    const slug = getSectionSlug(section);
+    return section.classList.contains("dat-sub-section-editing") || (slug && editLocks.has(slug));
+  }
+
+  function ensureStyle() {
+    if (document.getElementById(STYLE_ID)) {
+      return;
+    }
+    const style = document.createElement("style");
+    style.id = STYLE_ID;
+    style.textContent = `
+      .${PREVIEW_ROW_CLASS} td {
+        padding-top: 0;
+        padding-bottom: 0;
+      }
+      .dat-drawio-inline-preview {
+        margin-bottom: 0.35rem;
+        padding: 0.75rem;
+        border-radius: 8px;
+        border: 1px dashed #cfd8dc;
+        background: #f7f9fb;
+      }
+      .dat-drawio-inline-preview__title {
+        margin: 0 0 0.5rem 0;
+        font-weight: 600;
+        color: #37474f;
+        font-size: 0.95rem;
+      }
+      .dat-drawio-inline-preview__body {
+        color: #546e7a;
+        font-size: 0.9rem;
+      }
+      .dat-drawio-inline-preview__image {
+        display: block;
+        width: 100%;
+        max-height: 440px;
+        object-fit: contain;
+        background: #fff;
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      }
+      .dat-drawio-inline-preview__error {
+        color: #c62828;
+        margin: 0;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function findTarget(button) {
+    if (!button) {
+      return null;
+    }
+    const targetId = button.dataset.drawioTarget;
+    if (targetId) {
+      const byId = document.getElementById(targetId);
+      if (byId) {
+        return byId;
+      }
+    }
+    const container = button.closest(".dat-sub-section");
+    if (container) {
+      return container.querySelector(TARGET_SELECTOR);
+    }
+    logWarn("Aucune cible draw.io trouvée pour le bouton", {
+      buttonText: button.textContent,
+      dataset: { ...button.dataset },
+    });
+    return null;
+  }
+
+  function getDiagramId(row) {
+    const holder = row.querySelector("[data-diagram-id]");
+    if (!holder) {
+      return null;
+    }
+    const value = holder.getAttribute("data-diagram-id") || holder.dataset.diagramId;
+    if (!value) {
+      return null;
+    }
+    const trimmed = String(value).trim();
+    return trimmed ? trimmed : null;
+  }
+
+  function setButtonState(button, expanded) {
+    if (!button) {
+      return;
+    }
+    const showLabel = button.dataset.showLabel || "Afficher Miniature";
+    const hideLabel = button.dataset.hideLabel || "Cacher Miniature";
+    button.dataset.drawioExpanded = expanded ? "1" : "0";
+    button.setAttribute("aria-expanded", expanded ? "true" : "false");
+    button.textContent = expanded ? hideLabel : showLabel;
+  }
+
+  function renderPreview(previewRow, diagramId, payload) {
+    if (!previewRow || !previewRow.isConnected) {
+      return;
+    }
+    const td = previewRow.querySelector("td") || previewRow.appendChild(document.createElement("td"));
+    const sibling = previewRow.nextElementSibling;
+    const siblingCells = sibling && sibling.children ? sibling.children.length : 0;
+    td.colSpan = Math.max(1, td.colSpan || siblingCells || 1);
+    const wrapper = document.createElement("div");
+    wrapper.className = "dat-drawio-inline-preview";
+    const title = document.createElement("p");
+    title.className = "dat-drawio-inline-preview__title";
+    title.textContent = payload?.title || `Diagramme #${diagramId}`;
+    wrapper.appendChild(title);
+    const body = document.createElement("div");
+    body.className = "dat-drawio-inline-preview__body";
+    if (payload?.error) {
+      logWarn("Erreur lors du rendu de la miniature", {
+        diagramId,
+        error: payload.error,
+      });
+      const error = document.createElement("p");
+      error.className = "dat-drawio-inline-preview__error";
+      error.textContent = "Impossible de charger l'aperçu du diagramme.";
+      body.appendChild(error);
+    } else if (payload?.thumbnail) {
+      logDebug("Miniature récupérée", {
+        diagramId,
+        thumbnail: payload.thumbnail,
+      });
+      const img = document.createElement("img");
+      img.className = "dat-drawio-inline-preview__image";
+      img.alt = payload.title || `Diagramme #${diagramId}`;
+      const helper = window.CintaDrawioPreview;
+      const url = payload.thumbnail;
+      img.src = helper && typeof helper.withCacheBuster === "function" ? helper.withCacheBuster(url) : url;
+      body.appendChild(img);
+    } else {
+      body.textContent = "Aucun aperçu disponible pour ce diagramme.";
+    }
+    wrapper.appendChild(body);
+    td.innerHTML = "";
+    td.appendChild(wrapper);
+  }
+
+  function renderLoading(previewRow, diagramId) {
+    renderPreview(previewRow, diagramId, { title: `Diagramme #${diagramId}`, thumbnail: null, loading: true });
+    const body = previewRow.querySelector(".dat-drawio-inline-preview__body");
+    if (body) {
+      body.textContent = "Chargement du diagramme...";
+    }
+  }
+
+  function ensurePreviewRow(row, diagramId) {
+    let previewRow = row.previousElementSibling;
+    if (!previewRow || !previewRow.classList.contains(PREVIEW_ROW_CLASS)) {
+      previewRow = document.createElement("tr");
+      previewRow.className = PREVIEW_ROW_CLASS;
+      previewRow.dataset.diagramId = diagramId;
+      const td = document.createElement("td");
+      td.colSpan = Math.max(1, row.children.length || 1);
+      previewRow.appendChild(td);
+      row.parentNode.insertBefore(previewRow, row);
+    }
+    return previewRow;
+  }
+
+  function fetchPreview(diagramId) {
+    const key = String(diagramId);
+    if (previewCache.has(key)) {
+      logDebug("Utilisation du cache pour la miniature", { diagramId: key });
+      return previewCache.get(key);
+    }
+    logDebug("Chargement du contexte viewer pour miniature", { diagramId: key });
+    const promise = fetch(`/diagrams/${key}/viewer-context/`, {
+      method: "GET",
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        return response.json();
+      })
+      .then((data) => {
+        const diagram = data && data.diagram ? data.diagram : {};
+        logDebug("Contexte preview chargé", {
+          diagramId: key,
+          hasThumbnail: Boolean(diagram.thumbnail_url || diagram.thumbnail),
+        });
+        return {
+          title: diagram.title || `Diagramme #${key}`,
+          thumbnail: diagram.thumbnail_url || diagram.thumbnail || null,
+        };
+      })
+      .catch((error) => {
+        logWarn("Echec du chargement du contexte preview", {
+          diagramId: key,
+          error,
+        });
+        return { error: error || new Error("preview_load_failed") };
+      });
+    previewCache.set(key, promise);
+    return promise;
+  }
+
+  function showPreviews(wrapper, button) {
+    if (!wrapper) {
+      return;
+    }
+    ensureStyle();
+    let rows = [];
+    const nestedBodies = wrapper.querySelectorAll("td .responsive-table table tbody");
+    if (nestedBodies.length) {
+      nestedBodies.forEach((tbody) => {
+        rows = rows.concat(
+          Array.from(tbody.querySelectorAll("tr")).filter(
+            (row) => !row.classList.contains(PREVIEW_ROW_CLASS) && getDiagramId(row)
+          )
+        );
+      });
+    } else {
+      rows = Array.from(wrapper.querySelectorAll("table tbody tr")).filter(
+        (row) => !row.classList.contains(PREVIEW_ROW_CLASS) && getDiagramId(row)
+      );
+    }
+    const diagramIds = rows.map((row) => getDiagramId(row)).filter(Boolean);
+    logDebug("Préparation de l'affichage des miniatures", {
+      targetId: wrapper.id || null,
+      rows: rows.length,
+      diagramIds,
+    });
+    if (!rows.length || !diagramIds.length) {
+      logWarn("Aucune ligne éligible pour affichage des miniatures", {
+        targetId: wrapper.id || null,
+      });
+    }
+    const tasks = [];
+    rows.forEach((row) => {
+      const diagramId = getDiagramId(row);
+      if (!diagramId) {
+        logWarn("Ligne ignorée car aucun diagramme détecté", {
+          targetId: wrapper.id || null,
+        });
+        return;
+      }
+      const previewRow = ensurePreviewRow(row, diagramId);
+      renderLoading(previewRow, diagramId);
+      tasks.push(
+        fetchPreview(diagramId).then((payload) => {
+          renderPreview(previewRow, diagramId, payload);
+        })
+      );
+    });
+    logDebug("Affichage des miniatures demandé", {
+      targetId: wrapper.id || null,
+      rows: rows.length,
+      buttonState: button ? button.dataset.drawioExpanded : null,
+    });
+    setButtonState(button, true);
+    return Promise.allSettled(tasks).then(() => setButtonState(button, true));
+  }
+
+  function hidePreviews(wrapper, button) {
+    if (wrapper) {
+      const toRemove = wrapper.querySelectorAll(`.${PREVIEW_ROW_CLASS}`);
+      const count = toRemove.length;
+      toRemove.forEach((row) => row.remove());
+      logDebug("Masquage des miniatures demandé", {
+        targetId: wrapper.id || null,
+        removedRows: count,
+        buttonState: button ? button.dataset.drawioExpanded : null,
+      });
+    } else {
+      logWarn("Masquage des miniatures sans wrapper cible");
+    }
+    setButtonState(button, false);
+  }
+
+  function initButton(button) {
+    if (!button || button.dataset.drawioToggleBound === "1") {
+      return;
+    }
+    const section = getSection(button);
+    if (isSectionLocked(section)) {
+      logDebug("Bouton ignoré car section en édition", {
+        slug: getSectionSlug(button),
+        dataset: { ...button.dataset },
+      });
+      return;
+    }
+    const target = findTarget(button);
+    if (!target) {
+      logWarn("Impossible d'initialiser le bouton draw.io sans cible", {
+        buttonText: button.textContent,
+        dataset: { ...button.dataset },
+      });
+      return;
+    }
+    button.dataset.drawioToggleBound = "1";
+    hidePreviews(target, button);
+  }
+
+  function initAll() {
+    document.querySelectorAll(BUTTON_SELECTOR).forEach(initButton);
+  }
+
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest(BUTTON_SELECTOR);
+    if (!button) {
+      return;
+    }
+    const target = findTarget(button);
+    if (!target) {
+      logWarn("Clic sur le bouton draw.io sans cible associée", {
+        buttonText: button.textContent,
+        dataset: { ...button.dataset },
+      });
+      return;
+    }
+    const section = getSection(button);
+    if (isSectionLocked(section)) {
+      logWarn("Clic ignoré car la section est en édition", {
+        slug: getSectionSlug(button),
+        targetId: target.id || null,
+      });
+      return;
+    }
+    event.preventDefault();
+    const expanded = button.dataset.drawioExpanded === "1";
+    logDebug("Clic sur le bouton de miniature", {
+      expanded,
+      targetId: target.id || null,
+      dataset: { ...button.dataset },
+    });
+    if (expanded) {
+      hidePreviews(target, button);
+    } else {
+      showPreviews(target, button);
+    }
+  });
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initAll, { once: true });
+  } else {
+    initAll();
+  }
+  document.addEventListener("turbolinks:load", initAll);
+
+  function lockSection(slug) {
+    if (!slug) {
+      return;
+    }
+    editLocks.add(slug);
+    const section = document.querySelector(`.dat-sub-section[data-sub-section-slug="${slug}"]`);
+    if (!section) {
+      return;
+    }
+    const button = section.querySelector(BUTTON_SELECTOR);
+    const target = section.querySelector(TARGET_SELECTOR);
+    if (button) {
+      button.dataset.drawioLocked = "1";
+      button.classList.add("disabled");
+      button.setAttribute("aria-disabled", "true");
+    }
+    if (target) {
+      hidePreviews(target, button);
+    }
+  }
+
+  function unlockSection(slug) {
+    if (!slug) {
+      return;
+    }
+    editLocks.delete(slug);
+    const section = document.querySelector(`.dat-sub-section[data-sub-section-slug="${slug}"]`);
+    if (!section) {
+      return;
+    }
+    const button = section.querySelector(BUTTON_SELECTOR);
+    if (button) {
+      button.classList.remove("disabled");
+      button.removeAttribute("aria-disabled");
+      button.dataset.drawioLocked = "0";
+      button.dataset.drawioToggleBound = "";
+      initButton(button);
+    }
+  }
+
+  document.addEventListener("dat:section-edit-start", (event) => {
+    const slug = event && event.detail && event.detail.slug ? String(event.detail.slug) : null;
+    logDebug("Verrouillage des miniatures pour section en édition", { slug });
+    lockSection(slug);
+  });
+
+  document.addEventListener("dat:section-edit-end", (event) => {
+    const slug = event && event.detail && event.detail.slug ? String(event.detail.slug) : null;
+    logDebug("Déverrouillage des miniatures après édition", { slug });
+    unlockSection(slug);
+  });
+})();
 </script>

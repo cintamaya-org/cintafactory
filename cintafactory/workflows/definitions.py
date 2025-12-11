@@ -66,24 +66,21 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
         name="Validation des DAT",
         model="dat.DAT",
         description=(
-            "Processus de validation des dossiers d'architecture garantissant la conformite "
-            "technique, la securite et l'approbation manageriale."
+            "Processus simplifie de validation des dossiers d'architecture. "
+            "Le porteur prépare le dossier, l'équipe de revue tranche (validation, refus ou réserve)."
         ),
         steps=(
             WorkflowStepDefinition(
-                key="demande-initiale",
-                name="Demande initiale",
-                status="demande_initiale",
+                key="nouvelle-demande",
+                name="Nouvelle demande",
+                status="nouvelle_demande",
                 order=10,
                 is_initial=True,
-                description=(
-                    "Ouverture du dossier (nouvelle application ou evolution) par le porteur de la "
-                    "demande avec reprise automatique des informations applicatives connues."
-                ),
+                description="Ouverture du dossier par le porteur de la demande.",
                 permissions=(
                     StepPermissionDefinition(
                         permission="write",
-                        roles=required_roles("demande_initiale"),
+                        roles=required_roles("nouvelle_demande"),
                     ),
                     StepPermissionDefinition(
                         permission="read",
@@ -92,18 +89,15 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
                 ),
             ),
             WorkflowStepDefinition(
-                key="validation-referent",
-                name="Validation du referent",
-                status="validation_referent",
+                key="en-cours",
+                name="En cours",
+                status="en_cours",
                 order=20,
-                description=(
-                    "Le referent architecture verifie la completude de la demande et affecte un "
-                    "architecte technique (validation ou renvoi au porteur avec commentaire)."
-                ),
+                description="Saisie et complétion des sections avant revue.",
                 permissions=(
                     StepPermissionDefinition(
                         permission="write",
-                        roles=required_roles("validation_referent"),
+                        roles=required_roles("en_cours"),
                     ),
                     StepPermissionDefinition(
                         permission="read",
@@ -112,180 +106,59 @@ WORKFLOW_DEFINITIONS: Tuple[WorkflowDefinition, ...] = (
                 ),
             ),
             WorkflowStepDefinition(
-                key="instruction-architecture",
-                name="Instruction architecture technique",
-                status="instruction_architecture",
+                key="en-attente-revue",
+                name="En attente de revue",
+                status="en_attente_de_revue",
                 order=30,
-                description=(
-                    "L'architecte technique met a jour le DAT, produit le schema cible et formalise les "
-                    "arbitrages demandes avant passage a la securite."
-                ),
+                description="Toutes les sections sont validées, décision attendue.",
                 permissions=(
                     StepPermissionDefinition(
                         permission="write",
-                        roles=required_roles("instruction_architecture"),
+                        roles=required_roles("en_attente_de_revue"),
                     ),
                     StepPermissionDefinition(
                         permission="read",
-                        roles=DAT_ROLES_WITHOUT_COMITE,
+                        roles=ALL_DAT_ROLES,
                     ),
                 ),
             ),
             WorkflowStepDefinition(
-                key="instruction-urbanisme",
-                name="Instruction urbanisme",
-                status="instruction_urbanisme",
+                key="reserve",
+                name="Réserve",
+                status="reserve",
                 order=40,
-                description=(
-                    "Mise a jour du schema d'urbanisme et controle de conformite aux standards par "
-                    "l'urbaniste en parallele de l'instruction technique."
-                ),
+                description="Réserve émise : corrections attendues avant une nouvelle revue.",
                 permissions=(
                     StepPermissionDefinition(
                         permission="write",
-                        roles=required_roles("instruction_urbanisme"),
+                        roles=required_roles("reserve"),
                     ),
                     StepPermissionDefinition(
                         permission="read",
-                        roles=DAT_ROLES_WITHOUT_COMITE,
+                        roles=ALL_DAT_ROLES,
                     ),
                 ),
             ),
             WorkflowStepDefinition(
-                key="analyse-securite",
-                name="Analyse cyber securite",
-                status="analyse_securite",
+                key="valide",
+                name="Valider",
+                status="valider",
                 order=50,
-                description=(
-                    "L'analyste securite conduit les ateliers de risque, formalise les preconisations et "
-                    "notifie le porteur ainsi que l'architecte technique. Les refus declenchent la "
-                    "demande de derogation."
-                ),
+                description="DAT validé et clôturé.",
                 permissions=(
                     StepPermissionDefinition(
-                        permission="write",
-                        roles=required_roles("analyse_securite"),
-                    ),
-                    StepPermissionDefinition(
                         permission="read",
-                        roles=DAT_ROLES_WITHOUT_COMITE,
+                        roles=ALL_DAT_ROLES,
                     ),
                 ),
             ),
             WorkflowStepDefinition(
-                key="generation-cartographie",
-                name="Generation cartographie et inventaire",
-                status="generation_cartographie",
+                key="refuse",
+                name="Refusé",
+                status="refuse",
                 order=60,
-                description=(
-                    "Synchronisation automatique des schemas techniques vers la cartographie des flux et "
-                    "mise a jour de l'inventaire (assets, capacites, consommations)."
-                ),
+                description="DAT refusé et clôturé.",
                 permissions=(
-                    StepPermissionDefinition(
-                        permission="write",
-                        roles=required_roles("generation_cartographie"),
-                    ),
-                    StepPermissionDefinition(
-                        permission="read",
-                        roles=DAT_ROLES_WITHOUT_COMITE,
-                    ),
-                ),
-            ),
-            WorkflowStepDefinition(
-                key="revue-infra-exploitation",
-                name="Revue infra / exploitation",
-                status="revue_infra_exploitation",
-                order=70,
-                description=(
-                    "Validation capacitaire, rattachement aux offres de service et evaluation budgetaire "
-                    "par l'equipe infra / exploitation."
-                ),
-                permissions=(
-                    StepPermissionDefinition(
-                        permission="write",
-                        roles=required_roles("revue_infra_exploitation"),
-                    ),
-                    StepPermissionDefinition(
-                        permission="read",
-                        roles=DAT_ROLES_WITHOUT_COMITE,
-                    ),
-                ),
-            ),
-            WorkflowStepDefinition(
-                key="validation-finale",
-                name="Validation finale pluridisciplinaire",
-                status="validation_finale",
-                order=80,
-                description=(
-                    "Validation du DAT par les referents architecture technique, urbanisme, securite et "
-                    "infra/exploitation avec suivi des commentaires."
-                ),
-                permissions=(
-                    StepPermissionDefinition(
-                        permission="write",
-                        roles=required_roles("validation_finale"),
-                    ),
-                    StepPermissionDefinition(
-                        permission="read",
-                        roles=ALL_DAT_ROLES,
-                    ),
-                ),
-            ),
-            WorkflowStepDefinition(
-                key="validation-reserve",
-                name="Validation avec reserve",
-                status="validation_reserve",
-                order=90,
-                description=(
-                    "Suivi des reserves, attribution d'un responsable pour leur resolution et verification "
-                    "de la levee avant applicabilite du DAT."
-                ),
-                permissions=(
-                    StepPermissionDefinition(
-                        permission="write",
-                        roles=required_roles("validation_reserve"),
-                    ),
-                    StepPermissionDefinition(
-                        permission="read",
-                        roles=ALL_DAT_ROLES,
-                    ),
-                ),
-            ),
-            WorkflowStepDefinition(
-                key="dat-refuse",
-                name="DAT refuse",
-                status="dat_refuse",
-                order=100,
-                description=(
-                    "Le dossier est refuse ou rejete : la version precedente reste applicable et le nouvel "
-                    "etat est archive."
-                ),
-                permissions=(
-                    StepPermissionDefinition(
-                        permission="write",
-                        roles=required_roles("dat_refuse"),
-                    ),
-                    StepPermissionDefinition(
-                        permission="read",
-                        roles=ALL_DAT_ROLES,
-                    ),
-                ),
-            ),
-            WorkflowStepDefinition(
-                key="dat-valide",
-                name="DAT valide",
-                status="dat_valide",
-                order=110,
-                description=(
-                    "Tous les avis sont poses : le DAT est valide, les reserves sont levees et les "
-                    "intervenants sont notifies."
-                ),
-                permissions=(
-                    StepPermissionDefinition(
-                        permission="write",
-                        roles=required_roles("dat_valide"),
-                    ),
                     StepPermissionDefinition(
                         permission="read",
                         roles=ALL_DAT_ROLES,

@@ -33,20 +33,22 @@ class WorkflowSyncTests(TestCase):
         workflow = Workflow.objects.get(code="dat-validation")
         steps = list(workflow.steps.order_by("order"))
 
-        self.assertEqual(len(steps), 11)
-        draft = next(step for step in steps if step.key == "demande-initiale")
+        self.assertEqual(len(steps), 6)
+        draft = next(step for step in steps if step.key == "nouvelle-demande")
         self.assertTrue(draft.is_initial)
         self.assertEqual(draft.write_permissions.count(), 1)
         self.assertEqual(draft.write_permissions.first().role, self.roles["porteur-demande"])
 
-        security = next(step for step in steps if step.key == "analyse-securite")
+        review_step = next(step for step in steps if step.key == "en-attente-revue")
         self.assertEqual(
-            {perm.role for perm in security.write_permissions},
-            {self.roles["analyste-secu"]},
+            {perm.role for perm in review_step.write_permissions},
+            {
+                self.roles["architecte-referent"],
+                self.roles["comite-validation"],
+            },
         )
-        security_read_roles = {perm.role for perm in security.read_permissions}
-        self.assertIn(self.roles["architecte-technique"], security_read_roles)
-        self.assertIn(self.roles["rssi"], security_read_roles)
+        review_read_roles = {perm.role for perm in review_step.read_permissions}
+        self.assertIn(self.roles["porteur-demande"], review_read_roles)
 
 
 class WorkflowBoardViewTests(TestCase):
@@ -68,21 +70,21 @@ class WorkflowBoardViewTests(TestCase):
         DAT.objects.create(
             reference="DAT-001",
             title="Initial",
-            status=DATStatus.DEMANDE_INITIALE,
+            status=DATStatus.NOUVELLE_DEMANDE,
             application=self.application,
             owner=self.user,
         )
         DAT.objects.create(
             reference="DAT-002",
             title="Technique",
-            status=DATStatus.INSTRUCTION_ARCHITECTURE,
+            status=DATStatus.EN_COURS,
             application=self.application,
             owner=self.user,
         )
         DAT.objects.create(
             reference="DAT-003",
             title="Referent",
-            status=DATStatus.VALIDATION_REFERENT,
+            status=DATStatus.EN_ATTENTE_DE_REVUE,
             application=self.application,
             owner=self.user,
         )
@@ -94,15 +96,15 @@ class WorkflowBoardViewTests(TestCase):
         self.assertEqual(len(columns), 3)
 
         initial_column = columns[0]
-        self.assertEqual(initial_column["status_codes"], [DATStatus.DEMANDE_INITIALE])
+        self.assertEqual(initial_column["status_codes"], [DATStatus.NOUVELLE_DEMANDE])
         self.assertEqual(len(initial_column["items"]), 1)
         self.assertContains(response, "DAT-001")
-        self.assertContains(response, "Validation du referent")
+        self.assertContains(response, "En cours")
 
         in_progress_column = columns[1]
         in_progress_statuses = set(in_progress_column["status_codes"])
-        self.assertIn(DATStatus.INSTRUCTION_ARCHITECTURE, in_progress_statuses)
-        self.assertIn(DATStatus.VALIDATION_REFERENT, columns[1]["status_codes"])
+        self.assertIn(DATStatus.EN_COURS, in_progress_statuses)
+        self.assertIn(DATStatus.EN_ATTENTE_DE_REVUE, columns[1]["status_codes"])
 
     def test_board_alias_works(self):
         response = self.client.get(reverse("workflows:board"))
@@ -112,14 +114,14 @@ class WorkflowBoardViewTests(TestCase):
         DAT.objects.create(
             reference="DAT-OWNED",
             title="My DAT",
-            status=DATStatus.DEMANDE_INITIALE,
+            status=DATStatus.NOUVELLE_DEMANDE,
             application=self.application,
             owner=self.user,
         )
         DAT.objects.create(
             reference="DAT-FOREIGN",
             title="Other DAT",
-            status=DATStatus.INSTRUCTION_ARCHITECTURE,
+            status=DATStatus.EN_COURS,
             application=self.application,
             owner=self.other_user,
         )
@@ -139,13 +141,13 @@ class WorkflowBoardViewTests(TestCase):
         DAT.objects.create(
             reference="DAT-ADMIN-1",
             title="Admin Visible",
-            status=DATStatus.DEMANDE_INITIALE,
+            status=DATStatus.NOUVELLE_DEMANDE,
             application=self.application,
         )
         DAT.objects.create(
             reference="DAT-ADMIN-2",
             title="Admin Visible 2",
-            status=DATStatus.VALIDATION_REFERENT,
+            status=DATStatus.EN_ATTENTE_DE_REVUE,
             application=self.application,
             owner=self.other_user,
         )
@@ -156,14 +158,14 @@ class WorkflowBoardViewTests(TestCase):
         self.assertContains(response, "DAT-ADMIN-1")
         self.assertContains(response, "DAT-ADMIN-2")
 
-    def test_progress_button_visible_for_current_actor(self):
+    def test_progress_button_not_rendered(self):
         referent_role = self.roles["architecte-referent"]
         porteur_role = self.roles["porteur-demande"]
         porteur = get_user_model().objects.create_user(username="board-porteur", password="pwd")
         dat = DAT.objects.create(
             reference="DAT-BOARD-REF",
             title="Board Referent",
-            status=DATStatus.VALIDATION_REFERENT,
+            status=DATStatus.EN_ATTENTE_DE_REVUE,
             application=self.application,
             owner=porteur,
         )
@@ -174,29 +176,7 @@ class WorkflowBoardViewTests(TestCase):
 
         response = self.client.get(reverse("workflows:index"))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Passer a l'etape suivante")
-        self.assertContains(response, self.user.username)
-
-    def test_progress_button_hidden_for_unassigned_actor(self):
-        referent_role = self.roles["architecte-referent"]
-        porteur_role = self.roles["porteur-demande"]
-        porteur = get_user_model().objects.create_user(username="board-porteur-2", password="pwd")
-        dat = DAT.objects.create(
-            reference="DAT-BOARD-HIDDEN",
-            title="Board Hidden",
-            status=DATStatus.VALIDATION_REFERENT,
-            application=self.application,
-            owner=porteur,
-        )
-        DATParticipant.objects.create(dat=dat, role=porteur_role, user=porteur)
-        DATParticipant.objects.create(dat=dat, role=referent_role, user=self.other_user)
-
-        outsider = get_user_model().objects.create_user(username="board-outsider", password="pwd")
-        self.client.force_login(outsider)
-        response = self.client.get(reverse("workflows:index"))
-        self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, "Passer a l'etape suivante")
-        self.assertContains(response, self.other_user.username)
 
 
 class WorkflowNotificationsViewTests(TestCase):
@@ -214,17 +194,17 @@ class WorkflowNotificationsViewTests(TestCase):
             reference="DAT-NOTIF",
             title="DAT Notifications",
             application=self.application,
-            status=DATStatus.DEMANDE_INITIALE,
+            status=DATStatus.NOUVELLE_DEMANDE,
             owner=self.user,
         )
         self.history = DATHistory.objects.create(
             dat=self.dat,
             action=DATHistoryAction.STATUS_CHANGED,
-            status_before=DATStatus.DEMANDE_INITIALE,
-            status_after=DATStatus.VALIDATION_REFERENT,
+            status_before=DATStatus.NOUVELLE_DEMANDE,
+            status_after=DATStatus.EN_ATTENTE_DE_REVUE,
             performed_by=self.user,
             performed_by_display="Notif User",
-            details={"from": "Demande initiale", "to": "Validation du referent"},
+            details={"from": "Nouvelle demande", "to": "En Attente de revue"},
         )
         self.notification_type = NotificationType.objects.create(
             title="Export PDF lancé",
@@ -247,7 +227,7 @@ class WorkflowNotificationsViewTests(TestCase):
         notifications = response.context["notifications"]
         self.assertEqual(len(notifications), 2)
         self.assertContains(response, "Export PDF lancé")
-        self.assertContains(response, "Validation du referent")
+        self.assertContains(response, "En Attente de revue")
 
         session = self.client.session
         seen_ids = session.get(SESSION_SEEN_KEY, [])

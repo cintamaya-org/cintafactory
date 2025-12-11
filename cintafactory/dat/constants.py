@@ -23,28 +23,10 @@ DAT_REQUIRED_PARTICIPANT_ROLE_LABELS = {
 }
 
 DAT_STATUS_REQUIRED_ROLES = {
-    "demande_initiale": ("porteur-demande",),
-    "validation_referent": ("architecte-referent",),
-    "instruction_architecture": ("architecte-technique",),
-    "instruction_urbanisme": ("urbaniste",),
-    "analyse_securite": ("analyste-secu",),
-    "generation_cartographie": ("architecte-technique",),
-    "revue_infra_exploitation": ("infra-exploitation",),
-    "validation_finale": (
-        "architecte-referent",
-        "urbaniste",
-        "rssi",
-        "infra-exploitation",
-    ),
-    "validation_reserve": (
-        "architecte-technique",
-        "architecte-referent",
-        "urbaniste",
-        "analyste-secu",
-        "rssi",
-        "infra-exploitation",
-    ),
-    "dat_refuse": ("architecte-referent",),
-    "dat_valide": ("architecte-referent",),
+    "nouvelle_demande": ("porteur-demande",),
+    "en_cours": ("porteur-demande",),
+    "en_attente_de_revue": ("architecte-referent", "comite-validation"),
+    "valider": ("architecte-referent",),
+    "refuse": ("architecte-referent",),
+    "reserve": ("architecte-referent", "porteur-demande"),
 }
-

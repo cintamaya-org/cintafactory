@@ -1,4 +1,5 @@
 {% load dat_extras %}
+{% with drawio_table_id="drawio-table-"|add:container_section.slug|add:"-"|add:part.section_part.slug %}
 <div class="section dat-sub-section" data-sub-section-slug="{{ part.section_part.slug }}" id="sub-section-{{ part.section_part.slug }}" style="margin-top:1.5rem;">
   <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.75rem; flex-wrap:wrap;">
     <div style="flex:1; min-width:200px;">
@@ -14,21 +15,39 @@
         <p style="margin:0 0 0.5rem 0; color:#757575; white-space:pre-wrap;">{{ part.section_part.description }}</p>
       {% endif %}
     </div>
-    {% if part.can_edit %}
-      <a
-        href="{% url 'dat:sub_section_edit' dat.pk container_section.slug part.section_part.slug %}"
-        class="btn waves-effect waves-light cinta-btn-primary dat-subsection-edit-btn"
-        data-edit-url="{% url 'dat:sub_section_edit' dat.pk container_section.slug part.section_part.slug %}"
-        data-sub-section-slug="{{ part.section_part.slug }}"
-        data-sub-section-title="{{ part.section_part.title }}"
-      >
-        <i class="material-icons left" aria-hidden="true">edit</i>
-        Modifier
-      </a>
+    {% if part.can_edit or part.has_drawio_table %}
+      <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+        {% if part.can_edit %}
+          <a
+            href="{% url 'dat:sub_section_edit' dat.pk container_section.slug part.section_part.slug %}"
+            class="btn waves-effect waves-light cinta-btn-primary dat-subsection-edit-btn"
+            data-edit-url="{% url 'dat:sub_section_edit' dat.pk container_section.slug part.section_part.slug %}"
+            data-sub-section-slug="{{ part.section_part.slug }}"
+            data-sub-section-title="{{ part.section_part.title }}"
+          >
+            <i class="material-icons left" aria-hidden="true">edit</i>
+            Modifier
+          </a>
+        {% endif %}
+        {% if part.has_drawio_table %}
+          <button
+            type="button"
+            class="btn-flat waves-effect cinta-btn-secondary dat-subsection-show-all-btn"
+            data-drawio-target="{{ drawio_table_id }}"
+            data-show-label="Afficher Miniature"
+            data-hide-label="Cacher Miniature"
+            data-drawio-expanded="0"
+            aria-expanded="false"
+            aria-controls="{{ drawio_table_id }}"
+          >
+            Afficher tout
+          </button>
+        {% endif %}
+      </div>
     {% endif %}
   </div>
   {% if part.entries %}
-    <div class="responsive-table">
+    <div class="responsive-table" {% if part.has_drawio_table %}id="{{ drawio_table_id }}" data-drawio-table="true"{% endif %}>
       <table class="highlight">
         <tbody>
           {% for entry in part.entries %}
@@ -105,3 +124,4 @@
     <p style="margin:0; color:#9e9e9e;">Aucune donnée pour cette sous-section.</p>
   {% endif %}
 </div>
+{% endwith %}

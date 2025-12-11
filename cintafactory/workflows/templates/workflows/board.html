@@ -56,15 +56,21 @@ img {
   display: flex;
   gap: 1.5rem;
   width: 100%;
+  overflow-x: auto;
+  padding-bottom: 1rem;
 }
 .vf-dashboard .column {
-  flex: 1 1 0;
-  min-width: 0;
+  flex: 0 0 calc(50% - 0.75rem);
+  max-width: calc(50% - 0.75rem);
+  min-width: 420px;
   display: flex;
   flex-direction: column;
 }
 .vf-dashboard .column-content {
   flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
   overflow: visible;
   padding-right: 0;
 }
@@ -76,18 +82,41 @@ img {
 .scroll-box {
   width: 100%;
   height: 90vh;
-  padding: 1rem;
-  border-radius: 12px;
   overflow-y: auto; 
   overflow-x: hidden; 
   scrollbar-width: thin; 
 }
 
+.workflow-card {
+  width: 100%;
+  margin: 0;
+}
 
+.workflow-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
 
+.workflow-card__actions {
+  margin-top: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
 
+.workflow-card__actions form {
+  margin: 0;
+}
 
-
+@media (max-width: 1024px) {
+  .vf-dashboard .column {
+    flex: 0 0 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+}
 </style>
 
 
@@ -101,12 +130,12 @@ img {
       <div class="vf-dashboard">
           {% if columns %}
             {% for column in columns %}
-              <div class="column scroll-box">
+              <div class="column scroll-box cinta-card cinta-card--pane">
                 <span class="column-title">
                   {{ column.title }}
                   <span class="badge">{{ column.items|length }}</span>
                 </span>
-                <div class="column-content scroll-box">
+                <div class="column-content">
                   <vf-perfect-scroll></vf-perfect-scroll>
                   {% if column.description %}
                     <p class="vf-dashboard__card-detail">
@@ -124,8 +153,8 @@ img {
                     </div>
                   {% endif %} {% endcomment %}
                   {% for dat in column.items %}
-                    <div class="mdc-card" style="padding:15px;margin-top:10px;margin-bottom:5px;">
-                      <div style="display:flex;flex-direction:column;gap:0.5rem;">
+                    <div class="card cinta-card workflow-card">
+                      <div class="workflow-card__body">
                         <div>
                           {{ dat }}
                           <h2 class="mdc-typography mdc-typography--headline6" style="margin:0;">
@@ -137,15 +166,15 @@ img {
                             </h3>
                           {% endif %}
                         </div>
-                        {% if dat.get_status_display %}
+                        {% comment %} {% if dat.get_status_display %}
                           <div class="vf-dashboard__card-detail" style="display:flex; align-items:center; gap:0.5rem;">
                             <label style="margin:0;">Statut</label>
                             <span class="chip" style="margin:0; background:#e3f2fd; color:#0d47a1; font-weight:600;">
                               {{ dat.get_status_display }}
                             </span>
                           </div>
-                        {% endif %}
-                        <div class="vf-dashboard__card-detail" style="display:flex; flex-direction:column; gap:0.25rem;">
+                        {% endif %} {% endcomment %}
+                        {% comment %} <div class="vf-dashboard__card-detail" style="display:flex; flex-direction:column; gap:0.25rem;">
                           <label style="margin:0;">Validation actuelle</label>
                           {% if dat.current_responsibles_display %}
                             <span class="chip" style="margin:0; background:#ede7f6; color:#4527a0; font-weight:600;">
@@ -159,7 +188,7 @@ img {
                           {% if dat.current_responsibles_missing %}
                             <small style="color:#b71c1c;">Roles en attente : {{ dat.current_responsibles_missing|join:", " }}</small>
                           {% endif %}
-                        </div>
+                        </div> {% endcomment %}
                         {% if dat.description %}
                           <p class="flow-text" style="margin:0;color: rgba(0,0,0,.54);">
                             {{ dat.description|truncatewords:24 }}
@@ -176,33 +205,34 @@ img {
                               {% endif %}
                             </span>
                           </div>
-                          <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                          {% comment %} <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
                             <label style="margin:0;">Derniere mise a jour</label>
                             <span class="chip" style="margin:0; background:#fff3e0; color:#e65100; font-weight:600;">
                               {{ dat.updated_at|date:"d/m/Y" }} {{ dat.updated_at|time:"H\\hi" }}
                             </span>
-                          </div>
-                        {% if dat.owner %}
+                          </div> {% endcomment %}
+                        {% comment %} {% if dat.owner %}
                           <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
                             <label style="margin:0;">Assigne</label>
                             <span class="chip" style="margin:0; background:#e8eaf6; color:#1a237e; font-weight:600;">
                               {{ dat.owner.get_full_name|default:dat.owner.get_username }}
                             </span>
                           </div>
-                        {% endif %}
+                        {% endif %} {% endcomment %}
                       </div>
-                      <div style="margin-top:0.5rem; display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
-                        {% if dat.can_progress and dat.next_status %}
-                          <form method="post" action="{% url 'dat:my_advance' dat.pk %}" style="margin:0;">
-                            {% csrf_token %}
-                            <button type="submit" class="btn waves-effect waves-light cinta-btn-primary">
-                              Passer a l'etape suivante
+                    </div>
+                    <div class="workflow-card__actions">
+                      {% comment %} {% if dat.can_progress and dat.next_status %}
+                        <form method="post" action="{% url 'dat:my_advance' dat.pk %}">
+                          {% csrf_token %}
+                          <button type="submit" class="btn waves-effect waves-light cinta-btn-primary">
+                            Passer a l'etape suivante
                               {% if dat.next_status_label %}
                                 <span style="margin-left:0.35rem; font-size:0.85em;">({{ dat.next_status_label }})</span>
                               {% endif %}
                             </button>
                           </form>
-                        {% endif %}
+                        {% endif %} {% endcomment %}
                         <a href="{% url 'dat:my_detail' dat.pk %}"
                            class="btn waves-effect waves-light cinta-btn-primary"
                            target="_blank" rel="noopener noreferrer">
@@ -210,9 +240,8 @@ img {
                         </a>
                       </div>
                     </div>
-                  </div>
-                {% empty %}
-                    <div class="mdc-card" style="padding:15px;margin-top:10px;margin-bottom:5px;">
+                  {% empty %}
+                    <div class="card cinta-card workflow-card workflow-card--empty">
                       <p style="margin:0;color: rgba(0,0,0,.54);">
                         Aucun dossier à cette étape.
                       </p>

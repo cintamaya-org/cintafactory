@@ -62,10 +62,7 @@ class DATImportService:
         application = self._resolve_application(application_payload)
         owner_payload = payload.get("owner")
         owner = self._resolve_user(owner_payload)
-        status = dat_data.get("status") or DATStatus.DEMANDE_INITIALE
-        if status not in DATStatus.values:
-            self._warn(f"Statut inconnu « {status} ». Utilisation du statut initial par défaut.")
-            status = DATStatus.DEMANDE_INITIALE
+        status = self._normalise_status(dat_data.get("status"))
 
         description = dat_data.get("description") or ""
 
@@ -140,6 +137,31 @@ class DATImportService:
             self._warn(f"Rôle « {slug} » introuvable. Le participant correspondant a été ignoré.")
         self._role_cache[slug] = role
         return role
+
+    def _normalise_status(self, raw_status: str | None):
+        status = raw_status or DATStatus.NOUVELLE_DEMANDE
+        mapping = {
+            "demande_initiale": DATStatus.NOUVELLE_DEMANDE,
+            "validation_referent": DATStatus.EN_COURS,
+            "instruction_architecture": DATStatus.EN_COURS,
+            "instruction_urbanisme": DATStatus.EN_COURS,
+            "analyse_securite": DATStatus.EN_COURS,
+            "generation_cartographie": DATStatus.EN_COURS,
+            "revue_infra_exploitation": DATStatus.EN_COURS,
+            "validation_finale": DATStatus.EN_ATTENTE_DE_REVUE,
+            "validation_reserve": DATStatus.RESERVE,
+            "dat_refuse": DATStatus.REFUSE,
+            "dat_valide": DATStatus.VALIDER,
+        }
+        if status in DATStatus.values:
+            return status
+        if status in mapping:
+            self._warn(
+                f"Statut hérité « {status} » converti en « {mapping[status]} » lors de l'import."
+            )
+            return mapping[status]
+        self._warn(f"Statut inconnu « {status} ». Utilisation du statut initial par défaut.")
+        return DATStatus.NOUVELLE_DEMANDE
 
     def _import_participants(self, dat: DAT, payload: Any):
         if not isinstance(payload, (list, tuple)):
