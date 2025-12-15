@@ -34,6 +34,7 @@ jobs:
             --exclude=".git/" \
             --exclude=".github/" \
             --exclude="deploy/env/*.env" \
+            --exclude=".env" \
             ./ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:${DEST}/
 
       - name: Deploy on VPS (docker compose up -d) as demo_factory
