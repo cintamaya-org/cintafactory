@@ -17,6 +17,7 @@ from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.text import slugify
+from django.views.decorators.clickjacking import xframe_options_exempt
 from django.views.decorators.http import require_POST, require_http_methods
 from django.views.generic import CreateView, DetailView, ListView, TemplateView
 from django.templatetags.static import static
@@ -385,6 +386,7 @@ def diagram_save_thumbnail(request, pk: int):
 
 @login_required
 @require_http_methods(["GET", "HEAD"])
+@xframe_options_exempt
 def drawio_proxy(request, path: str = ""):
     """
     Lightweight reverse proxy to expose the draw.io service over HTTPS.
