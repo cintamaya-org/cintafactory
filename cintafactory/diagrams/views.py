@@ -17,7 +17,7 @@ from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.text import slugify
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_http_methods
 from django.views.generic import CreateView, DetailView, ListView, TemplateView
 from django.templatetags.static import static
 from material.frontend.registry import modules as module_registry
@@ -158,8 +158,51 @@ def _collect_library_urls(request=None) -> list[str]:
     return discovered
 
 
-def _build_embed_url(library_urls: list[str]) -> str:
-    base_parts = urlsplit(settings.DRAWIO_PUBLIC_URL)
+def _origin_from(url: str) -> str:
+    parts = urlsplit(url)
+    if parts.scheme and parts.netloc:
+        return f"{parts.scheme}://{parts.netloc}"
+    return url
+
+
+def _request_is_secure(request) -> bool:
+    if request is None:
+        return False
+    forwarded_proto = request.META.get("HTTP_X_FORWARDED_PROTO", "")
+    proto = forwarded_proto.split(",")[0].strip().lower() if forwarded_proto else ""
+    return getattr(request, "is_secure", lambda: False)() or proto == "https"
+
+
+def _proxy_public_url(request=None) -> str:
+    base_path = reverse("diagrams:drawio_proxy_root")
+    if not base_path.endswith("/"):
+        base_path = base_path + "/"
+    if request is None:
+        return base_path
+    return request.build_absolute_uri(base_path)
+
+
+def _resolve_public_drawio_url(request=None) -> str:
+    """
+    Pick a browser-facing draw.io URL without requiring env updates.
+
+    If the configured draw.io URL is HTTP but the incoming request is HTTPS,
+    serve the editor through a local reverse-proxy endpoint to avoid mixed
+    content. Otherwise, use the configured public URL as-is.
+    """
+    public_url = getattr(settings, "DRAWIO_PUBLIC_URL", "")
+    try:
+        parts = urlsplit(public_url)
+    except Exception:
+        parts = None
+    if parts and parts.scheme == "http" and _request_is_secure(request):
+        return _proxy_public_url(request)
+    return public_url
+
+
+def _build_embed_url(library_urls: list[str], public_url: str | None = None) -> str:
+    base_url = public_url or settings.DRAWIO_PUBLIC_URL
+    base_parts = urlsplit(base_url)
     base_path = base_parts.path or "/"
     base_query = base_parts.query
     libs = settings.DRAWIO_LIBS or DRAWIO_DEFAULT_LIBS
@@ -300,8 +343,9 @@ class DiagramEditView(ModuleContextMixin, LoginRequiredMixin, TemplateView):
         diagram = get_object_or_404(Diagram, pk=kwargs["pk"], owner=self.request.user)
         context["diagram"] = diagram
         library_urls = _collect_library_urls(self.request)
-        context["drawio_embed_url"] = _build_embed_url(library_urls)
-        context["drawio_origin"] = settings.DRAWIO_PUBLIC_ORIGIN
+        public_url = _resolve_public_drawio_url(self.request)
+        context["drawio_embed_url"] = _build_embed_url(library_urls, public_url)
+        context["drawio_origin"] = _origin_from(public_url)
         return context
 
 
@@ -340,16 +384,53 @@ def diagram_save_thumbnail(request, pk: int):
 
 
 @login_required
+@require_http_methods(["GET", "HEAD"])
+def drawio_proxy(request, path: str = ""):
+    """
+    Lightweight reverse proxy to expose the draw.io service over HTTPS.
+    """
+    upstream_base = settings.DRAWIO_BASE_URL.rstrip("/")
+    upstream = upstream_base if not path else f"{upstream_base}/{path.lstrip('/')}"
+    query = request.META.get("QUERY_STRING")
+    if query:
+        upstream = f"{upstream}?{query}"
+
+    method = "HEAD" if request.method == "HEAD" else "GET"
+    headers = {}
+    user_agent = request.headers.get("User-Agent")
+    if user_agent:
+        headers["User-Agent"] = user_agent
+
+    try:
+        req = Request(upstream, headers=headers, method=method)
+        with urlopen(req, timeout=20) as resp:
+            status = getattr(resp, "status", 200)
+            body = b"" if method == "HEAD" else resp.read()
+            content_type = resp.headers.get("Content-Type") or "application/octet-stream"
+            response = HttpResponse(body, status=status)
+            response["Content-Type"] = content_type
+            for header_name in ("Cache-Control", "ETag", "Last-Modified", "Expires"):
+                header_val = resp.headers.get(header_name)
+                if header_val:
+                    response[header_name] = header_val
+            return response
+    except Exception as exc:  # pragma: no cover - network/runtime failures
+        logger.warning("draw.io proxy failed for %s: %s", upstream, exc)
+        raise Http404("draw.io unavailable")
+
+
+@login_required
 def diagram_embed_context(request, pk: int):
     diagram = get_object_or_404(Diagram, pk=pk, owner=request.user)
     library_urls = _collect_library_urls(request)
-    embed_url = _build_embed_url(library_urls)
+    public_url = _resolve_public_drawio_url(request)
+    embed_url = _build_embed_url(library_urls, public_url)
     payload = {
         "ok": True,
         "diagram": {"id": diagram.pk, "title": diagram.title},
         "drawio": {
             "embed_url": embed_url,
-            "origin": settings.DRAWIO_PUBLIC_ORIGIN,
+            "origin": _origin_from(public_url),
             "xml": diagram.xml or "<mxGraphModel/>",
             "save_xml_url": reverse("diagrams:save_xml", args=[diagram.pk]),
             "save_thumbnail_url": reverse("diagrams:save_thumbnail", args=[diagram.pk]),

@@ -5,6 +5,8 @@ from . import views
 app_name = "diagrams"
 
 urlpatterns = [
+    path("drawio/proxy/", views.drawio_proxy, name="drawio_proxy_root"),
+    path("drawio/proxy/<path:path>", views.drawio_proxy, name="drawio_proxy"),
     path("", views.DiagramListView.as_view(), name="list"),
     path("new/", views.DiagramCreateView.as_view(), name="create"),
     path("<int:pk>/", views.DiagramDetailView.as_view(), name="detail"),
