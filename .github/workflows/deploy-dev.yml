@@ -28,13 +28,9 @@ jobs:
           set -euo pipefail
           DEST="/opt/cintafactory/test"
 
-          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "mkdir -p ${DEST}"
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "mkdir -p ${DEST} && find ${DEST} -mindepth 1 -maxdepth 1 -exec rm -rf {} +"
 
-          rsync -az --delete \
-            --exclude=".git/" \
-            --exclude=".github/" \
-            --exclude="deploy/env/*.env" \
-            ./ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:${DEST}/
+          tar --exclude=".git" --exclude=".github" -czf - . | ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "cd ${DEST} && tar -xzf -"
 
       - name: Deploy on VPS (docker compose up -d) as test_factory
         shell: bash
