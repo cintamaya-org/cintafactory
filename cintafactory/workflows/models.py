@@ -183,7 +183,7 @@ class NotificationType(models.Model):
 class NotificationMessage(models.Model):
     """Stores deduplicated notification message payloads."""
 
-    content = models.TextField(blank=True, null=True, default=None, unique=True)
+    content = models.TextField(blank=True, default="", unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -295,3 +295,29 @@ class UserNotification(models.Model):
         if self.notification_type_id is None:
             return dict(NotificationLevel.choices).get(NotificationLevel.INFO, NotificationLevel.INFO)
         return self.notification_type.get_level_display()
+
+
+class HistoryNotificationSeen(models.Model):
+    """Track which workflow history entries have been seen by a user."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="workflow_history_notifications_seen",
+    )
+    history = models.ForeignKey(
+        "dat.DATHistory",
+        on_delete=models.CASCADE,
+        related_name="workflow_seen_by",
+    )
+    seen_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "workflow_history_notification_seen"
+        ordering = ["-seen_at", "-pk"]
+        unique_together = ("user", "history")
+        verbose_name = _("Workflow history seen")
+        verbose_name_plural = _("Workflow history seen")
+
+    def __str__(self) -> str:  # pragma: no cover - human readable helper
+        return f"{self.history} → {self.user}"

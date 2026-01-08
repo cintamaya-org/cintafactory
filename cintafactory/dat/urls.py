@@ -50,6 +50,21 @@ urlpatterns = [
         name="section_status",
     ),
     path(
+        "my/<int:dat_pk>/sections/<slug:section_slug>/responsible-status/",
+        views.update_section_responsible_status,
+        name="section_responsible_status",
+    ),
+    path(
+        "my/<int:dat_pk>/sections/<slug:section_slug>/reserve/",
+        views.update_section_reserve,
+        name="section_reserve",
+    ),
+    path(
+        "my/<int:dat_pk>/sections/<slug:section_slug>/reserve/clear/",
+        views.clear_section_reserve,
+        name="section_reserve_clear",
+    ),
+    path(
         "my/<int:dat_pk>/schemas/create-diagram/",
         views.create_schema_diagram,
         name="schema_create_diagram",

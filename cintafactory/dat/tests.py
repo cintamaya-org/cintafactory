@@ -10,7 +10,7 @@ from django.urls import reverse
 from cintafactory.logging_utils import bind_request_context, clear_request_context
 
 from diagrams.models import Diagram
-from users.models import BusinessDirection, Role, TechnicalDirection
+from users.models import BusinessDirection, BusinessGroup, Role, TechnicalDirection
 
 from .constants import (
     DAT_PORTEUR_ROLE_SLUG,
@@ -20,7 +20,7 @@ from .constants import (
 from .exporters import DATExportModelBuilder
 from .forms import DATForm
 from .models import Application, DAT, DATParticipant, DATPart, DATPartEntryType, DATStatus, DATHistoryAction
-from .sections import sync_dat_sections_if_needed
+from .sections import SECTION_STATUS_VALIDATED_VALUE, sync_dat_sections_if_needed
 from .tasks import _run_pdf_generation
 from workflows.models import UserNotification
 
@@ -661,7 +661,6 @@ class DatHistoryTest(TestCase):
         entry = entries.first()
         self.assertIsNotNone(entry)
         self.assertEqual(entry.action, DATHistoryAction.CREATED)
-        self.assertEqual(entry.status_after, DATStatus.NOUVELLE_DEMANDE)
         self.assertEqual(entry.performed_by, self.user)
         self.assertEqual(entry.actor_name(), self.user.username)
 
@@ -674,8 +673,8 @@ class DatHistoryTest(TestCase):
         self.assertEqual(status_entries.count(), 1)
         entry = status_entries.first()
         self.assertIsNotNone(entry)
-        self.assertEqual(entry.status_before, DATStatus.NOUVELLE_DEMANDE)
-        self.assertEqual(entry.status_after, DATStatus.EN_ATTENTE_DE_REVUE)
+        self.assertEqual(entry.status_change_from, DATStatus.NOUVELLE_DEMANDE.label)
+        self.assertEqual(entry.status_change_to, DATStatus.EN_ATTENTE_DE_REVUE.label)
         self.assertEqual(entry.details.get("from"), DATStatus.NOUVELLE_DEMANDE.label)
         self.assertEqual(entry.details.get("to"), DATStatus.EN_ATTENTE_DE_REVUE.label)
         self.assertEqual(entry.performed_by, self.manager)
@@ -976,3 +975,145 @@ class DatPdfExportNotificationTest(TestCase):
         self.assertEqual(notification.dat, self.dat)
         self.assertEqual(notification.level, "success")
         self.assertIn("prêt", notification.message)
+
+
+class DatReserveNotificationTest(TestCase):
+    def setUp(self) -> None:
+        self.admin = get_user_model().objects.create_user(
+            username="reserve-admin",
+            password="pwd",
+            is_staff=True,
+        )
+        self.manager = get_user_model().objects.create_user(
+            username="reserve-manager",
+            password="pwd",
+        )
+        self.assignee = get_user_model().objects.create_user(
+            username="reserve-assignee",
+            password="pwd",
+        )
+        self.role_architecture = ensure_role("architecte-technique", "Architecte technique")
+        self.assignee.role = self.role_architecture
+        self.assignee.save(update_fields=["role"])
+        self.group = BusinessGroup.objects.create(
+            name="Groupe reserve",
+            direction=get_default_technical_direction(),
+            responsible=self.manager,
+        )
+        self.assignee.business_group = self.group
+        self.assignee.save(update_fields=["business_group"])
+        self.application = Application.objects.create(
+            code="app-reserve",
+            name="Application Reserve",
+            business_direction=get_default_business_direction(),
+        )
+        self.dat = DAT.objects.create(
+            reference="DAT-RESERVE",
+            title="DAT Reserve",
+            application=self.application,
+            status=DATStatus.EN_COURS,
+            owner=self.assignee,
+        )
+        sync_dat_sections_if_needed(self.dat)
+        DATParticipant.objects.create(dat=self.dat, role=self.role_architecture, user=self.assignee)
+        self.section_slug = "architecture"
+        self.reserve_url = reverse("dat:section_reserve", args=[self.dat.pk, self.section_slug])
+        self.status_url = reverse("dat:section_status", args=[self.dat.pk, self.section_slug])
+
+    def _set_reserve(self):
+        self.client.force_login(self.admin)
+        response = self.client.post(
+            self.reserve_url,
+            data={"reserve_message": "Corriger la section."},
+        )
+        self.assertEqual(response.status_code, 302)
+
+    def test_reserve_notifies_participant_and_manager(self):
+        self._set_reserve()
+        self.assertTrue(
+            UserNotification.objects.filter(
+                user=self.assignee,
+                notification_type__title="Réserve sur votre section",
+            ).exists()
+        )
+        self.assertTrue(
+            UserNotification.objects.filter(
+                user=self.manager,
+                notification_type__title="Réserve sur votre section",
+            ).exists()
+        )
+
+    def test_validation_notifies_reserve_author(self):
+        self._set_reserve()
+        self.client.force_login(self.assignee)
+        response = self.client.post(
+            self.status_url,
+            data={"status": SECTION_STATUS_VALIDATED_VALUE},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(
+            UserNotification.objects.filter(
+                user=self.admin,
+                notification_type__title="Réserve à lever",
+            ).exists()
+        )
+
+
+class SectionStatusGroupResponsibleTest(TestCase):
+    def setUp(self) -> None:
+        User = get_user_model()
+        self.manager = User.objects.create_user(username="group-manager", password="pwd")
+        self.technical_direction = get_default_technical_direction()
+        self.role_architecture = ensure_role("architecte-technique", "Architecte technique")
+        self.group = BusinessGroup.objects.create(
+            name="Groupe technique test",
+            direction=self.technical_direction,
+            responsible=self.manager,
+        )
+        self.member = User.objects.create_user(
+            username="archi-user",
+            password="pwd",
+            role=self.role_architecture,
+            business_group=self.group,
+        )
+        self.application = Application.objects.create(
+            code="app-group",
+            name="Application Groupe",
+            business_direction=get_default_business_direction(),
+        )
+        self.dat = DAT.objects.create(
+            reference="DAT-GROUP-001",
+            title="DAT group validation",
+            application=self.application,
+            status=DATStatus.EN_COURS,
+            owner=self.member,
+        )
+        DATParticipant.objects.create(dat=self.dat, role=self.role_architecture, user=self.member)
+        sync_dat_sections_if_needed(self.dat)
+
+    def test_group_responsible_can_view_dat_and_validate_architecture(self):
+        self.client.force_login(self.manager)
+        detail_url = reverse("dat:my_detail", args=[self.dat.pk]) + "?section=validation"
+        response = self.client.get(detail_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            reverse("dat:section_status", args=[self.dat.pk, "architecture"]),
+            response.content.decode(),
+        )
+        response = self.client.post(
+            reverse("dat:section_status", args=[self.dat.pk, "architecture"]),
+            {"status": "valide"},
+        )
+        self.assertEqual(response.status_code, 302)
+        from .views import build_section_status_map
+
+        status_map, _choices = build_section_status_map(DAT.objects.get(pk=self.dat.pk))
+        self.assertEqual(status_map["architecture"]["value"], "valide")
+
+    def test_group_responsible_cannot_validate_unassigned_section(self):
+        self.client.force_login(self.manager)
+        response = self.client.post(
+            reverse("dat:section_status", args=[self.dat.pk, "urbanisme"]),
+            {"status": "valide"},
+        )
+        self.assertEqual(response.status_code, 403)

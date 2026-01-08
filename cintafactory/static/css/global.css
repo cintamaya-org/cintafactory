@@ -55,6 +55,52 @@
     margin-left: 8px;
 }
 
+.topbar .nav-wrapper {
+    position: relative;
+}
+
+.topbar-search {
+    display: flex;
+    align-items: center;
+    margin-right: 0.75rem;
+    position: absolute;
+    left: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.topbar-search__form {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    height: 2.5rem;
+    padding: 0 0.9rem;
+    border-radius: 999px;
+    border: 1px solid rgba(15, 23, 42, 0.18);
+    background: rgba(255, 255, 255, 0.92);
+    line-height: 1;
+}
+
+.topbar-search__icon {
+    font-size: 1.2rem;
+    color: rgba(15, 23, 42, 0.65);
+}
+
+.topbar-search__form input[type="search"] {
+    width: 200px;
+    border: none;
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: transparent;
+    color: #0f172a;
+    outline: none;
+}
+
+.topbar-search__form input[type="search"]::placeholder {
+    color: rgba(15, 23, 42, 0.5);
+}
+
 .cinta-btn-primary {
     display: inline-flex;
     align-items: center;

@@ -130,24 +130,29 @@ def _initialise_validation_statuses(entry, section) -> None:
         existing_rows = entry.value or []
     except Exception:
         existing_rows = []
-    existing_map = {}
+    existing_by_slug = {}
+    existing_by_title = {}
     stale_rows = False
     for row in existing_rows:
         if not isinstance(row, dict):
             stale_rows = True
             continue
-        label = row.get("section")
-        if not label:
-            stale_rows = True
+        slug = row.get("section_slug")
+        if slug not in (None, ""):
+            existing_by_slug[str(slug)] = row
             continue
-        existing_map[str(label)] = row
+        label = row.get("section")
+        if label not in (None, ""):
+            existing_by_title[str(label)] = row
+            continue
+        stale_rows = True
     try:
         sections = dat.sections.exclude(slug="validation").order_by("order", "id").values("slug", "title")
     except Exception:
         sections = ()
     updated_rows: list[dict[str, object]] = []
     dirty = stale_rows
-    valid_titles = set()
+    valid_identifiers = set()
     for item in sections:
         slug = item.get("slug")
         title = item.get("title")
@@ -155,26 +160,54 @@ def _initialise_validation_statuses(entry, section) -> None:
             continue
         if not section_has_status(str(slug)):
             continue
-        valid_titles.add(str(title))
-        current_row = existing_map.get(str(title))
+        valid_identifiers.add(str(slug))
+        valid_identifiers.add(str(title))
+        current_row = existing_by_slug.get(str(slug)) or existing_by_title.get(str(title))
         statut = None
+        statut_responsable = None
+        reserve_message = ""
+        reserve_by_id = None
+        reserve_by_display = ""
         comment = ""
         if isinstance(current_row, dict):
             statut = current_row.get("statut")
+            statut_responsable = current_row.get("statut_responsable")
+            reserve_message = str(current_row.get("reserve_message") or "").strip()
+            reserve_by_id = current_row.get("reserve_by_id")
+            reserve_by_display = str(current_row.get("reserve_by_display") or "").strip()
             comment = current_row.get("commentaire") or ""
         if not statut:
             statut = SECTION_STATUS_DEFAULT
-        normalised = {"section": title, "statut": statut, "commentaire": comment}
+        if not statut_responsable:
+            statut_responsable = SECTION_STATUS_DEFAULT
+        if not reserve_message:
+            reserve_by_id = None
+            reserve_by_display = ""
+        normalised = {
+            "section": title,
+            "section_slug": slug,
+            "statut": statut,
+            "statut_responsable": statut_responsable,
+            "reserve_message": reserve_message,
+            "reserve_by_id": reserve_by_id,
+            "reserve_by_display": reserve_by_display,
+            "commentaire": comment,
+        }
         updated_rows.append(normalised)
         if (
             current_row is None
             or current_row.get("section") != normalised["section"]
+            or current_row.get("section_slug") != normalised["section_slug"]
             or current_row.get("statut") != normalised["statut"]
+            or current_row.get("statut_responsable") != normalised["statut_responsable"]
+            or str(current_row.get("reserve_message") or "").strip() != normalised["reserve_message"]
+            or current_row.get("reserve_by_id") != normalised["reserve_by_id"]
+            or str(current_row.get("reserve_by_display") or "").strip() != normalised["reserve_by_display"]
             or (current_row.get("commentaire") or "") != normalised["commentaire"]
         ):
             dirty = True
-    for label in existing_map.keys():
-        if label not in valid_titles:
+    for label in (*existing_by_slug.keys(), *existing_by_title.keys()):
+        if label not in valid_identifiers:
             dirty = True
             break
     if dirty:

@@ -6,8 +6,7 @@ from django.urls import reverse
 
 from dat.models import Application, DAT, DATParticipant, DATStatus, DATHistory, DATHistoryAction
 from users.models import BusinessDirection, Role, TechnicalDirection
-from .models import NotificationMessage, NotificationType, Workflow, UserNotification
-from .notifications import SESSION_SEEN_KEY
+from .models import HistoryNotificationSeen, NotificationMessage, NotificationType, Workflow, UserNotification
 from .sync import sync_workflow_definitions
 
 
@@ -200,8 +199,6 @@ class WorkflowNotificationsViewTests(TestCase):
         self.history = DATHistory.objects.create(
             dat=self.dat,
             action=DATHistoryAction.STATUS_CHANGED,
-            status_before=DATStatus.NOUVELLE_DEMANDE,
-            status_after=DATStatus.EN_ATTENTE_DE_REVUE,
             performed_by=self.user,
             performed_by_display="Notif User",
             details={"from": "Nouvelle demande", "to": "En Attente de revue"},
@@ -225,13 +222,85 @@ class WorkflowNotificationsViewTests(TestCase):
         response = self.client.get(reverse("workflows:notifications"))
         self.assertEqual(response.status_code, 200)
         notifications = response.context["notifications"]
-        self.assertEqual(len(notifications), 2)
+        expected_history_count = DATHistory.objects.filter(dat=self.dat).count()
+        self.assertEqual(len(notifications), expected_history_count + 1)
         self.assertContains(response, "Export PDF lancé")
         self.assertContains(response, "En Attente de revue")
 
-        session = self.client.session
-        seen_ids = session.get(SESSION_SEEN_KEY, [])
-        self.assertIn(self.history.id, seen_ids)
+        self.assertTrue(
+            HistoryNotificationSeen.objects.filter(user=self.user, history=self.history).exists()
+        )
+
+        self.user_notification.refresh_from_db()
+        self.assertIsNotNone(self.user_notification.viewed_at)
+
+    def test_notifications_are_scoped_to_connected_user(self):
+        other_user = get_user_model().objects.create_user(username="notif-other", password="pwd")
+        other_notification_type = NotificationType.objects.create(
+            title="Autre notification",
+            level=NotificationType.LEVEL_INFO,
+        )
+        other_notification_message = NotificationMessage.objects.create(
+            content="Notification pour un autre utilisateur.",
+        )
+        other_notification = UserNotification.objects.create(
+            user=other_user,
+            notification_type=other_notification_type,
+            notification_message=other_notification_message,
+            target_url="/dat/2/",
+        )
+
+        self.client.force_login(other_user)
+        response = self.client.get(reverse("workflows:notifications"))
+        self.assertEqual(response.status_code, 200)
+
+        titles = [entry["title"] for entry in response.context["notifications"]]
+        self.assertIn(other_notification.title, titles)
+        self.assertNotIn(self.user_notification.title, titles)
+
+        self.assertFalse(
+            HistoryNotificationSeen.objects.filter(user=other_user, history=self.history).exists()
+        )
+
+        self.user_notification.refresh_from_db()
+        self.assertIsNone(self.user_notification.viewed_at)
+
+    def test_notifications_do_not_reappear_as_unread_once_viewed(self):
+        first_response = self.client.get(reverse("workflows:notifications"))
+        self.assertEqual(first_response.status_code, 200)
+
+        self.user_notification.refresh_from_db()
+        self.assertIsNotNone(self.user_notification.viewed_at)
+
+        second_response = self.client.get(reverse("workflows:notifications"))
+        self.assertEqual(second_response.status_code, 200)
+
+        notifications = second_response.context["notifications"]
+        unread_flags = [entry.get("is_unread") for entry in notifications]
+        self.assertFalse(any(unread_flags))
+        self.assertEqual(second_response.context["notifications_unread_count"], 0)
+
+    def test_mark_all_as_seen_marks_history_and_user_notifications(self):
+        extra_history = DATHistory.objects.create(
+            dat=self.dat,
+            action=DATHistoryAction.UPDATED,
+            performed_by=self.user,
+            performed_by_display="Notif User",
+            details={"changes": {"title": {"from": "Old", "to": "New"}}},
+        )
+
+        response = self.client.post(
+            reverse("workflows:notifications"),
+            data={"mark_all": "1"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(
+            HistoryNotificationSeen.objects.filter(user=self.user, history=self.history).exists()
+        )
+        self.assertTrue(
+            HistoryNotificationSeen.objects.filter(user=self.user, history=extra_history).exists()
+        )
 
         self.user_notification.refresh_from_db()
         self.assertIsNotNone(self.user_notification.viewed_at)
@@ -252,4 +321,17 @@ def get_default_technical_direction():
 
 
 def create_role(slug: str, name: str) -> Role:
-    return Role.objects.create(name=name, slug=slug, technical_direction=get_default_technical_direction())
+    direction = get_default_technical_direction()
+    role, _ = Role.objects.get_or_create(
+        name=name,
+        defaults={"slug": slug, "technical_direction": direction},
+    )
+    updates = {}
+    if role.slug != slug:
+        updates["slug"] = slug
+    if role.technical_direction_id != direction.id:
+        updates["technical_direction"] = direction
+    if updates:
+        Role.objects.filter(pk=role.pk).update(**updates)
+        role.refresh_from_db()
+    return role

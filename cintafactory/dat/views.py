@@ -6,6 +6,7 @@ from urllib.parse import urlencode
 
 from django.apps import apps as django_apps
 from django.contrib import messages
+from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -43,6 +44,8 @@ from .models import (
     DAT,
     DATPart,
     DATPartEntry,
+    DATReserveHistory,
+    DATReserveHistoryAction,
     DATSection,
     DATSubSection,
     DATStatus,
@@ -50,7 +53,7 @@ from .models import (
     DATHistoryAction,
 )
 from .pdf import generate_dat_pdf
-from .permissions import filter_dat_queryset_for_user, user_is_dat_admin
+from .permissions import filter_dat_queryset_for_user, user_is_dat_admin, user_is_responsible_for_section
 from .sections import (
     SECTION_STATUS_BLOCKED_VALUE,
     SECTION_STATUS_DEFAULT,
@@ -69,6 +72,7 @@ from .utils import (
     open_dat_pdf_export,
     store_dat_pdf_export,
 )
+from workflows.notifications import create_user_notification
 
 
 logger = logging.getLogger(__name__)
@@ -80,9 +84,19 @@ OWNER_EDITABLE_STATUSES = {
     DATStatus.RESERVE,
 }
 FINAL_DAT_STATUSES = {DATStatus.VALIDER, DATStatus.REFUSE}
+VALIDATION_STATUS_LABELS = {
+    DATStatus.EN_ATTENTE_DE_REVUE.label,
+    DATStatus.RESERVE.label,
+    DATStatus.VALIDER.label,
+    DATStatus.REFUSE.label,
+}
 HISTORY_ENTRIES_PREFETCH = Prefetch(
     "history_entries",
     queryset=DATHistory.objects.select_related("performed_by").order_by("-performed_at", "-id"),
+)
+RESERVE_HISTORY_ENTRIES_PREFETCH = Prefetch(
+    "reserve_history_entries",
+    queryset=DATReserveHistory.objects.select_related("reserved_by").order_by("-reserved_at", "-id"),
 )
 
 
@@ -175,6 +189,17 @@ def _are_all_sections_validated(status_map: dict[str, dict] | None) -> bool:
     return True
 
 
+def _are_all_sections_responsible_validated(status_map: dict[str, dict] | None) -> bool:
+    if not status_map:
+        return False
+    for status_info in status_map.values():
+        if not status_info.get("has_status"):
+            continue
+        if status_info.get("responsable_value") != SECTION_STATUS_VALIDATED_VALUE:
+            return False
+    return True
+
+
 def refresh_dat_status(
     dat: DAT,
     *,
@@ -194,9 +219,12 @@ def refresh_dat_status(
         computed_status_map, status_choices = build_section_status_map(dat)
 
     all_validated = _are_all_sections_validated(computed_status_map)
+    all_responsable_validated = _are_all_sections_responsible_validated(computed_status_map)
     target_status = dat.status
 
-    if dat.status == DATStatus.RESERVE:
+    if all_responsable_validated:
+        target_status = DATStatus.VALIDER
+    elif dat.status == DATStatus.RESERVE:
         target_status = DATStatus.EN_ATTENTE_DE_REVUE if all_validated else DATStatus.RESERVE
     elif all_validated:
         target_status = DATStatus.EN_ATTENTE_DE_REVUE
@@ -282,6 +310,91 @@ def get_dat_history_entries(dat: DAT):
     return list(
         dat.history_entries.select_related("performed_by").order_by("-performed_at", "-id")
     )
+
+
+def get_dat_reserve_history_entries(dat: DAT):
+    """
+    Return ordered reserve history entries, using any prefetched cache if available to avoid extra queries.
+    """
+    cache = getattr(dat, "_prefetched_objects_cache", None)
+    if cache and "reserve_history_entries" in cache:
+        return list(cache["reserve_history_entries"])
+    return list(
+        dat.reserve_history_entries.select_related("reserved_by").order_by("-reserved_at", "-id")
+    )
+
+
+def get_dat_validation_history_entries(dat: DAT):
+    """
+    Return history entries related to validation decisions (DAT status + référent validations).
+    """
+    entries = []
+    for entry in get_dat_history_entries(dat):
+        if entry.action == DATHistoryAction.RESPONSIBLE_VALIDATION:
+            entries.append(entry)
+            continue
+        if entry.action == DATHistoryAction.STATUS_CHANGED:
+            details = entry.details or {}
+            if not isinstance(details, dict):
+                continue
+            status_from = details.get("from") or ""
+            status_to = details.get("to") or ""
+            if status_from in VALIDATION_STATUS_LABELS or status_to in VALIDATION_STATUS_LABELS:
+                entries.append(entry)
+    return entries
+
+
+def build_dat_reserve_validation_history(dat: DAT):
+    combined = []
+    for entry in get_dat_reserve_history_entries(dat):
+        combined.append(
+            {
+                "kind": "reserve",
+                "timestamp": entry.reserved_at,
+                "sequence": entry.id or 0,
+                "user_id": entry.reserved_by_id,
+                "entry": entry,
+            }
+        )
+    for entry in get_dat_validation_history_entries(dat):
+        combined.append(
+            {
+                "kind": "validation",
+                "timestamp": entry.performed_at,
+                "sequence": entry.id or 0,
+                "user_id": entry.performed_by_id,
+                "entry": entry,
+            }
+        )
+    combined.sort(
+        key=lambda item: (item["timestamp"] or timezone.now(), item["sequence"]),
+        reverse=True,
+    )
+    return combined
+
+
+def build_dat_history_user_choices(dat: DAT):
+    users_by_id = {}
+    owner = getattr(dat, "owner", None)
+    owner_id = getattr(owner, "pk", None)
+    if owner_id:
+        users_by_id[int(owner_id)] = format_user_display(owner)
+    try:
+        participants = dat.participants.all()
+    except Exception:
+        participants = []
+    for participant in participants:
+        user = getattr(participant, "user", None)
+        user_id = getattr(user, "pk", None)
+        if not user_id:
+            continue
+        users_by_id.setdefault(int(user_id), format_user_display(user))
+    choices = [
+        {"id": user_id, "label": label}
+        for user_id, label in users_by_id.items()
+    ]
+    choices.sort(key=lambda item: item["label"].lower())
+    return choices
 
 
 def build_dat_overview_context(dat: DAT, user):
@@ -384,7 +497,16 @@ def reset_section_statuses_to_default(
         existing = status_map.get(section.slug, {}) if status_map else {}
         comment = existing.get("commentaire", "") if isinstance(existing, dict) else ""
         updated_rows.append(
-            {"section": section.title, "statut": default_status, "commentaire": comment}
+            {
+                "section": section.title,
+                "section_slug": section.slug,
+                "statut": default_status,
+                "statut_responsable": default_status,
+                "reserve_message": "",
+                "reserve_by_id": None,
+                "reserve_by_display": "",
+                "commentaire": comment,
+            }
         )
     if updated_rows:
         status_part.update_value(updated_rows)
@@ -399,42 +521,80 @@ def build_section_status_map(dat: DAT, sections_list: list[DATSection] | None = 
         raw_rows = status_part.value if status_part else []
     except Exception:
         raw_rows = []
-    existing_map: dict[str, dict] = {}
+    if not isinstance(raw_rows, list):
+        raw_rows = []
+    existing_by_slug: dict[str, dict] = {}
+    existing_by_title: dict[str, dict] = {}
     stale_rows = False
     for row in raw_rows:
         if not isinstance(row, dict):
             stale_rows = True
             continue
-        label = row.get("section")
-        if not label:
-            stale_rows = True
+        slug = row.get("section_slug")
+        if slug not in (None, ""):
+            existing_by_slug[str(slug)] = row
             continue
-        existing_map[str(label)] = row
+        label = row.get("section")
+        if label not in (None, ""):
+            existing_by_title[str(label)] = row
+            continue
+        stale_rows = True
     status_map: dict[str, dict[str, object]] = {}
     updated_rows: list[dict[str, object]] = []
     dirty = stale_rows
-    allowed_titles: set[str] = set()
+    allowed_identifiers: set[str] = set()
     for section in sections:
         has_status = section_has_status(section.slug)
         if has_status:
-            allowed_titles.add(section.title)
-            current_row = existing_map.get(section.title)
+            allowed_identifiers.add(section.slug)
+            allowed_identifiers.add(section.title)
+            current_row = existing_by_slug.get(section.slug) or existing_by_title.get(section.title)
             statut = None
+            statut_responsable = None
+            reserve_message = ""
+            reserve_by_id = None
+            reserve_by_display = ""
             comment = ""
             if isinstance(current_row, dict):
                 statut = current_row.get("statut")
+                statut_responsable = current_row.get("statut_responsable")
+                reserve_message = str(current_row.get("reserve_message") or "").strip()
+                reserve_by_id = current_row.get("reserve_by_id")
+                reserve_by_display = str(current_row.get("reserve_by_display") or "").strip()
                 comment = current_row.get("commentaire") or ""
+            if not reserve_message:
+                reserve_by_id = None
+                reserve_by_display = ""
             if not statut:
                 statut = default_status
             elif statut not in choice_map:
                 statut = default_status
                 dirty = True
-            normalised_row = {"section": section.title, "statut": statut, "commentaire": comment}
+            if not statut_responsable:
+                statut_responsable = default_status
+            elif statut_responsable not in choice_map:
+                statut_responsable = default_status
+                dirty = True
+            normalised_row = {
+                "section": section.title,
+                "section_slug": section.slug,
+                "statut": statut,
+                "statut_responsable": statut_responsable,
+                "reserve_message": reserve_message,
+                "reserve_by_id": reserve_by_id,
+                "reserve_by_display": reserve_by_display,
+                "commentaire": comment,
+            }
             updated_rows.append(normalised_row)
             if (
                 current_row is None
                 or current_row.get("section") != normalised_row["section"]
+                or current_row.get("section_slug") != normalised_row["section_slug"]
                 or current_row.get("statut") != normalised_row["statut"]
+                or current_row.get("statut_responsable") != normalised_row["statut_responsable"]
+                or str(current_row.get("reserve_message") or "").strip() != normalised_row["reserve_message"]
+                or current_row.get("reserve_by_id") != normalised_row["reserve_by_id"]
+                or str(current_row.get("reserve_by_display") or "").strip() != normalised_row["reserve_by_display"]
                 or (current_row.get("commentaire") or "") != normalised_row["commentaire"]
             ):
                 dirty = True
@@ -442,6 +602,11 @@ def build_section_status_map(dat: DAT, sections_list: list[DATSection] | None = 
                 "has_status": True,
                 "value": statut,
                 "label": choice_map.get(statut, statut),
+                "responsable_value": statut_responsable,
+                "responsable_label": choice_map.get(statut_responsable, statut_responsable),
+                "reserve_message": reserve_message,
+                "reserve_by_id": reserve_by_id,
+                "reserve_by_display": reserve_by_display,
                 "commentaire": comment,
             }
         else:
@@ -449,10 +614,12 @@ def build_section_status_map(dat: DAT, sections_list: list[DATSection] | None = 
                 "has_status": False,
                 "value": None,
                 "label": None,
+                "responsable_value": None,
+                "responsable_label": None,
                 "commentaire": "",
             }
-    for label in existing_map.keys():
-        if label not in allowed_titles:
+    for label in (*existing_by_slug.keys(), *existing_by_title.keys()):
+        if label not in allowed_identifiers:
             dirty = True
             break
     if status_part and dirty:
@@ -464,11 +631,8 @@ def section_is_locked(status_info: dict | None, *, dat: DAT | None = None) -> bo
     if dat is not None:
         if dat.status in FINAL_DAT_STATUSES:
             return True
-        if dat.status == DATStatus.RESERVE:
-            return False
-    if not status_info or not status_info.get("has_status"):
         return False
-    return status_info.get("value") == SECTION_STATUS_VALIDATED_VALUE
+    return False
 
 
 def build_section_payload(
@@ -534,13 +698,6 @@ def build_section_payload(
         return False
 
     sync_dat_sections_if_needed(dat)
-    validation_rows = None
-    try:
-        validation_rows = list(
-            dat.sections.exclude(slug="validation").order_by("order", "id").values_list("title", flat=True)
-        )
-    except Exception:
-        validation_rows = []
     sections_payload = []
     entry_prefetch = Prefetch(
         "entries",
@@ -572,6 +729,12 @@ def build_section_payload(
         for sub_section in section.sub_sections.all():
             for entry in sub_section.parts.all():
                 entry_value_map[entry.key] = entry.value
+    try:
+        participants = list(dat.participants.select_related("user__business_group__responsible").all())
+    except Exception:
+        participants = []
+    dat._participants_cache = participants  # type: ignore[attr-defined]
+    validation_targets: list[DATSection] | None = None
     for section in sections_list:
         section_status = status_map.get(
             section.slug,
@@ -583,6 +746,79 @@ def build_section_payload(
             section_can_edit = False
         elif is_locked:
             section_can_edit = False
+        validation_allowed_sections: dict[str, bool] | None = None
+        validation_reserve_allowed_sections: dict[str, bool] | None = None
+        validation_reserve_clear_allowed_sections: dict[str, bool] | None = None
+        if section.slug == "validation":
+            if validation_targets is None:
+                try:
+                    validation_targets = list(
+                        dat.sections.exclude(slug="validation")
+                        .order_by("order", "id")
+                        .prefetch_related("allowed_roles")
+                    )
+                except Exception:
+                    validation_targets = []
+            validation_allowed_sections = {}
+            user_id = getattr(user, "id", None)
+            managed_role_ids: set[int] = set()
+            if user_is_dat_admin(user):
+                managed_role_ids = set()
+            else:
+                for participant in participants:
+                    assignee = getattr(participant, "user", None)
+                    group = getattr(assignee, "business_group", None) if assignee is not None else None
+                    if group is None:
+                        continue
+                    if getattr(group, "responsible_id", None) != user_id:
+                        continue
+                    role_id = getattr(participant, "role_id", None)
+                    if role_id is not None:
+                        managed_role_ids.add(int(role_id))
+            is_any_group_responsible = bool(user_is_dat_admin(user) or managed_role_ids)
+            for target in validation_targets:
+                if not section_has_status(target.slug):
+                    continue
+                if dat.status in FINAL_DAT_STATUSES:
+                    continue
+                if (status_map.get(target.slug) or {}).get("value") != SECTION_STATUS_VALIDATED_VALUE:
+                    continue
+                if user_is_dat_admin(user):
+                    validation_allowed_sections[target.slug] = True
+                    continue
+                allowed_role_ids = getattr(target, "_allowed_role_ids_cache", None)
+                if allowed_role_ids is None:
+                    try:
+                        allowed_role_ids = set(target.allowed_roles.values_list("pk", flat=True))
+                    except Exception:
+                        allowed_role_ids = set()
+                    target._allowed_role_ids_cache = allowed_role_ids
+                if allowed_role_ids and managed_role_ids.intersection({int(pk) for pk in allowed_role_ids}):
+                    validation_allowed_sections[target.slug] = True
+            if not validation_allowed_sections:
+                validation_allowed_sections = None
+
+            if is_any_group_responsible and validation_targets:
+                validation_reserve_allowed_sections = {}
+                validation_reserve_clear_allowed_sections = {}
+                for target in validation_targets:
+                    if not section_has_status(target.slug):
+                        continue
+                    if dat.status in FINAL_DAT_STATUSES:
+                        continue
+                    if not user_is_dat_admin(user) and user_is_responsible_for_section(dat, target, user, participants=participants):
+                        continue
+                    info = status_map.get(target.slug) or {}
+                    reserve_message = str(info.get("reserve_message") or "").strip()
+                    reserve_by_id = info.get("reserve_by_id")
+                    if reserve_message and reserve_by_id == user_id:
+                        validation_reserve_clear_allowed_sections[target.slug] = True
+                    elif not reserve_message:
+                        validation_reserve_allowed_sections[target.slug] = True
+                if not validation_reserve_allowed_sections:
+                    validation_reserve_allowed_sections = None
+                if not validation_reserve_clear_allowed_sections:
+                    validation_reserve_clear_allowed_sections = None
         parts_payload = []
         for sub_section in section.sub_sections.all():
             if sub_section_slug and sub_section.slug != sub_section_slug:
@@ -591,8 +827,41 @@ def build_section_payload(
             if section.slug == "validation":
                 for entry in entries:
                     if entry.key == "suivi_sections":
-                        rows = [{"section": title, "statut": "en_cours", "commentaire": ""} for title in validation_rows]
-                        entry.update_value(rows)
+                        rows: list[dict[str, object]] = []
+                        existing_row_map: dict[str, dict] = {}
+                        try:
+                            existing_rows = entry.value or []
+                        except Exception:
+                            existing_rows = []
+                        if isinstance(existing_rows, list):
+                            for existing in existing_rows:
+                                if not isinstance(existing, dict):
+                                    continue
+                                slug = existing.get("section_slug")
+                                if slug not in (None, ""):
+                                    existing_row_map[str(slug)] = existing
+                        if validation_targets is None:
+                            validation_targets = []
+                        for target in validation_targets:
+                            if not section_has_status(target.slug):
+                                continue
+                            existing_row = existing_row_map.get(target.slug, {})
+                            info = status_map.get(target.slug) or {}
+                            rows.append(
+                                {
+                                    "section": target.title,
+                                    "section_slug": target.slug,
+                                    "statut": info.get("value") or default_status_value,
+                                    "statut_responsable": existing_row.get("statut_responsable")
+                                    or default_status_value,
+                                    "reserve_message": str(existing_row.get("reserve_message") or "").strip(),
+                                    "reserve_by_id": existing_row.get("reserve_by_id"),
+                                    "reserve_by_display": str(existing_row.get("reserve_by_display") or "").strip(),
+                                    "commentaire": info.get("commentaire") or "",
+                                }
+                            )
+                        if existing_rows != rows:
+                            entry.update_value(rows)
             parts_payload.append(
                 {
                     "section_part": sub_section,
@@ -618,6 +887,9 @@ def build_section_payload(
                     and section.can_user_edit(user)
                     and dat.status not in FINAL_DAT_STATUSES
                 ),
+                "validation_allowed_sections": validation_allowed_sections,
+                "validation_reserve_allowed_sections": validation_reserve_allowed_sections,
+                "validation_reserve_clear_allowed_sections": validation_reserve_clear_allowed_sections,
                 "status_choices": status_choices,
                 "status_values": {
                     "default": default_status_value,
@@ -667,12 +939,13 @@ def update_section_status(request, dat_pk: int, section_slug: str):
     current_info = status_map.get(section.slug, {})
     new_status = request.POST.get("status")
     valid_statuses = set(status_choices.keys())
+    submitted_comment = (request.POST.get("commentaire") or "").strip()
     redirect_url = f"{reverse('dat:my_detail', args=[dat.pk])}?section={section.slug}#section-{section.slug}"
     if not new_status or new_status not in valid_statuses:
         messages.error(request, "Statut invalide pour cette section.")
         return redirect(redirect_url)
-    if section_is_locked(current_info, dat=dat) and new_status != current_info.get("value"):
-        messages.error(request, "Cette section est validée et ne peut plus changer de statut.")
+    if new_status == SECTION_STATUS_BLOCKED_VALUE and not submitted_comment:
+        messages.error(request, "Un commentaire est obligatoire pour bloquer une section.")
         return redirect(redirect_url)
     if new_status == current_info.get("value"):
         messages.info(request, "Le statut de la section est déjà à jour.")
@@ -682,8 +955,37 @@ def update_section_status(request, dat_pk: int, section_slug: str):
         messages.error(request, "Impossible de mettre à jour le statut de cette section.")
         return redirect(redirect_url)
     default_status = _default_status_value(status_choices)
+    try:
+        raw_rows = status_part.value or []
+    except Exception:
+        raw_rows = []
+    existing_row_map: dict[str, dict] = {}
+    if isinstance(raw_rows, list):
+        for row in raw_rows:
+            if not isinstance(row, dict):
+                continue
+            slug = row.get("section_slug")
+            if slug not in (None, ""):
+                existing_row_map[str(slug)] = row
     sections = list(dat.sections.order_by("order", "id"))
     updated_rows = []
+    validated_value = SECTION_STATUS_VALIDATED_VALUE
+    confirm_reset = request.POST.get("confirm_responsable_reset") == "1"
+    current_row_for_section = existing_row_map.get(section.slug, {})
+    current_responsable_value = current_row_for_section.get("statut_responsable") or default_status
+    reserve_message = str(current_row_for_section.get("reserve_message") or "").strip()
+    reserve_by_id = current_row_for_section.get("reserve_by_id")
+    if (
+        current_info.get("value") == validated_value
+        and new_status != validated_value
+        and current_responsable_value == validated_value
+        and not confirm_reset
+    ):
+        messages.error(
+            request,
+            "Cette section a une validation responsable. Confirmez la dévalidation pour la réinitialiser.",
+        )
+        return redirect(redirect_url)
     for item in sections:
         if not section_has_status(item.slug):
             continue
@@ -692,14 +994,400 @@ def update_section_status(request, dat_pk: int, section_slug: str):
         status_value = existing.get("value") or default_status
         if item.slug == section.slug:
             status_value = new_status
+            if new_status == SECTION_STATUS_BLOCKED_VALUE:
+                comment = submitted_comment
+            else:
+                comment = ""
+        existing_row = existing_row_map.get(item.slug, {})
+        responsable_value = existing_row.get("statut_responsable") or default_status
+        if item.slug == section.slug and current_responsable_value == validated_value and new_status != validated_value:
+            responsable_value = default_status
+        reserve_message = str(existing_row.get("reserve_message") or "").strip()
+        reserve_by_id = existing_row.get("reserve_by_id")
+        reserve_by_display = str(existing_row.get("reserve_by_display") or "").strip()
+        if not reserve_message:
+            reserve_by_id = None
+            reserve_by_display = ""
         updated_rows.append(
-            {"section": item.title, "statut": status_value, "commentaire": comment or ""}
+            {
+                "section": item.title,
+                "section_slug": item.slug,
+                "statut": status_value,
+                "statut_responsable": responsable_value,
+                "reserve_message": reserve_message,
+                "reserve_by_id": reserve_by_id,
+                "reserve_by_display": reserve_by_display,
+                "commentaire": comment or "",
+            }
         )
     status_part.update_value(updated_rows)
     target_label = status_choices.get(new_status, new_status)
     refresh_dat_status(dat, actor=request.user, force_in_progress=True)
+    if new_status == validated_value and reserve_message and reserve_by_id:
+        if reserve_by_id != getattr(request.user, "id", None):
+            reserve_user = get_user_model().objects.filter(pk=reserve_by_id).first()
+            if reserve_user:
+                validator_display = format_user_display(request.user)
+                target_url = f"{reverse('dat:my_detail', args=[dat.pk])}?section={section.slug}#section-{section.slug}"
+                create_user_notification(
+                    reserve_user,
+                    title="Réserve à lever",
+                    message=(
+                        f"{validator_display} a validé la section « {section.title} ».\n\n"
+                        f"Message de réserve : {reserve_message}\n\n"
+                        "Vous pouvez lever la réserve si tout est conforme."
+                    ),
+                    level="info",
+                    dat=dat,
+                    target_url=target_url,
+                    created_by=request.user,
+                    created_by_display=validator_display,
+                    extra_data={
+                        "section_slug": section.slug,
+                        "section_title": section.title,
+                        "reserve_message": reserve_message,
+                    },
+                )
     messages.success(request, f"Statut mis à jour : {target_label}.")
     return redirect(redirect_url)
+
+
+@login_required
+@require_POST
+def update_section_responsible_status(request, dat_pk: int, section_slug: str):
+    base_queryset = filter_dat_queryset_for_user(DAT.objects.all(), request.user)
+    dat = get_object_or_404(base_queryset, pk=dat_pk)
+    if dat.status in FINAL_DAT_STATUSES:
+        raise PermissionDenied
+    section = get_object_or_404(DATSection, dat=dat, slug=section_slug)
+    sync_dat_sections_if_needed(dat)
+    if not section_has_status(section.slug):
+        raise Http404("Section sans statut.")
+    try:
+        participants = list(dat.participants.select_related("user__business_group__responsible").all())
+    except Exception:
+        participants = []
+    dat._participants_cache = participants  # type: ignore[attr-defined]
+    if not (user_is_dat_admin(request.user) or user_is_responsible_for_section(dat, section, request.user, participants=participants)):
+        raise PermissionDenied
+
+    status_map, status_choices = build_section_status_map(dat)
+    section_info = status_map.get(section.slug) or {}
+    if section_info.get("value") != SECTION_STATUS_VALIDATED_VALUE:
+        messages.error(request, "La section doit être validée avant validation responsable.")
+        return redirect(f"{reverse('dat:my_detail', args=[dat.pk])}?section={section.slug}#section-{section.slug}")
+    new_status = request.POST.get("status")
+    valid_statuses = set(status_choices.keys())
+    redirect_url = f"{reverse('dat:my_detail', args=[dat.pk])}?section=validation#section-validation"
+    if not new_status or new_status not in valid_statuses:
+        messages.error(request, "Statut invalide pour cette section.")
+        return redirect(redirect_url)
+
+    status_part = _find_section_status_part(dat)
+    if status_part is None:
+        messages.error(request, "Impossible de mettre à jour le statut de cette section.")
+        return redirect(redirect_url)
+    default_status = _default_status_value(status_choices)
+    try:
+        raw_rows = status_part.value or []
+    except Exception:
+        raw_rows = []
+    existing_row_map: dict[str, dict] = {}
+    if isinstance(raw_rows, list):
+        for row in raw_rows:
+            if not isinstance(row, dict):
+                continue
+            slug = row.get("section_slug")
+            if slug not in (None, ""):
+                existing_row_map[str(slug)] = row
+            label = row.get("section")
+            if label not in (None, "") and str(label) not in existing_row_map:
+                existing_row_map[str(label)] = row
+    current_row = existing_row_map.get(section.slug) or existing_row_map.get(section.title) or {}
+    current_value = current_row.get("statut_responsable") or default_status
+    if current_value == SECTION_STATUS_VALIDATED_VALUE and new_status != current_value:
+        messages.error(request, "Cette validation est déjà faite et ne peut plus changer de statut.")
+        return redirect(redirect_url)
+    if new_status == current_value:
+        messages.info(request, "Le statut de validation est déjà à jour.")
+        return redirect(redirect_url)
+
+    sections = list(dat.sections.order_by("order", "id"))
+    updated_rows: list[dict[str, object]] = []
+    for item in sections:
+        if not section_has_status(item.slug):
+            continue
+        existing = existing_row_map.get(item.slug) or existing_row_map.get(item.title) or {}
+        assignee_value = existing.get("statut") or (status_map.get(item.slug) or {}).get("value") or default_status
+        comment = existing.get("commentaire") or (status_map.get(item.slug) or {}).get("commentaire") or ""
+        manager_value = existing.get("statut_responsable") or default_status
+        if item.slug == section.slug:
+            manager_value = new_status
+        reserve_message = str(existing.get("reserve_message") or "").strip()
+        reserve_by_id = existing.get("reserve_by_id")
+        reserve_by_display = str(existing.get("reserve_by_display") or "").strip()
+        if not reserve_message:
+            reserve_by_id = None
+            reserve_by_display = ""
+        updated_rows.append(
+            {
+                "section": item.title,
+                "section_slug": item.slug,
+                "statut": assignee_value,
+                "statut_responsable": manager_value,
+                "reserve_message": reserve_message,
+                "reserve_by_id": reserve_by_id,
+                "reserve_by_display": reserve_by_display,
+                "commentaire": comment,
+            }
+        )
+    status_part.update_value(updated_rows)
+    actor = request.user if getattr(request.user, "is_authenticated", False) else None
+    DATHistory.objects.create(
+        dat=dat,
+        action=DATHistoryAction.RESPONSIBLE_VALIDATION,
+        performed_by=actor,
+        performed_by_display=format_user_display(actor),
+        details={
+            "section": {"slug": section.slug, "title": section.title},
+            "from": status_choices.get(current_value, current_value),
+            "to": status_choices.get(new_status, new_status),
+        },
+    )
+    refresh_dat_status(dat, actor=request.user)
+    target_label = status_choices.get(new_status, new_status)
+    messages.success(request, f"Validation responsable mise à jour : {target_label}.")
+    return redirect(redirect_url)
+
+
+@login_required
+@require_POST
+def update_section_reserve(request, dat_pk: int, section_slug: str):
+    base_queryset = filter_dat_queryset_for_user(DAT.objects.all(), request.user)
+    dat = get_object_or_404(base_queryset, pk=dat_pk)
+    if dat.status in FINAL_DAT_STATUSES:
+        raise PermissionDenied
+    section = get_object_or_404(DATSection, dat=dat, slug=section_slug)
+    sync_dat_sections_if_needed(dat)
+    if section.slug == "validation" or not section_has_status(section.slug):
+        raise Http404("Section sans statut.")
+    reserve_message = (request.POST.get("reserve_message") or "").strip()
+    if not reserve_message:
+        messages.error(request, "Un message est obligatoire pour mettre une réserve.")
+        return redirect(f"{reverse('dat:my_detail', args=[dat.pk])}?section=validation#section-validation")
+
+    try:
+        participants = list(dat.participants.select_related("role", "user__business_group__responsible").all())
+    except Exception:
+        participants = []
+    user_id = getattr(request.user, "id", None)
+    is_any_group_responsible = user_is_dat_admin(request.user) or any(
+        getattr(getattr(getattr(p, "user", None), "business_group", None), "responsible_id", None) == user_id
+        for p in participants
+    )
+    if not is_any_group_responsible:
+        raise PermissionDenied
+    if not user_is_dat_admin(request.user) and user_is_responsible_for_section(dat, section, request.user, participants=participants):
+        raise PermissionDenied
+
+    status_map, status_choices = build_section_status_map(dat)
+    status_part = _find_section_status_part(dat)
+    if status_part is None:
+        messages.error(request, "Impossible de mettre une réserve sur cette section.")
+        return redirect(f"{reverse('dat:my_detail', args=[dat.pk])}?section=validation#section-validation")
+    default_status = _default_status_value(status_choices)
+    try:
+        raw_rows = status_part.value or []
+    except Exception:
+        raw_rows = []
+    existing_row_map: dict[str, dict] = {}
+    if isinstance(raw_rows, list):
+        for row in raw_rows:
+            if not isinstance(row, dict):
+                continue
+            slug = row.get("section_slug")
+            if slug not in (None, ""):
+                existing_row_map[str(slug)] = row
+            label = row.get("section")
+            if label not in (None, "") and str(label) not in existing_row_map:
+                existing_row_map[str(label)] = row
+    current_row = existing_row_map.get(section.slug) or existing_row_map.get(section.title) or {}
+    existing_reserve_message = str(current_row.get("reserve_message") or "").strip()
+    existing_reserve_by_id = current_row.get("reserve_by_id")
+    if existing_reserve_message and existing_reserve_by_id != user_id:
+        raise PermissionDenied
+
+    reserve_by_display = format_user_display(request.user)
+    sections = list(dat.sections.order_by("order", "id"))
+    updated_rows: list[dict[str, object]] = []
+    for item in sections:
+        if not section_has_status(item.slug):
+            continue
+        existing = existing_row_map.get(item.slug) or existing_row_map.get(item.title) or {}
+        info = status_map.get(item.slug) or {}
+        assignee_value = existing.get("statut") or info.get("value") or default_status
+        responsable_value = existing.get("statut_responsable") or info.get("responsable_value") or default_status
+        comment = existing.get("commentaire") or info.get("commentaire") or ""
+        reserve_msg = str(existing.get("reserve_message") or "").strip()
+        reserve_by_id = existing.get("reserve_by_id")
+        reserve_by_display_existing = str(existing.get("reserve_by_display") or "").strip()
+        if item.slug == section.slug:
+            assignee_value = default_status
+            responsable_value = default_status
+            reserve_msg = reserve_message
+            reserve_by_id = user_id
+            reserve_by_display_existing = reserve_by_display
+        if not reserve_msg:
+            reserve_by_id = None
+            reserve_by_display_existing = ""
+        updated_rows.append(
+            {
+                "section": item.title,
+                "section_slug": item.slug,
+                "statut": assignee_value,
+                "statut_responsable": responsable_value,
+                "reserve_message": reserve_msg,
+                "reserve_by_id": reserve_by_id,
+                "reserve_by_display": reserve_by_display_existing,
+                "commentaire": comment,
+            }
+        )
+    status_part.update_value(updated_rows)
+    refresh_dat_status(dat, actor=request.user, force_in_progress=True)
+    DATReserveHistory.objects.create(
+        dat=dat,
+        section_slug=section.slug,
+        section_title=section.title,
+        action=DATReserveHistoryAction.SET,
+        reserve_message=reserve_message,
+        reserved_by=request.user if getattr(request.user, "is_authenticated", False) else None,
+        reserved_by_display=reserve_by_display,
+    )
+
+    try:
+        allowed_role_ids = set(section.allowed_roles.values_list("pk", flat=True))
+    except Exception:
+        allowed_role_ids = set()
+    recipients = []
+    seen_user_ids: set[int] = set()
+    for participant in participants:
+        if getattr(participant, "role_id", None) not in allowed_role_ids:
+            continue
+        recipient = getattr(participant, "user", None)
+        recipient_id = getattr(recipient, "id", None)
+        if recipient_id and recipient_id not in seen_user_ids:
+            seen_user_ids.add(int(recipient_id))
+            recipients.append(recipient)
+        group = getattr(recipient, "business_group", None) if recipient is not None else None
+        responsible = getattr(group, "responsible", None) if group is not None else None
+        responsible_id = getattr(responsible, "id", None)
+        if responsible_id and responsible_id not in seen_user_ids:
+            seen_user_ids.add(int(responsible_id))
+            recipients.append(responsible)
+    target_url = f"{reverse('dat:my_detail', args=[dat.pk])}?section={section.slug}#section-{section.slug}"
+    for recipient in recipients:
+        if getattr(recipient, "id", None) == getattr(request.user, "id", None):
+            continue
+        create_user_notification(
+            recipient,
+            title="Réserve sur votre section",
+            message=(
+                f"{reserve_by_display} a mis une réserve sur la section « {section.title} ».\n\n"
+                f"Message : {reserve_message}\n\n"
+                "Votre section attend des modifications."
+            ),
+            level="warning",
+            dat=dat,
+            target_url=target_url,
+            created_by=request.user,
+            created_by_display=reserve_by_display,
+            extra_data={"section_slug": section.slug, "section_title": section.title, "reserve_message": reserve_message},
+        )
+    messages.success(request, "Réserve enregistrée et notification envoyée.")
+    return redirect(f"{reverse('dat:my_detail', args=[dat.pk])}?section=validation#section-validation")
+
+
+@login_required
+@require_POST
+def clear_section_reserve(request, dat_pk: int, section_slug: str):
+    base_queryset = filter_dat_queryset_for_user(DAT.objects.all(), request.user)
+    dat = get_object_or_404(base_queryset, pk=dat_pk)
+    section = get_object_or_404(DATSection, dat=dat, slug=section_slug)
+    sync_dat_sections_if_needed(dat)
+    if section.slug == "validation" or not section_has_status(section.slug):
+        raise Http404("Section sans statut.")
+
+    status_part = _find_section_status_part(dat)
+    if status_part is None:
+        messages.error(request, "Impossible de lever la réserve sur cette section.")
+        return redirect(f"{reverse('dat:my_detail', args=[dat.pk])}?section=validation#section-validation")
+    status_map, status_choices = build_section_status_map(dat)
+    default_status = _default_status_value(status_choices)
+    try:
+        raw_rows = status_part.value or []
+    except Exception:
+        raw_rows = []
+    existing_row_map: dict[str, dict] = {}
+    if isinstance(raw_rows, list):
+        for row in raw_rows:
+            if not isinstance(row, dict):
+                continue
+            slug = row.get("section_slug")
+            if slug not in (None, ""):
+                existing_row_map[str(slug)] = row
+            label = row.get("section")
+            if label not in (None, "") and str(label) not in existing_row_map:
+                existing_row_map[str(label)] = row
+    current_row = existing_row_map.get(section.slug) or existing_row_map.get(section.title) or {}
+    reserve_by_id = current_row.get("reserve_by_id")
+    current_reserve_message = str(current_row.get("reserve_message") or "").strip()
+    if reserve_by_id != getattr(request.user, "id", None):
+        raise PermissionDenied
+
+    sections = list(dat.sections.order_by("order", "id"))
+    updated_rows: list[dict[str, object]] = []
+    for item in sections:
+        if not section_has_status(item.slug):
+            continue
+        existing = existing_row_map.get(item.slug) or existing_row_map.get(item.title) or {}
+        info = status_map.get(item.slug) or {}
+        assignee_value = existing.get("statut") or info.get("value") or default_status
+        responsable_value = existing.get("statut_responsable") or info.get("responsable_value") or default_status
+        comment = existing.get("commentaire") or info.get("commentaire") or ""
+        reserve_msg = str(existing.get("reserve_message") or "").strip()
+        reserve_by_id_existing = existing.get("reserve_by_id")
+        reserve_by_display_existing = str(existing.get("reserve_by_display") or "").strip()
+        if item.slug == section.slug:
+            reserve_msg = ""
+            reserve_by_id_existing = None
+            reserve_by_display_existing = ""
+        if not reserve_msg:
+            reserve_by_id_existing = None
+            reserve_by_display_existing = ""
+        updated_rows.append(
+            {
+                "section": item.title,
+                "section_slug": item.slug,
+                "statut": assignee_value,
+                "statut_responsable": responsable_value,
+                "reserve_message": reserve_msg,
+                "reserve_by_id": reserve_by_id_existing,
+                "reserve_by_display": reserve_by_display_existing,
+                "commentaire": comment,
+            }
+        )
+    status_part.update_value(updated_rows)
+    DATReserveHistory.objects.create(
+        dat=dat,
+        section_slug=section.slug,
+        section_title=section.title,
+        action=DATReserveHistoryAction.CLEARED,
+        reserve_message=current_reserve_message,
+        reserved_by=request.user if getattr(request.user, "is_authenticated", False) else None,
+        reserved_by_display=format_user_display(request.user),
+    )
+    messages.success(request, "Réserve levée.")
+    return redirect(f"{reverse('dat:my_detail', args=[dat.pk])}?section=validation#section-validation")
 
 
 @login_required
@@ -845,6 +1533,7 @@ class DATDetailView(ModuleContextMixin, DetailModelView):
             )
             .prefetch_related(
                 HISTORY_ENTRIES_PREFETCH,
+                RESERVE_HISTORY_ENTRIES_PREFETCH,
                 "participants__role",
                 "participants__user",
             )
@@ -855,6 +1544,9 @@ class DATDetailView(ModuleContextMixin, DetailModelView):
         context = super().get_context_data(**kwargs)
         context["history_entries"] = get_dat_history_entries(self.object)
         context["history_actions"] = DATHistoryAction
+        context["reserve_history_entries"] = get_dat_reserve_history_entries(self.object)
+        context["reserve_validation_history_entries"] = build_dat_reserve_validation_history(self.object)
+        context["dat_history_user_choices"] = build_dat_history_user_choices(self.object)
         context["participant_overview"] = build_participant_overview(self.object)
         context["current_responsibles"] = get_current_responsibles(self.object)
         context["sections_payload"] = build_section_payload(self.object, self.request.user)
@@ -994,6 +1686,7 @@ class DatDetail(ModuleContextMixin, LoginRequiredMixin, DetailView):
             DAT.objects.select_related("application", "owner")
             .prefetch_related(
                 HISTORY_ENTRIES_PREFETCH,
+                RESERVE_HISTORY_ENTRIES_PREFETCH,
                 "participants__role",
                 "participants__user",
             )
@@ -1004,6 +1697,9 @@ class DatDetail(ModuleContextMixin, LoginRequiredMixin, DetailView):
         context = super().get_context_data(**kwargs)
         context["history_entries"] = get_dat_history_entries(self.object)
         context["history_actions"] = DATHistoryAction
+        context["reserve_history_entries"] = get_dat_reserve_history_entries(self.object)
+        context["reserve_validation_history_entries"] = build_dat_reserve_validation_history(self.object)
+        context["dat_history_user_choices"] = build_dat_history_user_choices(self.object)
         context["owner_editable_statuses"] = {status.value for status in OWNER_EDITABLE_STATUSES}
         context["owner_can_edit"] = user_is_dat_admin(self.request.user)
         context["can_create_dat"] = user_can_create_dat_entities(self.request.user)
@@ -1036,11 +1732,22 @@ class DatDetail(ModuleContextMixin, LoginRequiredMixin, DetailView):
             if "informations-generales" in valid_slugs
             else (section_nav[0]["slug"] if section_nav else None)
         )
-        selected_slug = self.request.GET.get("section") or default_slug
-        if selected_slug == "overview" and "informations-generales" in valid_slugs:
-            selected_slug = "informations-generales"
+        requested_slug = self.request.GET.get("section")
+        selected_slug = requested_slug or default_slug
+        invalid_section = False
+        if requested_slug:
+            if requested_slug == "overview" and "informations-generales" in valid_slugs:
+                selected_slug = "informations-generales"
+            elif requested_slug not in valid_slugs:
+                selected_slug = default_slug
+                invalid_section = True
         if selected_slug not in valid_slugs:
             selected_slug = default_slug
+        if invalid_section:
+            messages.warning(
+                self.request,
+                "La section demandée est introuvable.",
+            )
         context["section_nav"] = section_nav
         context["selected_section_slug"] = selected_slug
         context["selected_sections"] = (
@@ -1221,8 +1928,6 @@ class DatSubSectionUpdateView(ModuleContextMixin, LoginRequiredMixin, FormView):
             DATHistory.objects.create(
                 dat=dat,
                 action=DATHistoryAction.SECTION_UPDATED,
-                status_before=dat.status,
-                status_after=dat.status,
                 performed_by=actor,
                 performed_by_display=actor_display,
                 details={

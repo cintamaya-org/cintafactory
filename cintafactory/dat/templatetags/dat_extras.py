@@ -86,6 +86,19 @@ def dat_columns(config):
     return []
 
 
+@register.filter
+def dat_has_drawio_columns(config) -> bool:
+    """
+    Returns True when a repeater config contains at least one Draw.io column.
+    """
+    for column in dat_columns(config):
+        if not isinstance(column, dict):
+            continue
+        if column.get("drawio") or column.get("render") == "drawio_diagram":
+            return True
+    return False
+
+
 def _normalise_icon_config(icon_config):
     if not icon_config:
         return None
