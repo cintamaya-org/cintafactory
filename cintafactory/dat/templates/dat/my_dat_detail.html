@@ -143,6 +143,18 @@ body.dat-modal-open {
   padding: 1.25rem;
   background: #f5faff;
 }
+.dat-sub-section.dat-sub-section-blocked {
+  border: 1px dashed #ef9a9a;
+  border-radius: 12px;
+  padding: 1.25rem;
+  background: #ffebee;
+}
+.dat-sub-section.dat-sub-section-reserve {
+  border: 1px dashed #bdbdbd;
+  border-radius: 12px;
+  padding: 1.25rem;
+  background: #f5f5f5;
+}
 .dat-sub-section-updated {
   animation: datSubSectionPulse 1.4s ease-out;
 }
@@ -160,6 +172,14 @@ body.dat-modal-open {
 .dat-section-status-icon {
   font-size: 1.15rem;
   line-height: 1;
+}
+
+.material-symbols-outlined {
+  font-size: 1.05rem;
+}
+.dat-section-age-value {
+  font-weight: 600;
+  color: #0d47a1;
 }
 </style>
 
@@ -194,7 +214,17 @@ body.dat-modal-open {
               </a>
             {% endwith %}
           {% endfor %}
+          <span class="dat-section-status-pill chip dat-section-link">
+        <div
+          data-dat-created-at="{{ dat.created_at|date:'c' }}"
+          title="Créé le {{ dat.created_at|date:'d/m/Y' }} à {{ dat.created_at|time:'H\\hi' }}"
+        >
+          <span>Créé il y a</span>
+          <span class="dat-section-age-value" data-dat-created-value>—</span>
         </div>
+          </span>
+        </div>
+
       </div>
       </div>
     </div>
@@ -232,7 +262,6 @@ body.dat-modal-open {
               <tr>
                 <th>Date</th>
                 <th>Action</th>
-                <th>Statut</th>
                 <th>Utilisateur</th>
                 <th>Détails</th>
               </tr>
@@ -242,19 +271,6 @@ body.dat-modal-open {
                 <tr>
                   <td>{{ entry.performed_at|date:"d/m/Y" }} à {{ entry.performed_at|time:"H\\hi" }}</td>
                   <td>{{ entry.get_action_display }}</td>
-                  <td>
-                    {% if entry.status_before or entry.status_after %}
-                      {% if entry.status_before %}
-                        <span class="chip grey lighten-3" title="Avant">{{ entry.get_status_before_display }}</span>
-                      {% endif %}
-                      {% if entry.status_after and entry.status_after != entry.status_before %}
-                        <span style="padding:0 0.25rem;">→</span>
-                        <span class="chip blue lighten-4" title="Après">{{ entry.get_status_after_display }}</span>
-                      {% endif %}
-                    {% else %}
-                      —
-                    {% endif %}
-                  </td>
                   <td>{{ entry.actor_name }}</td>
                   <td>
                     {% if entry.action == history_actions.STATUS_CHANGED %}
@@ -274,6 +290,21 @@ body.dat-modal-open {
                       {% else %}
                         —
                       {% endif %}
+                    {% elif entry.action == history_actions.RESPONSIBLE_VALIDATION %}
+                      {% with details=entry.details %}
+                        {% if details.section %}
+                          Section <strong>{{ details.section.title|default:details.section.slug }}</strong>
+                          {% if details.section.slug %}
+                            (<code>{{ details.section.slug }}</code>)
+                          {% endif %}
+                          :
+                        {% endif %}
+                        {% if details.from or details.to %}
+                          <strong>{{ details.from|default:"-" }}</strong> -> <strong>{{ details.to|default:"-" }}</strong>.
+                        {% else %}
+                          Validation référent mise à jour.
+                        {% endif %}
+                      {% endwith %}
                     {% elif entry.action == history_actions.SECTION_UPDATED %}
                       {% with details=entry.details %}
                         {% if details.section %}
@@ -313,6 +344,197 @@ body.dat-modal-open {
     <div class="dat-modal-footer">
       <button type="button" class="btn-flat waves-effect dat-modal-close">
         Fermer
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="dat-reserve-history-modal" class="dat-modal" role="dialog" aria-modal="true" aria-labelledby="dat-reserve-history-modal-title">
+  <div class="dat-modal-card">
+    <div class="dat-modal-content">
+      <span id="dat-reserve-history-modal-title" class="card-title" style="display:flex; align-items:center; gap:0.5rem;">
+        <i class="material-icons" aria-hidden="true">bookmark</i>
+        Historique des réserves et validations
+      </span>
+      {% if reserve_validation_history_entries %}
+        <div style="display:flex; flex-wrap:wrap; gap:0.75rem; margin-top:1rem;">
+          <div style="min-width:200px;">
+            <label for="dat-history-type-filter" class="active">Type</label>
+            <select id="dat-history-type-filter" class="browser-default" data-history-filter="type">
+              <option value="all">Tous</option>
+              <option value="reserve">Réserves</option>
+              <option value="validation">Validations</option>
+            </select>
+          </div>
+          <div style="min-width:200px;">
+            <label for="dat-history-user-filter" class="active">Utilisateur</label>
+            <select id="dat-history-user-filter" class="browser-default" data-history-filter="user">
+              <option value="all">Tous les utilisateurs</option>
+              {% for user in dat_history_user_choices %}
+                <option value="{{ user.id }}">{{ user.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="responsive-table" style="margin-top:1rem;">
+          <table class="highlight">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Utilisateur</th>
+                <th>Détails</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in reserve_validation_history_entries %}
+                {% with entry=item.entry %}
+                  <tr data-history-entry data-history-type="{{ item.kind }}" data-history-user="{{ item.user_id|default_if_none:'system' }}">
+                    <td>
+                      {% if item.kind == "validation" %}
+                        {{ entry.performed_at|date:"d/m/Y" }} à {{ entry.performed_at|time:"H\\hi" }}
+                      {% else %}
+                        {{ entry.reserved_at|date:"d/m/Y" }} à {{ entry.reserved_at|time:"H\\hi" }}
+                      {% endif %}
+                    </td>
+                    <td>{{ entry.actor_name }}</td>
+                    <td>
+                      {% if item.kind == "validation" %}
+                        {% if entry.action == history_actions.RESPONSIBLE_VALIDATION %}
+                          <div style="margin-bottom:0.35rem;">
+                            <span class="chip green lighten-4">Validation référent</span>
+                          </div>
+                          {% with details=entry.details %}
+                            {% if details.section %}
+                              Section <strong>{{ details.section.title|default:details.section.slug }}</strong>
+                              {% if details.section.slug %}
+                                (<code>{{ details.section.slug }}</code>)
+                              {% endif %}
+                              ·
+                            {% endif %}
+                            {% if details.from or details.to %}
+                              Statut référent : <strong>{{ details.from|default:"-" }}</strong> -> <strong>{{ details.to|default:"-" }}</strong>.
+                            {% else %}
+                              Validation référent mise à jour.
+                            {% endif %}
+                          {% endwith %}
+                        {% else %}
+                          <div style="margin-bottom:0.35rem;">
+                            <span class="chip green lighten-4">Validation</span>
+                          </div>
+                          {% if entry.details.from or entry.details.to %}
+                            Passage de <strong>{{ entry.details.from|default:"-" }}</strong> à <strong>{{ entry.details.to|default:"-" }}</strong>.
+                          {% else %}
+                            Statut de validation mis à jour.
+                          {% endif %}
+                        {% endif %}
+                      {% else %}
+                        <div style="margin-bottom:0.35rem;">
+                          {% if entry.action == "cleared" %}
+                            <span class="chip blue lighten-4">Réserve levée</span>
+                          {% else %}
+                            <span class="chip grey lighten-3">Mise en réserve</span>
+                          {% endif %}
+                        </div>
+                        {% if entry.section_title or entry.section_slug %}
+                          <div style="margin-bottom:0.35rem; color:#757575;">
+                            {% if entry.section_title %}<strong>{{ entry.section_title }}</strong>{% endif %}
+                            {% if entry.section_slug %}
+                              {% if entry.section_title %} · {% endif %}
+                              <code>{{ entry.section_slug }}</code>
+                            {% endif %}
+                          </div>
+                        {% endif %}
+                        {% if entry.action == "cleared" and entry.reserve_message %}
+                          <p style="margin:0 0 0.35rem 0; color:#757575;">Commentaire initial :</p>
+                        {% endif %}
+                        <p style="margin:0; white-space:pre-wrap;">{{ entry.reserve_message|default:"—" }}</p>
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endwith %}
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <p class="dat-history-empty" style="margin:1rem 0; display:none;">Aucun événement pour ces filtres.</p>
+      {% else %}
+        <p style="margin:0;">Aucune réserve ou validation n'a encore été enregistrée.</p>
+      {% endif %}
+    </div>
+    <div class="dat-modal-footer">
+      <button type="button" class="btn-flat waves-effect dat-modal-close">
+        Fermer
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="dat-block-comment-modal" class="dat-modal" role="dialog" aria-modal="true" aria-labelledby="dat-block-comment-modal-title">
+  <div class="dat-modal-card" style="max-width:680px;">
+    <div class="dat-modal-content">
+      <span id="dat-block-comment-modal-title" class="card-title" style="display:flex; align-items:center; gap:0.5rem;">
+        <i class="material-icons" aria-hidden="true" style="color:#c62828;">block</i>
+        Bloquer la section
+      </span>
+      <p style="margin:0.75rem 0 0; color:#424242;">
+        Merci d’indiquer un commentaire de blocage pour <strong id="dat-block-comment-section-title">cette section</strong>.
+      </p>
+      <div class="input-field" style="margin-top:1.25rem;">
+        <textarea id="dat-block-comment-textarea" class="materialize-textarea" rows="3" style="min-height:120px;"></textarea>
+        <label for="dat-block-comment-textarea" class="active">Commentaire (obligatoire)</label>
+      </div>
+      <p id="dat-block-comment-error" style="margin:0; color:#c62828; display:none;">Le commentaire est obligatoire.</p>
+    </div>
+    <div class="dat-modal-footer">
+      <button type="button" class="btn-flat waves-effect dat-modal-close">Annuler</button>
+      <button type="button" id="dat-block-comment-confirm" class="btn waves-effect waves-light cinta-btn-primary" style="background-color:#c62828;">
+        Bloquer
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="dat-reserve-modal" class="dat-modal" role="dialog" aria-modal="true" aria-labelledby="dat-reserve-modal-title">
+  <div class="dat-modal-card" style="max-width:680px;">
+    <div class="dat-modal-content">
+      <span id="dat-reserve-modal-title" class="card-title" style="display:flex; align-items:center; gap:0.5rem;">
+        <i class="material-icons" aria-hidden="true" style="color:#616161;">bookmark</i>
+        Mettre en réserve
+      </span>
+      <p style="margin:0.75rem 0 0; color:#424242;">
+        Ajoutez un message pour la réserve sur <strong id="dat-reserve-section-title">cette section</strong>.
+      </p>
+      <div class="input-field" style="margin-top:1.25rem;">
+        <textarea id="dat-reserve-textarea" class="materialize-textarea" rows="3" style="min-height:120px;"></textarea>
+        <label for="dat-reserve-textarea" class="active">Message (obligatoire)</label>
+      </div>
+      <p id="dat-reserve-error" style="margin:0; color:#c62828; display:none;">Le message est obligatoire.</p>
+    </div>
+    <div class="dat-modal-footer">
+      <button type="button" class="btn-flat waves-effect dat-modal-close">Annuler</button>
+      <button type="button" id="dat-reserve-confirm" class="btn waves-effect waves-light cinta-btn-primary" style="background-color:#616161;">
+        Mettre en réserve
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="dat-devalidate-responsible-modal" class="dat-modal" role="dialog" aria-modal="true" aria-labelledby="dat-devalidate-responsible-modal-title">
+  <div class="dat-modal-card" style="max-width:680px;">
+    <div class="dat-modal-content">
+      <span id="dat-devalidate-responsible-modal-title" class="card-title" style="display:flex; align-items:center; gap:0.5rem;">
+        <i class="material-icons" aria-hidden="true" style="color:#c62828;">warning</i>
+        Confirmer la dévalidation
+      </span>
+      <p style="margin:0.75rem 0 0; color:#424242;">
+        La section <strong id="dat-devalidate-section-title">cette section</strong> a déjà été validée par le responsable.
+        Si vous dévalidez, la validation responsable sera aussi réinitialisée.
+      </p>
+    </div>
+    <div class="dat-modal-footer">
+      <button type="button" class="btn-flat waves-effect dat-modal-close">Annuler</button>
+      <button type="button" id="dat-devalidate-responsible-confirm" class="btn waves-effect waves-light cinta-btn-primary" style="background-color:#c62828;">
+        Dévalider
       </button>
     </div>
   </div>
@@ -414,6 +636,450 @@ body.dat-modal-open {
       closeAllModals();
     }
   });
+})();
+</script>
+<script>
+(function () {
+  function bindHistoryFilters() {
+    const modal = document.getElementById("dat-reserve-history-modal");
+    if (!modal || modal.__datHistoryFiltersBound) {
+      return;
+    }
+    const typeSelect = modal.querySelector('[data-history-filter="type"]');
+    const userSelect = modal.querySelector('[data-history-filter="user"]');
+    const rows = modal.querySelectorAll("[data-history-entry]");
+    const emptyMessage = modal.querySelector(".dat-history-empty");
+    if (!rows.length) {
+      modal.__datHistoryFiltersBound = true;
+      return;
+    }
+    function applyFilters() {
+      const typeValue = typeSelect ? typeSelect.value : "all";
+      const userValue = userSelect ? userSelect.value : "all";
+      let visibleCount = 0;
+      rows.forEach((row) => {
+        const rowType = row.getAttribute("data-history-type");
+        const rowUser = row.getAttribute("data-history-user");
+        const matchesType = typeValue === "all" || rowType === typeValue;
+        const matchesUser = userValue === "all" || rowUser === userValue;
+        if (matchesType && matchesUser) {
+          row.style.display = "";
+          visibleCount += 1;
+        } else {
+          row.style.display = "none";
+        }
+      });
+      if (emptyMessage) {
+        emptyMessage.style.display = visibleCount ? "none" : "block";
+      }
+    }
+    if (typeSelect) {
+      typeSelect.addEventListener("change", applyFilters);
+    }
+    if (userSelect) {
+      userSelect.addEventListener("change", applyFilters);
+    }
+    applyFilters();
+    modal.__datHistoryFiltersBound = true;
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", bindHistoryFilters, { once: true });
+  } else {
+    bindHistoryFilters();
+  }
+  document.addEventListener("turbolinks:load", bindHistoryFilters);
+})();
+</script>
+<script>
+(function () {
+  let pendingForm = null;
+
+  function getOverlay() {
+    return document.getElementById("dat-modal-overlay");
+  }
+
+  function openModal(modal) {
+    if (!modal) {
+      return;
+    }
+    modal.classList.add("open");
+    const overlay = getOverlay();
+    if (overlay) {
+      overlay.classList.add("visible");
+    }
+    document.body.classList.add("dat-modal-open");
+  }
+
+  function closeModal(modal) {
+    if (!modal) {
+      return;
+    }
+    modal.classList.remove("open");
+    if (!document.querySelector(".dat-modal.open")) {
+      const overlay = getOverlay();
+      if (overlay) {
+        overlay.classList.remove("visible");
+      }
+      document.body.classList.remove("dat-modal-open");
+    }
+  }
+
+  function ensureReserveModal() {
+    const modal = document.getElementById("dat-reserve-modal");
+    const textarea = document.getElementById("dat-reserve-textarea");
+    const confirmBtn = document.getElementById("dat-reserve-confirm");
+    const title = document.getElementById("dat-reserve-section-title");
+    const error = document.getElementById("dat-reserve-error");
+    if (!modal || !textarea || !confirmBtn || !title || !error) {
+      return null;
+    }
+    return { modal, textarea, confirmBtn, title, error };
+  }
+
+  function openReserveModal(form) {
+    const ui = ensureReserveModal();
+    if (!ui) {
+      return;
+    }
+    pendingForm = form;
+    ui.title.textContent = form.dataset.sectionTitle || "cette section";
+    ui.textarea.value = "";
+    ui.error.style.display = "none";
+    openModal(ui.modal);
+    ui.textarea.focus();
+    if (window.M && typeof M.textareaAutoResize === "function") {
+      M.textareaAutoResize(ui.textarea);
+    }
+  }
+
+  function bindReserveForms() {
+    const ui = ensureReserveModal();
+    if (!ui) {
+      return;
+    }
+    if (!ui.confirmBtn.__datReserveConfirmBound) {
+      ui.confirmBtn.addEventListener("click", () => {
+        if (!pendingForm) {
+          closeModal(ui.modal);
+          return;
+        }
+        const message = (ui.textarea.value || "").trim();
+        if (!message) {
+          ui.error.style.display = "block";
+          ui.textarea.focus();
+          return;
+        }
+        const hidden = pendingForm.querySelector('input[name="reserve_message"]');
+        if (hidden) {
+          hidden.value = message;
+        }
+        pendingForm.__reserveConfirmed = true;
+        closeModal(ui.modal);
+        pendingForm.submit();
+        pendingForm = null;
+      });
+      ui.confirmBtn.__datReserveConfirmBound = true;
+    }
+
+    document.addEventListener("submit", (event) => {
+      const form = event.target;
+      if (!form || !(form instanceof HTMLFormElement)) {
+        return;
+      }
+      if (!form.classList.contains("dat-reserve-create-form")) {
+        return;
+      }
+      if (form.__reserveConfirmed) {
+        form.__reserveConfirmed = false;
+        return;
+      }
+      event.preventDefault();
+      openReserveModal(form);
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", bindReserveForms);
+  document.addEventListener("turbolinks:load", bindReserveForms);
+})();
+</script>
+<script>
+(function () {
+  let pendingForm = null;
+
+  function getOverlay() {
+    return document.getElementById("dat-modal-overlay");
+  }
+
+  function openModal(modal) {
+    if (!modal) {
+      return;
+    }
+    modal.classList.add("open");
+    const overlay = getOverlay();
+    if (overlay) {
+      overlay.classList.add("visible");
+    }
+    document.body.classList.add("dat-modal-open");
+  }
+
+  function closeModal(modal) {
+    if (!modal) {
+      return;
+    }
+    modal.classList.remove("open");
+    if (!document.querySelector(".dat-modal.open")) {
+      const overlay = getOverlay();
+      if (overlay) {
+        overlay.classList.remove("visible");
+      }
+      document.body.classList.remove("dat-modal-open");
+    }
+  }
+
+  function ensureBlockModal() {
+    const modal = document.getElementById("dat-block-comment-modal");
+    const textarea = document.getElementById("dat-block-comment-textarea");
+    const confirmBtn = document.getElementById("dat-block-comment-confirm");
+    const title = document.getElementById("dat-block-comment-section-title");
+    const error = document.getElementById("dat-block-comment-error");
+    if (!modal || !textarea || !confirmBtn || !title || !error) {
+      return null;
+    }
+    return { modal, textarea, confirmBtn, title, error };
+  }
+
+  function openBlockModal(form) {
+    const ui = ensureBlockModal();
+    if (!ui) {
+      return;
+    }
+    pendingForm = form;
+    ui.title.textContent = form.dataset.sectionTitle || "cette section";
+    ui.textarea.value = "";
+    ui.error.style.display = "none";
+    openModal(ui.modal);
+    ui.textarea.focus();
+    if (window.M && typeof M.textareaAutoResize === "function") {
+      M.textareaAutoResize(ui.textarea);
+    }
+  }
+
+  function bindBlockForms() {
+    const ui = ensureBlockModal();
+    if (!ui) {
+      return;
+    }
+    if (ui.confirmBtn.__datBlockConfirmBound) {
+      return;
+    }
+    ui.confirmBtn.addEventListener("click", () => {
+      if (!pendingForm) {
+        closeModal(ui.modal);
+        return;
+      }
+      const comment = (ui.textarea.value || "").trim();
+      if (!comment) {
+        ui.error.style.display = "block";
+        ui.textarea.focus();
+        return;
+      }
+      const hidden = pendingForm.querySelector('input[name="commentaire"]');
+      if (hidden) {
+        hidden.value = comment;
+      }
+      pendingForm.__blockConfirmed = true;
+      closeModal(ui.modal);
+      pendingForm.submit();
+      pendingForm = null;
+    });
+    ui.confirmBtn.__datBlockConfirmBound = true;
+
+    document.addEventListener("submit", (event) => {
+      const form = event.target;
+      if (!form || !(form instanceof HTMLFormElement)) {
+        return;
+      }
+      if (!form.classList.contains("dat-block-status-form")) {
+        return;
+      }
+      if (form.__blockConfirmed) {
+        form.__blockConfirmed = false;
+        return;
+      }
+      event.preventDefault();
+      openBlockModal(form);
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", bindBlockForms);
+  document.addEventListener("turbolinks:load", bindBlockForms);
+})();
+</script>
+<script>
+(function () {
+  let pendingForm = null;
+
+  function getOverlay() {
+    return document.getElementById("dat-modal-overlay");
+  }
+
+  function openModal(modal) {
+    if (!modal) {
+      return;
+    }
+    modal.classList.add("open");
+    const overlay = getOverlay();
+    if (overlay) {
+      overlay.classList.add("visible");
+    }
+    document.body.classList.add("dat-modal-open");
+  }
+
+  function closeModal(modal) {
+    if (!modal) {
+      return;
+    }
+    modal.classList.remove("open");
+    if (!document.querySelector(".dat-modal.open")) {
+      const overlay = getOverlay();
+      if (overlay) {
+        overlay.classList.remove("visible");
+      }
+      document.body.classList.remove("dat-modal-open");
+    }
+  }
+
+  function ensureUi() {
+    const modal = document.getElementById("dat-devalidate-responsible-modal");
+    const confirmBtn = document.getElementById("dat-devalidate-responsible-confirm");
+    const title = document.getElementById("dat-devalidate-section-title");
+    if (!modal || !confirmBtn || !title) {
+      return null;
+    }
+    return { modal, confirmBtn, title };
+  }
+
+  function openDevalidateModal(form) {
+    const ui = ensureUi();
+    if (!ui) {
+      return;
+    }
+    pendingForm = form;
+    ui.title.textContent = form.dataset.sectionTitle || "cette section";
+    openModal(ui.modal);
+  }
+
+  function bindDevalidateForms() {
+    const ui = ensureUi();
+    if (!ui) {
+      return;
+    }
+    if (!ui.confirmBtn.__datDevalidateBound) {
+      ui.confirmBtn.addEventListener("click", () => {
+        if (!pendingForm) {
+          closeModal(ui.modal);
+          return;
+        }
+        const hidden = pendingForm.querySelector('input[name="confirm_responsable_reset"]');
+        if (hidden) {
+          hidden.value = "1";
+        }
+        pendingForm.__devalidateConfirmed = true;
+        closeModal(ui.modal);
+        pendingForm.submit();
+        pendingForm = null;
+      });
+      ui.confirmBtn.__datDevalidateBound = true;
+    }
+
+    document.addEventListener("submit", (event) => {
+      const form = event.target;
+      if (!form || !(form instanceof HTMLFormElement)) {
+        return;
+      }
+      if (!form.classList.contains("dat-devalidate-form")) {
+        return;
+      }
+      if (form.__devalidateConfirmed) {
+        form.__devalidateConfirmed = false;
+        return;
+      }
+      if (form.dataset.hasResponsibleValidation !== "1") {
+        return;
+      }
+      event.preventDefault();
+      openDevalidateModal(form);
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", bindDevalidateForms);
+  document.addEventListener("turbolinks:load", bindDevalidateForms);
+})();
+</script>
+<script>
+(function () {
+  let timerId = null;
+
+  function formatElapsed(ms) {
+    const minute = 60 * 1000;
+    const hour = 60 * minute;
+    const day = 24 * hour;
+    const days = Math.floor(ms / day);
+    const hours = Math.floor((ms % day) / hour);
+    const minutes = Math.floor((ms % hour) / minute);
+
+    if (days > 0) {
+      return `${days}j ${hours}h`;
+    }
+    if (hours > 0) {
+      return `${hours}h ${minutes}min`;
+    }
+    if (minutes > 0) {
+      return `${minutes}min`;
+    }
+    return "< 1 min";
+  }
+
+  function updateDatAge() {
+    const target = document.querySelector("[data-dat-created-at]");
+    if (!target) {
+      return;
+    }
+    const valueEl = target.querySelector("[data-dat-created-value]") || target;
+    const createdAt = target.dataset.datCreatedAt;
+    if (!createdAt) {
+      valueEl.textContent = "—";
+      return;
+    }
+    const createdDate = new Date(createdAt);
+    if (Number.isNaN(createdDate.getTime())) {
+      valueEl.textContent = "—";
+      return;
+    }
+    const elapsedMs = Math.max(0, Date.now() - createdDate.getTime());
+    valueEl.textContent = formatElapsed(elapsedMs);
+  }
+
+  function startTimer() {
+    updateDatAge();
+    if (timerId) {
+      clearInterval(timerId);
+    }
+    timerId = setInterval(updateDatAge, 60 * 1000);
+  }
+
+  function stopTimer() {
+    if (!timerId) {
+      return;
+    }
+    clearInterval(timerId);
+    timerId = null;
+  }
+
+  document.addEventListener("DOMContentLoaded", startTimer);
+  document.addEventListener("turbolinks:load", startTimer);
+  document.addEventListener("turbolinks:before-cache", stopTimer);
 })();
 </script>
 <script>

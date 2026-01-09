@@ -30,18 +30,21 @@
           </a>
         {% endif %}
         {% if part.has_drawio_table %}
-          <button
-            type="button"
-            class="btn-flat waves-effect cinta-btn-secondary dat-subsection-show-all-btn"
-            data-drawio-target="{{ drawio_table_id }}"
-            data-show-label="Afficher Miniature"
-            data-hide-label="Cacher Miniature"
-            data-drawio-expanded="0"
-            aria-expanded="false"
-            aria-controls="{{ drawio_table_id }}"
-          >
-            Afficher tout
-          </button>
+          <div class="switch dat-subsection-drawio-toggle">
+            <label>
+              <span class="dat-drawio-toggle-label-off">Afficher Miniature</span>
+              <input
+                type="checkbox"
+                class="dat-drawio-toggle-input"
+                data-drawio-target="{{ drawio_table_id }}"
+                data-show-label="Afficher Miniature"
+                data-hide-label="Cacher Miniature"
+                aria-controls="{{ drawio_table_id }}"
+              >
+              <span class="lever"></span>
+              <span class="dat-drawio-toggle-label-on">Cacher Miniature</span>
+            </label>
+          </div>
         {% endif %}
       </div>
     {% endif %}
@@ -51,15 +54,27 @@
       <table class="highlight">
         <tbody>
           {% for entry in part.entries %}
-            <tr>
-              <th scope="row" style="width:260px;">
-                {{ entry.label }}
-                {% if entry.required %}
-                  <span class="chip amber lighten-4" style="margin-left:0.5rem;">Obligatoire</span>
+            {% with value=entry.formatted_value has_drawio_columns=entry.config|dat_has_drawio_columns %}
+              <tr>
+                {% if entry.data_type != "repeater" %}
+                  <th scope="row" style="width:260px;">
+                    {{ entry.label }}
+                    {% if entry.required %}
+                      <span class="chip amber lighten-4" style="margin-left:0.5rem;">Obligatoire</span>
+                    {% endif %}
+                  </th>
+                {% elif not has_drawio_columns %}
+                  {% if container_section.slug == "validation" and entry.key == "suivi_sections" %}
+                  {% else %}
+                    <th scope="row" style="width:260px;">
+                      {{ entry.label }}
+                      {% if entry.required %}
+                        <span class="chip amber lighten-4" style="margin-left:0.5rem;">Obligatoire</span>
+                      {% endif %}
+                    </th>
+                  {% endif %}
                 {% endif %}
-              </th>
-              <td>
-                {% with value=entry.formatted_value %}
+                <td {% if entry.data_type == "repeater" and has_drawio_columns %}colspan="2"{% elif entry.data_type == "repeater" and container_section.slug == "validation" and entry.key == "suivi_sections" %}colspan="2"{% endif %}>
                   {% if entry.data_type == "repeater" %}
                     {% with columns=entry.config|dat_columns %}
                       {% if value %}
@@ -89,10 +104,57 @@
                                           {% endif %}
                                         {% elif column.render == "drawio_diagram" %}
                                           {% include "dat/components/drawio_diagram_cell.html" with cell=cell part=part column=column %}
+                                        {% elif container and container_section.slug == "validation" and entry.key == "suivi_sections" and column.key == "reserve_message" %}
+                                          {% with row_slug=row|get_item:"section_slug" reserve_message=row|get_item:"reserve_message" reserve_by=row|get_item:"reserve_by_display" reserve_by_id=row|get_item:"reserve_by_id" %}
+                                            {% if reserve_message %}
+                                              <p style="margin:0; white-space:pre-wrap;">{{ reserve_message }}</p>
+                                              <div style="margin-top:0.5rem; display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
+                                                <span class="chip grey lighten-3">Par {{ reserve_by|default:"—" }}</span>
+                                                {% if row_slug and container.validation_reserve_clear_allowed_sections and container.validation_reserve_clear_allowed_sections|get_item:row_slug %}
+                                                  <form method="post" action="{% url 'dat:section_reserve_clear' dat.pk row_slug %}" style="display:inline;">
+                                                    {% csrf_token %}
+                                                    <button type="submit" class="btn-flat waves-effect cinta-btn-secondary" style="color:#616161;">
+                                                      Lever la réserve
+                                                    </button>
+                                                  </form>
+                                                {% endif %}
+                                              </div>
+                                            {% else %}
+                                              <span class="chip grey lighten-3">—</span>
+                                              {% if row_slug and container.validation_reserve_allowed_sections and container.validation_reserve_allowed_sections|get_item:row_slug %}
+                                                <form method="post" action="{% url 'dat:section_reserve' dat.pk row_slug %}" class="dat-reserve-create-form" data-section-title="{{ row|get_item:'section' }}" style="display:inline; margin-left:0.5rem;">
+                                                  {% csrf_token %}
+                                                  <input type="hidden" name="reserve_message" value="">
+                                                  <button type="submit" class="btn-flat waves-effect cinta-btn-secondary">
+                                                    Mettre en réserve
+                                                  </button>
+                                                </form>
+                                              {% endif %}
+                                            {% endif %}
+                                          {% endwith %}
                                         {% elif column.type == "textarea" %}
                                           <p style="margin:0; white-space:pre-wrap;">{{ cell|default:"—" }}</p>
                                         {% else %}
                                           <span>{{ cell|default:"—" }}</span>
+                                          {% if container and container_section.slug == "validation" and entry.key == "suivi_sections" and column.key == "statut_responsable" and container.validation_allowed_sections %}
+                                            {% with row_slug=row|get_item:"section_slug" validated_value=container.status_values|get_item:"validated" %}
+                                              {% if row_slug and container.validation_allowed_sections|get_item:row_slug %}
+                                                {% if row|get_item:"statut_responsable" == validated_value %}
+                                                  <span class="chip green lighten-4" style="margin-left:0.5rem;">Validée</span>
+                                                {% elif row|get_item:"statut" != validated_value %}
+                                                  <span class="chip grey lighten-3" style="margin-left:0.5rem;">Attente section</span>
+                                                {% else %}
+                                                  <form method="post" action="{% url 'dat:section_responsible_status' dat.pk row_slug %}" style="display:inline; margin-left:0.5rem;">
+                                                    {% csrf_token %}
+                                                    <input type="hidden" name="status" value="{{ validated_value }}">
+                                                    <button type="submit" class="btn waves-effect waves-light cinta-btn-primary" style="padding:0 12px; height:32px; line-height:32px;">
+                                                      Valider
+                                                    </button>
+                                                  </form>
+                                                {% endif %}
+                                              {% endif %}
+                                            {% endwith %}
+                                          {% endif %}
                                         {% endif %}
                                       {% endwith %}
                                     </td>
@@ -113,9 +175,9 @@
                   {% else %}
                     <span>{{ value|default:"—" }}</span>
                   {% endif %}
-                {% endwith %}
-              </td>
-            </tr>
+                </td>
+              </tr>
+            {% endwith %}
           {% endfor %}
         </tbody>
       </table>

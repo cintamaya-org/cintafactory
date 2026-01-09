@@ -123,7 +123,7 @@
                     </div>
                   </div>
                   {% for part in container.parts %}
-                    {% include "dat/partials/dat_sub_section_card.html" with part=part container_section=container.section dat=dat %}
+                    {% include "dat/partials/dat_sub_section_card.html" with part=part container=container container_section=container.section dat=dat %}
                   {% endfor %}
                 </div>
               </div>
@@ -204,7 +204,6 @@
             <tr>
               <th>Date</th>
               <th>Action</th>
-              <th>Statut</th>
               <th>Utilisateur</th>
               <th>Détails</th>
             </tr>
@@ -214,19 +213,6 @@
               <tr>
                 <td>{{ entry.performed_at|date:"d/m/Y" }} à {{ entry.performed_at|time:"H\\hi" }}</td>
                 <td>{{ entry.get_action_display }}</td>
-                <td>
-                  {% if entry.status_before or entry.status_after %}
-                    {% if entry.status_before %}
-                      <span class="chip grey lighten-3" title="Avant">{{ entry.get_status_before_display }}</span>
-                    {% endif %}
-                    {% if entry.status_after and entry.status_after != entry.status_before %}
-                      <span style="padding:0 0.25rem;">-></span>
-                      <span class="chip blue lighten-4" title="Après">{{ entry.get_status_after_display }}</span>
-                    {% endif %}
-                  {% else %}
-                    -
-                  {% endif %}
-                </td>
                 <td>{{ entry.actor_name }}</td>
                 <td>
                     {% if entry.action == history_actions.STATUS_CHANGED %}
@@ -246,6 +232,21 @@
                       {% else %}
                         —
                       {% endif %}
+                    {% elif entry.action == history_actions.RESPONSIBLE_VALIDATION %}
+                      {% with details=entry.details %}
+                        {% if details.section %}
+                          Section <strong>{{ details.section.title|default:details.section.slug }}</strong>
+                          {% if details.section.slug %}
+                            (<code>{{ details.section.slug }}</code>)
+                          {% endif %}
+                          :
+                        {% endif %}
+                        {% if details.from or details.to %}
+                          <strong>{{ details.from|default:"-" }}</strong> -> <strong>{{ details.to|default:"-" }}</strong>.
+                        {% else %}
+                          Validation référent mise à jour.
+                        {% endif %}
+                      {% endwith %}
                     {% elif entry.action == history_actions.SECTION_UPDATED %}
                       {% with details=entry.details %}
                         {% if details.section %}
@@ -288,6 +289,123 @@
     </a>
   </div>
 </div>
+<div id="dat-reserve-history-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="dat-reserve-history-modal-title">
+  <div class="modal-content" style="padding-bottom:0;">
+    <h5 id="dat-reserve-history-modal-title" style="margin-top:0; display:flex; align-items:center; gap:0.5rem;">
+      <i class="material-icons" aria-hidden="true">bookmark</i>
+      Historique des réserves et validations
+    </h5>
+    {% if reserve_validation_history_entries %}
+      <div style="display:flex; flex-wrap:wrap; gap:0.75rem; margin-top:1rem;">
+        <div style="min-width:200px;">
+          <label for="dat-history-type-filter" class="active">Type</label>
+          <select id="dat-history-type-filter" class="browser-default" data-history-filter="type">
+            <option value="all">Tous</option>
+            <option value="reserve">Réserves</option>
+            <option value="validation">Validations</option>
+          </select>
+        </div>
+        <div style="min-width:200px;">
+          <label for="dat-history-user-filter" class="active">Utilisateur</label>
+          <select id="dat-history-user-filter" class="browser-default" data-history-filter="user">
+            <option value="all">Tous les utilisateurs</option>
+            {% for user in dat_history_user_choices %}
+              <option value="{{ user.id }}">{{ user.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="responsive-table" style="margin-top:1rem; max-height:60vh; overflow:auto;">
+        <table class="highlight">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Utilisateur</th>
+              <th>Détails</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in reserve_validation_history_entries %}
+              {% with entry=item.entry %}
+                <tr data-history-entry data-history-type="{{ item.kind }}" data-history-user="{{ item.user_id|default_if_none:'system' }}">
+                  <td>
+                    {% if item.kind == "validation" %}
+                      {{ entry.performed_at|date:"d/m/Y" }} à {{ entry.performed_at|time:"H\\hi" }}
+                    {% else %}
+                      {{ entry.reserved_at|date:"d/m/Y" }} à {{ entry.reserved_at|time:"H\\hi" }}
+                    {% endif %}
+                  </td>
+                  <td>{{ entry.actor_name }}</td>
+                  <td>
+                    {% if item.kind == "validation" %}
+                      {% if entry.action == history_actions.RESPONSIBLE_VALIDATION %}
+                        <div style="margin-bottom:0.35rem;">
+                          <span class="chip green lighten-4">Validation référent</span>
+                        </div>
+                        {% with details=entry.details %}
+                          {% if details.section %}
+                            Section <strong>{{ details.section.title|default:details.section.slug }}</strong>
+                            {% if details.section.slug %}
+                              (<code>{{ details.section.slug }}</code>)
+                            {% endif %}
+                            ·
+                          {% endif %}
+                          {% if details.from or details.to %}
+                            Statut référent : <strong>{{ details.from|default:"-" }}</strong> -> <strong>{{ details.to|default:"-" }}</strong>.
+                          {% else %}
+                            Validation référent mise à jour.
+                          {% endif %}
+                        {% endwith %}
+                      {% else %}
+                        <div style="margin-bottom:0.35rem;">
+                          <span class="chip green lighten-4">Validation</span>
+                        </div>
+                        {% if entry.details.from or entry.details.to %}
+                          Passage de <strong>{{ entry.details.from|default:"-" }}</strong> à <strong>{{ entry.details.to|default:"-" }}</strong>.
+                        {% else %}
+                          Statut de validation mis à jour.
+                        {% endif %}
+                      {% endif %}
+                    {% else %}
+                      <div style="margin-bottom:0.35rem;">
+                        {% if entry.action == "cleared" %}
+                          <span class="chip blue lighten-4">Réserve levée</span>
+                        {% else %}
+                          <span class="chip grey lighten-3">Mise en réserve</span>
+                        {% endif %}
+                      </div>
+                      {% if entry.section_title or entry.section_slug %}
+                        <div style="margin-bottom:0.35rem; color:#757575;">
+                          {% if entry.section_title %}<strong>{{ entry.section_title }}</strong>{% endif %}
+                          {% if entry.section_slug %}
+                            {% if entry.section_title %} · {% endif %}
+                            <code>{{ entry.section_slug }}</code>
+                          {% endif %}
+                        </div>
+                      {% endif %}
+                      {% if entry.action == "cleared" and entry.reserve_message %}
+                        <p style="margin:0 0 0.35rem 0; color:#757575;">Commentaire initial :</p>
+                      {% endif %}
+                      <p style="margin:0; white-space:pre-wrap;">{{ entry.reserve_message|default:"—" }}</p>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endwith %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="dat-history-empty" style="margin:1rem 0; display:none;">Aucun événement pour ces filtres.</p>
+    {% else %}
+      <p style="margin:1rem 0;">Aucune réserve ou validation n'a encore été enregistrée.</p>
+    {% endif %}
+  </div>
+  <div class="modal-footer" style="padding:0 24px 24px;">
+    <a href="#!" class="modal-close btn waves-effect waves-light grey lighten-1">
+      Fermer
+    </a>
+  </div>
+</div>
 <script>
   (function () {
     function initFallback(modalElement) {
@@ -295,7 +413,12 @@
         return;
       }
       modalElement.__datHistoryFallbackBound = true;
-      var triggers = document.querySelectorAll('[href="#dat-history-modal"], [data-target="dat-history-modal"], [data-modal-target="dat-history-modal"]');
+      var modalId = modalElement.getAttribute('id');
+      if (!modalId) {
+        return;
+      }
+      var selector = '[href="#' + modalId + '"], [data-target="' + modalId + '"], [data-modal-target="' + modalId + '"]';
+      var triggers = document.querySelectorAll(selector);
       triggers.forEach(function (trigger) {
         trigger.addEventListener('click', function (event) {
           event.preventDefault();
@@ -313,8 +436,8 @@
       });
     }
 
-    function initModal() {
-      var modalElement = document.getElementById('dat-history-modal');
+    function initModalById(modalId) {
+      var modalElement = document.getElementById(modalId);
       if (!modalElement) {
         return;
       }
@@ -332,14 +455,74 @@
 
     function scheduleInit() {
       if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initModal, { once: true });
+        document.addEventListener('DOMContentLoaded', function () {
+          initModalById('dat-history-modal');
+          initModalById('dat-reserve-history-modal');
+        }, { once: true });
       } else {
-        initModal();
+        initModalById('dat-history-modal');
+        initModalById('dat-reserve-history-modal');
       }
     }
 
     scheduleInit();
-    document.addEventListener('turbolinks:load', initModal);
+    document.addEventListener('turbolinks:load', function () {
+      initModalById('dat-history-modal');
+      initModalById('dat-reserve-history-modal');
+    });
+  })();
+</script>
+<script>
+  (function () {
+    function bindHistoryFilters() {
+      var modal = document.getElementById('dat-reserve-history-modal');
+      if (!modal || modal.__datHistoryFiltersBound) {
+        return;
+      }
+      var typeSelect = modal.querySelector('[data-history-filter="type"]');
+      var userSelect = modal.querySelector('[data-history-filter="user"]');
+      var rows = modal.querySelectorAll('[data-history-entry]');
+      var emptyMessage = modal.querySelector('.dat-history-empty');
+      if (!rows.length) {
+        modal.__datHistoryFiltersBound = true;
+        return;
+      }
+      function applyFilters() {
+        var typeValue = typeSelect ? typeSelect.value : 'all';
+        var userValue = userSelect ? userSelect.value : 'all';
+        var visibleCount = 0;
+        rows.forEach(function (row) {
+          var rowType = row.getAttribute('data-history-type');
+          var rowUser = row.getAttribute('data-history-user');
+          var matchesType = typeValue === 'all' || rowType === typeValue;
+          var matchesUser = userValue === 'all' || rowUser === userValue;
+          if (matchesType && matchesUser) {
+            row.style.display = '';
+            visibleCount += 1;
+          } else {
+            row.style.display = 'none';
+          }
+        });
+        if (emptyMessage) {
+          emptyMessage.style.display = visibleCount ? 'none' : 'block';
+        }
+      }
+      if (typeSelect) {
+        typeSelect.addEventListener('change', applyFilters);
+      }
+      if (userSelect) {
+        userSelect.addEventListener('change', applyFilters);
+      }
+      applyFilters();
+      modal.__datHistoryFiltersBound = true;
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', bindHistoryFilters, { once: true });
+    } else {
+      bindHistoryFilters();
+    }
+    document.addEventListener('turbolinks:load', bindHistoryFilters);
   })();
 </script>
 <script>

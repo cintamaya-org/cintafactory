@@ -106,6 +106,12 @@
                         {% block page_title %}{% endblock %}
                     </div>
                     <ul id="nav-mobile" class="right hide-on-med-and-down">
+                        <li class="topbar-search"> 
+                            <form class="topbar-search__form" role="search" action="javascript:void(0);" onsubmit="return false;">
+                                <i class="material-icons topbar-search__icon" aria-hidden="true">search</i>
+                                <input id="topbar-search" type="search" placeholder="Rechercher" aria-label="Rechercher" autocomplete="off">
+                            </form>
+                        </li>
                         {% block topbar_links %}
                         {% if user.is_authenticated %}
                          <li>
@@ -124,13 +130,6 @@
                 </div>
             </nav>
             {% endblock topbar %}
-            {% comment %} {% block breadcrumbs %}
-            <nav class="breadcrumbs">
-                <div class="nav-wrapper">
-                    {% block breadcrumbs_items %}{% endblock %}
-                </div>
-            </nav>
-            {% endblock %} {% endcomment %}
             {% block main_content %}
             <div class="content">
                 {% block content %}{% endblock %}

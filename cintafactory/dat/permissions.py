@@ -21,6 +21,68 @@ def user_is_dat_admin(user) -> bool:
     return False
 
 
+def user_is_responsible_for_section(dat, section, user, *, participants=None) -> bool:
+    """
+    Determine whether the user is the responsible (manager) of the business group of
+    at least one participant in charge of the given section.
+    """
+    if user is None or not getattr(user, "is_authenticated", False):
+        return False
+    if user_is_dat_admin(user):
+        return True
+    if dat is None or section is None:
+        return False
+    allowed_role_ids = getattr(section, "_allowed_role_ids_cache", None)
+    if allowed_role_ids is None:
+        try:
+            allowed_role_ids = set(section.allowed_roles.values_list("pk", flat=True))
+        except Exception:
+            allowed_role_ids = set()
+        section._allowed_role_ids_cache = allowed_role_ids
+    if not allowed_role_ids:
+        return False
+    if participants is None:
+        try:
+            participants = list(
+                dat.participants.select_related("user__business_group__responsible").all()
+            )
+        except Exception:
+            participants = []
+    user_id = getattr(user, "id", None)
+    for participant in participants:
+        if getattr(participant, "role_id", None) not in allowed_role_ids:
+            continue
+        assignee = getattr(participant, "user", None)
+        group = getattr(assignee, "business_group", None) if assignee is not None else None
+        if group is None:
+            continue
+        if getattr(group, "responsible_id", None) == user_id:
+            return True
+    return False
+
+
+def user_can_update_section_status(dat, section, user, *, participants=None) -> bool:
+    """
+    Determine whether the user can update the status of a section.
+
+    - DAT admins always can.
+    - The section assignee (participant with matching role) can (legacy behaviour).
+    - The responsible (manager) of the assignee's business group can.
+    """
+    if user_is_dat_admin(user):
+        return True
+    if section is None or dat is None:
+        return False
+    can_user_edit = getattr(section, "can_user_edit", None)
+    if callable(can_user_edit):
+        try:
+            if section.can_user_edit(user):
+                return True
+        except Exception:
+            pass
+    return user_is_responsible_for_section(dat, section, user, participants=participants)
+
+
 def filter_dat_queryset_for_user(queryset: QuerySet, user) -> QuerySet:
     """
     Restrict a DAT queryset so that non-administrative users only see assigned items.
@@ -40,5 +102,7 @@ def filter_dat_queryset_for_user(queryset: QuerySet, user) -> QuerySet:
         # Fallback to prevent leaking data if schema is unexpected
         return queryset.none()
     return queryset.filter(
-        Q(owner=user) | Q(participants__user=user)
+        Q(owner=user)
+        | Q(participants__user=user)
+        | Q(participants__user__business_group__responsible=user)
     ).distinct()

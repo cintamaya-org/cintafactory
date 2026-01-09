@@ -17,7 +17,20 @@
         {% endif %}
       </div>
       <div class="dat-section-status-meta" style="display:flex; flex-direction:column; align-items:flex-start; gap:0.35rem;">
+        {% if container.section.slug == "validation" %}
+          <div style="display:flex; justify-content:flex-end; width:100%;">
+            <a
+              href="#dat-reserve-history-modal"
+              class="btn waves-effect waves-light cinta-btn-primary modal-trigger dat-modal-trigger"
+              data-modal-target="dat-reserve-history-modal"
+            >
+              <i class="material-icons left" aria-hidden="true">history</i>
+              Historique des réserves et validations
+            </a>
+          </div>
+        {% endif %}
         {% if container.has_status %}
+          {% with blocked_value=container.status_values|get_item:"blocked" %}
           {% section_status_icon container.status.value as section_status_icon %}
           <div class="dat-section-status-chip" style="display:inline-flex; align-items:center; gap:0.45rem;">
             <span class="{{ section_status_icon.variant }} dat-section-status-icon" aria-hidden="true" style="color: {{ section_status_icon.color|default:'#546e7a' }};">
@@ -28,26 +41,52 @@
           {% if container.status_locked %}
             <span class="chip green lighten-4 dat-section-locked-chip">Section validée</span>
           {% endif %}
-          {% if container.status.commentaire %}
+          {% if container.status.commentaire and container.status.value != blocked_value %}
             <p class="dat-section-status-note" style="margin:0; color:#546e7a; max-width:420px;">{{ container.status.commentaire }}</p>
           {% endif %}
+          {% endwith %}
         {% endif %}
       </div>
     </div>
-    {% for part in container.parts %}
-      {% include "dat/partials/dat_sub_section_card.html" with part=part container_section=container.section dat=dat %}
-    {% endfor %}
-    {% if container.has_status %}
-      <div class="dat-section-status-actions" style="margin-top:1rem; padding-top:0.75rem; border-top:1px solid rgba(0,0,0,0.05); display:flex; flex-direction:column; gap:0.65rem;">
+	    {% if container.has_status %}
+	      {% with blocked_value=container.status_values|get_item:"blocked" %}
+	        {% if container.status.value == blocked_value and container.status.commentaire %}
+	          <div class="dat-sub-section dat-sub-section-blocked" style="margin-top:1rem;">
+	            <h6 style="margin-top:0; display:flex; align-items:center; gap:0.5rem; color:#b71c1c;">
+	              <i class="material-icons" aria-hidden="true" style="color:#c62828;">block</i>
+	              Section Bloquer
+	            </h6>
+	            <p style="margin:0; white-space:pre-wrap; color:#b71c1c;">{{ container.status.commentaire }}</p>
+	          </div>
+	        {% endif %}
+	      {% endwith %}
+	    {% endif %}
+	    {% if container.has_status and container.status.reserve_message %}
+	      <div class="dat-sub-section dat-sub-section-reserve" style="margin-top:1rem;">
+	        <h6 style="margin-top:0; display:flex; align-items:center; gap:0.5rem; color:#424242;">
+	          <i class="material-icons" aria-hidden="true" style="color:#616161;">bookmark</i>
+	          Réserve
+	        </h6>
+	        <p style="margin:0 0 0.5rem 0; color:#616161;">
+	          Par <strong>{{ container.status.reserve_by_display|default:" — " }}</strong>
+	        </p>
+	        <p style="margin:0; white-space:pre-wrap; color:#424242;">{{ container.status.reserve_message }}</p>
+	      </div>
+	    {% endif %}
+	    {% for part in container.parts %}
+	      {% include "dat/partials/dat_sub_section_card.html" with part=part container=container container_section=container.section dat=dat %}
+	    {% endfor %}
+	    {% if container.has_status %}
+	      <div class="dat-section-status-actions" style="margin-top:1rem; padding-top:0.75rem; border-top:1px solid rgba(0,0,0,0.05); display:flex; flex-direction:column; gap:0.65rem;">
         {% if container.status_locked %}
           <div class="dat-section-status-message dat-section-status-message--locked" style="display:flex; align-items:center; gap:0.5rem; color:#2e7d32;">
             <i class="material-icons" aria-hidden="true">lock</i>
             <span>Cette section est validée et n'est plus modifiable.</span>
           </div>
         {% endif %}
-        {% if container.can_update_status and not container.status_locked %}
-          <div class="dat-section-status-actions__buttons" style="display:flex; flex-wrap:wrap; gap:0.75rem;">
-            {% with validate_value=container.status_values|get_item:"validated" blocked_value=container.status_values|get_item:"blocked" default_value=container.status_values|get_item:"default" %}
+	        {% if container.can_update_status and not container.status_locked %}
+	          <div class="dat-section-status-actions__buttons" style="display:flex; flex-wrap:wrap; gap:0.75rem;">
+	            {% with validate_value=container.status_values|get_item:"validated" blocked_value=container.status_values|get_item:"blocked" default_value=container.status_values|get_item:"default" %}
               {% if container.status.value == blocked_value %}
                 <form method="post" action="{% url 'dat:section_status' dat.pk container.section.slug %}" style="display:inline-flex; gap:0.5rem; align-items:center;">
                   {% csrf_token %}
@@ -67,7 +106,28 @@
                     </button>
                   </form>
                 {% endif %}
-              {% else %}
+	              {% elif container.status.value == validate_value %}
+	                <form method="post" action="{% url 'dat:section_status' dat.pk container.section.slug %}" class="dat-devalidate-form" data-section-title="{{ container.section.title }}" data-has-responsible-validation="{% if container.status.responsable_value == validate_value %}1{% else %}0{% endif %}" style="display:inline-flex; gap:0.5rem; align-items:center;">
+	                  {% csrf_token %}
+	                  <input type="hidden" name="status" value="{{ default_value }}">
+	                  <input type="hidden" name="confirm_responsable_reset" value="0">
+	                  <button type="submit" class="btn-flat waves-effect cinta-btn-secondary">
+	                    <i class="material-icons left" aria-hidden="true">refresh</i>
+	                    Dévalider
+	                  </button>
+	                </form>
+	                {% if container.status.responsable_value != validate_value and container.status_choices|get_item:blocked_value %}
+	                  <form method="post" action="{% url 'dat:section_status' dat.pk container.section.slug %}" class="dat-block-status-form" data-section-title="{{ container.section.title }}" style="display:inline-flex; gap:0.5rem; align-items:center;">
+	                    {% csrf_token %}
+	                    <input type="hidden" name="status" value="{{ blocked_value }}">
+	                    <input type="hidden" name="commentaire" value="">
+	                    <button type="submit" class="btn-flat waves-effect cinta-btn-secondary">
+	                      <i class="material-icons left" aria-hidden="true">block</i>
+	                      Bloquer
+	                    </button>
+	                  </form>
+	                {% endif %}
+	              {% else %}
                 {% if container.status_choices|get_item:validate_value %}
                   <form method="post" action="{% url 'dat:section_status' dat.pk container.section.slug %}" style="display:inline-flex; gap:0.5rem; align-items:center;">
                     {% csrf_token %}
@@ -78,22 +138,31 @@
                     </button>
                   </form>
                 {% endif %}
-                {% if container.status_choices|get_item:blocked_value %}
-                  <form method="post" action="{% url 'dat:section_status' dat.pk container.section.slug %}" style="display:inline-flex; gap:0.5rem; align-items:center;">
-                    {% csrf_token %}
-                    <input type="hidden" name="status" value="{{ blocked_value }}">
-                    <button type="submit" class="btn-flat waves-effect cinta-btn-secondary">
-                      <i class="material-icons left" aria-hidden="true">block</i>
-                      Bloquer
-                    </button>
-                  </form>
-                {% endif %}
+	                {% if container.status_choices|get_item:blocked_value %}
+	                  <form method="post" action="{% url 'dat:section_status' dat.pk container.section.slug %}" class="dat-block-status-form" data-section-title="{{ container.section.title }}" style="display:inline-flex; gap:0.5rem; align-items:center;">
+	                    {% csrf_token %}
+	                    <input type="hidden" name="status" value="{{ blocked_value }}">
+	                    <input type="hidden" name="commentaire" value="">
+	                    <button type="submit" class="btn-flat waves-effect cinta-btn-secondary">
+	                      <i class="material-icons left" aria-hidden="true">block</i>
+	                      Bloquer
+	                    </button>
+	                  </form>
+	                {% endif %}
               {% endif %}
-            {% endwith %}
-          </div>
-        {% endif %}
-      </div>
-    {% endif %}
+	            {% endwith %}
+	          </div>
+	        {% endif %}
+	        {% with validate_value=container.status_values|get_item:"validated" %}
+	          {% if container.status.responsable_value == validate_value %}
+	            <div class="dat-section-status-message" style="display:flex; align-items:center; gap:0.5rem; color:#2e7d32;">
+	              <i class="material-icons" aria-hidden="true">verified</i>
+	              <span>Validation responsable effectuée.</span>
+	            </div>
+	          {% endif %}
+	        {% endwith %}
+	      </div>
+	    {% endif %}
     {% if container.section.slug == "validation" %}
       <div class="dat-validation-actions" style="margin-top:1.25rem; padding-top:1rem; border-top:1px solid rgba(0,0,0,0.05); display:flex; flex-direction:column; gap:0.65rem;">
         {% if dat.status == "en_attente_de_revue" %}

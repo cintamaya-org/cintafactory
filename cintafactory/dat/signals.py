@@ -88,16 +88,12 @@ def _create_history_entry(
     actor,
     actor_id: Optional[int],
     actor_display: str,
-    status_before: Optional[str] = None,
-    status_after: Optional[str] = None,
     details: Optional[Dict[str, Any]] = None,
 ) -> None:
     payload = details or None
     DATHistory.objects.create(
         dat=instance,
         action=action,
-        status_before=status_before,
-        status_after=status_after,
         performed_by=actor if actor is not None else None,
         performed_by_id=None if actor is not None else actor_id,
         performed_by_display=actor_display or "",
@@ -148,7 +144,6 @@ def log_dat_save(sender, instance: DAT, created: bool, **kwargs) -> None:
             actor=actor,
             actor_id=actor_id,
             actor_display=actor_display,
-            status_after=snapshot["status"],
         )
         if hasattr(instance, "_original_dat_snapshot"):
             delattr(instance, "_original_dat_snapshot")
@@ -205,8 +200,6 @@ def log_dat_save(sender, instance: DAT, created: bool, **kwargs) -> None:
             actor=actor,
             actor_id=actor_id,
             actor_display=actor_display,
-            status_before=original.get("status"),
-            status_after=snapshot["status"],
             details=status_change,
         )
 
@@ -217,8 +210,6 @@ def log_dat_save(sender, instance: DAT, created: bool, **kwargs) -> None:
             actor=actor,
             actor_id=actor_id,
             actor_display=actor_display,
-            status_before=original.get("status"),
-            status_after=snapshot["status"],
             details=owner_change,
         )
 
@@ -229,8 +220,6 @@ def log_dat_save(sender, instance: DAT, created: bool, **kwargs) -> None:
             actor=actor,
             actor_id=actor_id,
             actor_display=actor_display,
-            status_before=original.get("status"),
-            status_after=snapshot["status"],
             details={"changes": other_changes},
         )
 

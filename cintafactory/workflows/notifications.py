@@ -4,16 +4,16 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Iterable, List, Sequence, Set
 
-from django.db.models import Q, QuerySet
+from django.db.models import QuerySet
 from django.http import HttpRequest
 from django.utils import timezone
 
-from dat.models import DATHistory
-from .models import NotificationMessage, NotificationType, UserNotification
+from dat.models import DAT, DATHistory
+from dat.permissions import filter_dat_queryset_for_user
+from .models import HistoryNotificationSeen, NotificationMessage, NotificationType, UserNotification
 
 
 DEFAULT_NOTIFICATION_LIMIT = 99
-SESSION_SEEN_KEY = "workflow_seen_notification_ids"
 
 
 @dataclass
@@ -39,56 +39,59 @@ class NotificationEntry:
         return None
 
 
-def _get_session(request: HttpRequest | None):
-    if request is None:
-        return None
-    return getattr(request, "session", None)
-
-
-def get_seen_notification_ids(request: HttpRequest | None) -> Set[int]:
-    session = _get_session(request)
-    if not session:
-        return set()
-    raw_ids = session.get(SESSION_SEEN_KEY, [])
-    seen_ids: Set[int] = set()
-    for value in raw_ids:
+def _coerce_history_ids(values: Iterable[int]) -> List[int]:
+    seen_ids = set()
+    coerced: List[int] = []
+    for value in values:
         try:
-            seen_ids.add(int(value))
+            history_id = int(value)
         except (TypeError, ValueError):
             continue
-    return seen_ids
+        if history_id in seen_ids:
+            continue
+        seen_ids.add(history_id)
+        coerced.append(history_id)
+    return coerced
+
+
+def get_seen_notification_ids(
+    request: HttpRequest | None,
+    *,
+    history_ids: Iterable[int] | None = None,
+) -> Set[int]:
+    user = getattr(request, "user", None)
+    if not getattr(user, "is_authenticated", False):
+        return set()
+    queryset = HistoryNotificationSeen.objects.filter(user=user)
+    if history_ids is not None:
+        resolved_ids = _coerce_history_ids(history_ids)
+        if not resolved_ids:
+            return set()
+        queryset = queryset.filter(history_id__in=resolved_ids)
+    return set(queryset.values_list("history_id", flat=True))
 
 
 def mark_notifications_as_seen(request: HttpRequest | None, notification_ids: Iterable[int]) -> None:
-    session = _get_session(request)
-    if not session:
+    user = getattr(request, "user", None)
+    if not getattr(user, "is_authenticated", False):
         return
-    seen_ids = get_seen_notification_ids(request)
-    updated = False
-    for notification_id in notification_ids:
-        try:
-            notification_id = int(notification_id)
-        except (TypeError, ValueError):
-            continue
-        if notification_id in seen_ids:
-            continue
-        seen_ids.add(notification_id)
-        updated = True
-    if updated:
-        session[SESSION_SEEN_KEY] = list(seen_ids)
-        session.modified = True
+    resolved_ids = _coerce_history_ids(notification_ids)
+    if not resolved_ids:
+        return
+    existing_ids = set(DATHistory.objects.filter(pk__in=resolved_ids).values_list("pk", flat=True))
+    if not existing_ids:
+        return
+    HistoryNotificationSeen.objects.bulk_create(
+        [HistoryNotificationSeen(user=user, history_id=history_id) for history_id in existing_ids],
+        ignore_conflicts=True,
+    )
 
 
 def notification_queryset_for_user(user) -> QuerySet[DATHistory]:
     if not getattr(user, "is_authenticated", False):
         return DATHistory.objects.none()
-    return (
-        DATHistory.objects.filter(
-            Q(dat__owner=user) | Q(dat__participants__user=user),
-        )
-        .order_by("-performed_at", "-id")
-        .distinct()
-    )
+    dat_queryset = filter_dat_queryset_for_user(DAT.objects.all(), user)
+    return DATHistory.objects.filter(dat__in=dat_queryset).order_by("-performed_at", "-id")
 
 
 def user_notification_queryset(user) -> QuerySet[UserNotification]:
@@ -133,18 +136,27 @@ def fetch_notifications_for_user(
     return combined
 
 
-def get_unread_notification_count(request: HttpRequest | None, *, limit: int = DEFAULT_NOTIFICATION_LIMIT) -> int:
+def get_unread_notification_count(request: HttpRequest | None, *, limit: int | None = None) -> int:
     user = getattr(request, "user", None)
-    queryset = notification_queryset_for_user(user)
-    latest_ids = list(queryset.values_list("id", flat=True)[:limit])
-    if not latest_ids:
-        history_unread = 0
-    else:
-        seen_ids = get_seen_notification_ids(request)
-        history_unread = sum(1 for notification_id in latest_ids if notification_id not in seen_ids)
-    user_unread = 0
-    if getattr(user, "is_authenticated", False):
-        user_unread = user_notification_queryset(user).filter(viewed_at__isnull=True).count()
+    if not getattr(user, "is_authenticated", False):
+        return 0
+    if limit is not None:
+        entries = fetch_notifications_for_user(user, limit=limit)
+        history_ids = [entry.history.id for entry in entries if entry.history is not None]
+        seen_ids = get_seen_notification_ids(request, history_ids=history_ids)
+        unread_count = 0
+        for entry in entries:
+            if entry.history is not None:
+                if entry.history.id not in seen_ids:
+                    unread_count += 1
+            elif entry.user_notification is not None and not entry.user_notification.is_viewed:
+                unread_count += 1
+        return unread_count
+
+    history_queryset = notification_queryset_for_user(user).order_by()
+    seen_history_ids = HistoryNotificationSeen.objects.filter(user=user).values("history_id")
+    history_unread = history_queryset.exclude(pk__in=seen_history_ids).count()
+    user_unread = UserNotification.objects.filter(user=user, viewed_at__isnull=True).count()
     return history_unread + user_unread
 
 
@@ -179,7 +191,7 @@ def create_user_notification(
         title=title,
         level=level or UserNotification.LEVEL_INFO,
     )
-    message_content = message or None
+    message_content = message if message is not None else ""
     notification_message, _ = NotificationMessage.objects.get_or_create(
         content=message_content,
     )
@@ -205,4 +217,30 @@ def mark_user_notifications_as_viewed(user, notification_ids: Sequence[int]) -> 
     (
         UserNotification.objects.filter(user=user, viewed_at__isnull=True, pk__in=notification_ids)
         .update(viewed_at=now)
+    )
+
+
+def mark_all_notifications_as_seen(user) -> None:
+    if not getattr(user, "is_authenticated", False):
+        return
+    history_ids = notification_queryset_for_user(user).values_list("pk", flat=True)
+    batch_size = 1000
+    to_create = []
+    for history_id in history_ids.iterator():
+        to_create.append(HistoryNotificationSeen(user=user, history_id=history_id))
+        if len(to_create) >= batch_size:
+            HistoryNotificationSeen.objects.bulk_create(
+                to_create,
+                ignore_conflicts=True,
+                batch_size=batch_size,
+            )
+            to_create = []
+    if to_create:
+        HistoryNotificationSeen.objects.bulk_create(
+            to_create,
+            ignore_conflicts=True,
+            batch_size=batch_size,
+        )
+    UserNotification.objects.filter(user=user, viewed_at__isnull=True).update(
+        viewed_at=timezone.now(),
     )

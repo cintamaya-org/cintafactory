@@ -35,6 +35,9 @@
     gap: 0.5rem;
     align-items: center;
   }
+  .wf-notifications__summary form {
+    margin: 0;
+  }
   .wf-notifications__list {
     list-style: none;
     margin: 0;
@@ -139,6 +142,15 @@
           <span class="chip grey lighten-3">
             {{ notifications|length }} éléments
           </span>
+          {% if notifications %}
+            <form method="post" action="{% url 'workflows:notifications' %}">
+              {% csrf_token %}
+              <input type="hidden" name="mark_all" value="1">
+              <button type="submit" class="btn-flat" style="padding-left:0;">
+                Tout marquer comme lu
+              </button>
+            </form>
+          {% endif %}
         </div>
       </div>
 
@@ -193,12 +205,12 @@
                   {% endif %}
                 </div>
                 <div class="wf-notification__status-chips">
-                  {% if notification.source == "history" %}
-                    {% if notification.history.status_before %}
-                      <span class="chip grey lighten-3" title="Statut précédent">{{ notification.history.get_status_before_display }}</span>
+                  {% if notification.source == "history" and notification.action == history_actions.STATUS_CHANGED %}
+                    {% if notification.status_from %}
+                      <span class="chip grey lighten-3" title="Statut précédent">{{ notification.status_from }}</span>
                     {% endif %}
-                    {% if notification.history.status_after and notification.history.status_after != notification.history.status_before %}
-                      <span class="chip blue lighten-5" title="Statut actuel">{{ notification.history.get_status_after_display }}</span>
+                    {% if notification.status_to and notification.status_to != notification.status_from %}
+                      <span class="chip blue lighten-5" title="Statut actuel">{{ notification.status_to }}</span>
                     {% endif %}
                   {% else %}
                     <span class="chip grey lighten-3">{{ notification.actor_name }}</span>

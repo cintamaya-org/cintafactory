@@ -368,7 +368,21 @@
             .json()
             .catch(() => ({}))
             .then((payload) => {
-              const message = payload && payload.error ? payload.error : `Import impossible (HTTP ${response.status}).`;
+              const detailMessage = payload && payload.message ? payload.message : null;
+              const code = payload && payload.error ? payload.error : null;
+              const details = payload && payload.details ? payload.details : null;
+              const rawTag = details && details.raw_tag ? details.raw_tag : null;
+              const fallback = code ? `Import impossible: ${code}.` : `Import impossible (HTTP ${response.status}).`;
+              const message = detailMessage || fallback;
+              if (window.console && typeof console.log === "function") {
+                console.log("[drawio import] error", {
+                  status: response.status,
+                  error: code,
+                  message: detailMessage,
+                  rawTag,
+                  payload,
+                });
+              }
               throw new Error(message);
             });
         }
@@ -461,53 +475,46 @@
 
 // Inline Draw.io preview toggler (Afficher/Cacher)
 (function () {
-  const BUTTON_SELECTOR = ".dat-subsection-show-all-btn";
-  const TARGET_SELECTOR = "[data-drawio-table=\"true\"]";
+  const TOGGLE_SELECTOR = ".dat-drawio-toggle-input";
+  const TARGET_SELECTOR = '[data-drawio-table="true"]';
   const PREVIEW_ROW_CLASS = "dat-drawio-preview-row";
   const STYLE_ID = "dat-drawio-preview-style";
-  const previewCache = new Map();
   const LOG_PREFIX = "[DAT drawio inline]";
+  const previewCache = new Map();
   const editLocks = new Set();
 
-  function logDebug(message, payload) {
-    if (!window.console || typeof console.info !== "function") {
+  function logWith(level, message, payload) {
+    if (!window.console) {
+      return;
+    }
+    const fn = console[level];
+    if (typeof fn !== "function") {
       return;
     }
     if (payload !== undefined) {
-      console.info(`${LOG_PREFIX} ${message}`, payload);
+      fn(`${LOG_PREFIX} ${message}`, payload);
       return;
     }
-    console.info(`${LOG_PREFIX} ${message}`);
+    fn(`${LOG_PREFIX} ${message}`);
+  }
+
+  function logDebug(message, payload) {
+    logWith("info", message, payload);
   }
 
   function logWarn(message, payload) {
-    if (!window.console || typeof console.warn !== "function") {
-      return;
-    }
-    if (payload !== undefined) {
-      console.warn(`${LOG_PREFIX} ${message}`, payload);
-      return;
-    }
-    console.warn(`${LOG_PREFIX} ${message}`);
-  }
-
-  function logError(message, payload) {
-    if (!window.console || typeof console.error !== "function") {
-      return;
-    }
-    if (payload !== undefined) {
-      console.error(`${LOG_PREFIX} ${message}`, payload);
-      return;
-    }
-    console.error(`${LOG_PREFIX} ${message}`);
+    logWith("warn", message, payload);
   }
 
   function getSection(element) {
     return element ? element.closest(".dat-sub-section") : null;
   }
 
-  function getSectionSlug(element) {
-    const section = getSection(element);
+  function getSectionSlug(elementOrSection) {
+    const section =
+      elementOrSection && elementOrSection.classList && elementOrSection.classList.contains("dat-sub-section")
+        ? elementOrSection
+        : getSection(elementOrSection);
     if (!section || !section.dataset) {
       return null;
     }
@@ -521,6 +528,13 @@
     }
     const slug = getSectionSlug(section);
     return section.classList.contains("dat-sub-section-editing") || (slug && editLocks.has(slug));
+  }
+
+  function escapeSelector(value) {
+    if (window.CSS && typeof CSS.escape === "function") {
+      return CSS.escape(value);
+    }
+    return String(value).replace(/(["'#.:\[\],=<>+~*^$|!?(){}])/g, "\\$1");
   }
 
   function ensureStyle() {
@@ -569,26 +583,44 @@
     document.head.appendChild(style);
   }
 
-  function findTarget(button) {
-    if (!button) {
+  function resolveTarget(toggle) {
+    if (!toggle) {
       return null;
     }
-    const targetId = button.dataset.drawioTarget;
+    const section = getSection(toggle);
+    if (!section) {
+      logWarn("Switch miniature sans section parent", {
+        dataset: { ...toggle.dataset },
+      });
+      return null;
+    }
+    const targetId = toggle.dataset.drawioTarget;
+    let target = null;
     if (targetId) {
-      const byId = document.getElementById(targetId);
-      if (byId) {
-        return byId;
+      const escaped = escapeSelector(targetId);
+      target = section.querySelector(`#${escaped}`);
+      if (!target) {
+        const byId = document.getElementById(targetId);
+        if (byId && section.contains(byId)) {
+          target = byId;
+        }
+      }
+      if (!target) {
+        logWarn("Cible draw.io id introuvable dans la section", {
+          targetId,
+          sectionId: section.id || null,
+        });
       }
     }
-    const container = button.closest(".dat-sub-section");
-    if (container) {
-      return container.querySelector(TARGET_SELECTOR);
+    if (!target) {
+      target = section.querySelector(TARGET_SELECTOR);
     }
-    logWarn("Aucune cible draw.io trouvée pour le bouton", {
-      buttonText: button.textContent,
-      dataset: { ...button.dataset },
-    });
-    return null;
+    if (!target) {
+      logWarn("Aucune cible draw.io trouvée pour le switch", {
+        dataset: { ...toggle.dataset },
+      });
+    }
+    return target;
   }
 
   function getDiagramId(row) {
@@ -604,15 +636,35 @@
     return trimmed ? trimmed : null;
   }
 
-  function setButtonState(button, expanded) {
-    if (!button) {
+  function setToggleState(toggle, expanded) {
+    if (!toggle) {
       return;
     }
-    const showLabel = button.dataset.showLabel || "Afficher Miniature";
-    const hideLabel = button.dataset.hideLabel || "Cacher Miniature";
-    button.dataset.drawioExpanded = expanded ? "1" : "0";
-    button.setAttribute("aria-expanded", expanded ? "true" : "false");
-    button.textContent = expanded ? hideLabel : showLabel;
+    toggle.dataset.drawioExpanded = expanded ? "1" : "0";
+    toggle.checked = expanded;
+    toggle.setAttribute("aria-checked", expanded ? "true" : "false");
+  }
+
+  function getPreviewState(target) {
+    if (!target) {
+      return { visible: false, loaded: false, domCount: 0 };
+    }
+    const domCount = target.querySelectorAll(`.${PREVIEW_ROW_CLASS}`).length;
+    const visible = target.dataset.drawioPreviewVisible === "1" || domCount > 0;
+    const loaded = target.dataset.drawioPreviewLoaded === "1" || domCount > 0;
+    return { visible, loaded, domCount };
+  }
+
+  function setPreviewState(target, state) {
+    if (!target || !state) {
+      return;
+    }
+    if (state.visible !== undefined) {
+      target.dataset.drawioPreviewVisible = state.visible ? "1" : "0";
+    }
+    if (state.loaded !== undefined) {
+      target.dataset.drawioPreviewLoaded = state.loaded ? "1" : "0";
+    }
   }
 
   function renderPreview(previewRow, diagramId, payload) {
@@ -627,11 +679,11 @@
     wrapper.className = "dat-drawio-inline-preview";
     const title = document.createElement("p");
     title.className = "dat-drawio-inline-preview__title";
-    title.textContent = payload?.title || `Diagramme #${diagramId}`;
+    title.textContent = payload && payload.title ? payload.title : `Diagramme #${diagramId}`;
     wrapper.appendChild(title);
     const body = document.createElement("div");
     body.className = "dat-drawio-inline-preview__body";
-    if (payload?.error) {
+    if (payload && payload.error) {
       logWarn("Erreur lors du rendu de la miniature", {
         diagramId,
         error: payload.error,
@@ -640,7 +692,7 @@
       error.className = "dat-drawio-inline-preview__error";
       error.textContent = "Impossible de charger l'aperçu du diagramme.";
       body.appendChild(error);
-    } else if (payload?.thumbnail) {
+    } else if (payload && payload.thumbnail) {
       logDebug("Miniature récupérée", {
         diagramId,
         thumbnail: payload.thumbnail,
@@ -680,6 +732,25 @@
       row.parentNode.insertBefore(previewRow, row);
     }
     return previewRow;
+  }
+
+  function collectRows(target) {
+    let rows = [];
+    const nestedBodies = target.querySelectorAll("td .responsive-table table tbody");
+    if (nestedBodies.length) {
+      nestedBodies.forEach((tbody) => {
+        rows = rows.concat(
+          Array.from(tbody.querySelectorAll("tr")).filter(
+            (row) => !row.classList.contains(PREVIEW_ROW_CLASS) && getDiagramId(row)
+          )
+        );
+      });
+    } else {
+      rows = Array.from(target.querySelectorAll("table tbody tr")).filter(
+        (row) => !row.classList.contains(PREVIEW_ROW_CLASS) && getDiagramId(row)
+      );
+    }
+    return rows;
   }
 
   function fetchPreview(diagramId) {
@@ -722,35 +793,21 @@
     return promise;
   }
 
-  function showPreviews(wrapper, button) {
-    if (!wrapper) {
+  function showPreviews(target, toggle) {
+    if (!target) {
       return;
     }
     ensureStyle();
-    let rows = [];
-    const nestedBodies = wrapper.querySelectorAll("td .responsive-table table tbody");
-    if (nestedBodies.length) {
-      nestedBodies.forEach((tbody) => {
-        rows = rows.concat(
-          Array.from(tbody.querySelectorAll("tr")).filter(
-            (row) => !row.classList.contains(PREVIEW_ROW_CLASS) && getDiagramId(row)
-          )
-        );
-      });
-    } else {
-      rows = Array.from(wrapper.querySelectorAll("table tbody tr")).filter(
-        (row) => !row.classList.contains(PREVIEW_ROW_CLASS) && getDiagramId(row)
-      );
-    }
+    const rows = collectRows(target);
     const diagramIds = rows.map((row) => getDiagramId(row)).filter(Boolean);
     logDebug("Préparation de l'affichage des miniatures", {
-      targetId: wrapper.id || null,
+      targetId: target.id || null,
       rows: rows.length,
       diagramIds,
     });
     if (!rows.length || !diagramIds.length) {
       logWarn("Aucune ligne éligible pour affichage des miniatures", {
-        targetId: wrapper.id || null,
+        targetId: target.id || null,
       });
     }
     const tasks = [];
@@ -758,7 +815,7 @@
       const diagramId = getDiagramId(row);
       if (!diagramId) {
         logWarn("Ligne ignorée car aucun diagramme détecté", {
-          targetId: wrapper.id || null,
+          targetId: target.id || null,
         });
         return;
       }
@@ -771,91 +828,121 @@
       );
     });
     logDebug("Affichage des miniatures demandé", {
-      targetId: wrapper.id || null,
+      targetId: target.id || null,
       rows: rows.length,
-      buttonState: button ? button.dataset.drawioExpanded : null,
     });
-    setButtonState(button, true);
-    return Promise.allSettled(tasks).then(() => setButtonState(button, true));
+    setPreviewState(target, { visible: true, loaded: true });
+    setToggleState(toggle, true);
+    return Promise.allSettled(tasks).then(() => {
+      setPreviewState(target, { visible: true, loaded: true });
+      setToggleState(toggle, true);
+    });
   }
 
-  function hidePreviews(wrapper, button) {
-    if (wrapper) {
-      const toRemove = wrapper.querySelectorAll(`.${PREVIEW_ROW_CLASS}`);
-      const count = toRemove.length;
-      toRemove.forEach((row) => row.remove());
-      logDebug("Masquage des miniatures demandé", {
-        targetId: wrapper.id || null,
-        removedRows: count,
-        buttonState: button ? button.dataset.drawioExpanded : null,
-      });
-    } else {
-      logWarn("Masquage des miniatures sans wrapper cible");
-    }
-    setButtonState(button, false);
-  }
-
-  function initButton(button) {
-    if (!button || button.dataset.drawioToggleBound === "1") {
-      return;
-    }
-    const section = getSection(button);
-    if (isSectionLocked(section)) {
-      logDebug("Bouton ignoré car section en édition", {
-        slug: getSectionSlug(button),
-        dataset: { ...button.dataset },
-      });
-      return;
-    }
-    const target = findTarget(button);
+  function hidePreviews(target, toggle) {
     if (!target) {
-      logWarn("Impossible d'initialiser le bouton draw.io sans cible", {
-        buttonText: button.textContent,
-        dataset: { ...button.dataset },
+      logWarn("Masquage des miniatures sans wrapper cible");
+      setToggleState(toggle, false);
+      return;
+    }
+    const toRemove = target.querySelectorAll(`.${PREVIEW_ROW_CLASS}`);
+    const count = toRemove.length;
+    toRemove.forEach((row) => row.remove());
+    logDebug("Masquage des miniatures demandé", {
+      targetId: target.id || null,
+      removedRows: count,
+    });
+    setPreviewState(target, { visible: false, loaded: false });
+    setToggleState(toggle, false);
+  }
+
+  function initToggle(toggle) {
+    if (!toggle) {
+      return;
+    }
+    const section = getSection(toggle);
+    if (isSectionLocked(section)) {
+      logDebug("Switch ignoré car section en édition", {
+        slug: getSectionSlug(section),
+        dataset: { ...toggle.dataset },
       });
       return;
     }
-    button.dataset.drawioToggleBound = "1";
-    hidePreviews(target, button);
+    const target = resolveTarget(toggle);
+    if (!target) {
+      logWarn("Impossible d'initialiser le switch draw.io sans cible", {
+        dataset: { ...toggle.dataset },
+      });
+      return;
+    }
+    const state = getPreviewState(target);
+    if (state.domCount > 0 && !state.visible) {
+      setPreviewState(target, { visible: true, loaded: true });
+    } else if (state.domCount === 0 && (target.dataset.drawioPreviewVisible || target.dataset.drawioPreviewLoaded)) {
+      setPreviewState(target, { visible: false, loaded: false });
+    }
+    setToggleState(toggle, state.visible);
   }
 
   function initAll() {
-    document.querySelectorAll(BUTTON_SELECTOR).forEach(initButton);
+    document.querySelectorAll(TOGGLE_SELECTOR).forEach(initToggle);
   }
 
-  document.addEventListener("click", (event) => {
-    const button = event.target.closest(BUTTON_SELECTOR);
-    if (!button) {
+  document.addEventListener("change", (event) => {
+    const toggle = event.target.closest(TOGGLE_SELECTOR);
+    if (!toggle) {
       return;
     }
-    const target = findTarget(button);
+    logDebug("--------------------------");
+    logDebug("Changement de switch miniature", {
+      checked: toggle.checked,
+      targetDataset: { ...toggle.dataset },
+    });
+    const target = resolveTarget(toggle);
     if (!target) {
-      logWarn("Clic sur le bouton draw.io sans cible associée", {
-        buttonText: button.textContent,
-        dataset: { ...button.dataset },
+      logWarn("Interaction sur le switch draw.io sans cible associée", {
+        dataset: { ...toggle.dataset },
       });
       return;
     }
-    const section = getSection(button);
+    logDebug("Cible trouvée pour la miniature", {
+      targetId: target.id || null,
+      targetTag: target.tagName || null,
+    });
+    const section = getSection(toggle);
     if (isSectionLocked(section)) {
       logWarn("Clic ignoré car la section est en édition", {
-        slug: getSectionSlug(button),
+        slug: getSectionSlug(section),
         targetId: target.id || null,
       });
       return;
     }
-    event.preventDefault();
-    const expanded = button.dataset.drawioExpanded === "1";
-    logDebug("Clic sur le bouton de miniature", {
-      expanded,
-      targetId: target.id || null,
-      dataset: { ...button.dataset },
+    logDebug("Section ok, action autorisée", {
+      slug: getSectionSlug(section),
+      sectionId: section ? section.id || null : null,
     });
-    if (expanded) {
-      hidePreviews(target, button);
+    const state = getPreviewState(target);
+    logDebug("Etat miniatures avant action", {
+      visible: state.visible,
+      loaded: state.loaded,
+      domRows: state.domCount,
+      targetId: target.id || null,
+    });
+    if (toggle.checked) {
+      logDebug("Action choisie: afficher les miniatures", {
+        targetId: target.id || null,
+      });
+      showPreviews(target, toggle);
     } else {
-      showPreviews(target, button);
+      logDebug("Action choisie: masquer les miniatures", {
+        targetId: target.id || null,
+      });
+      hidePreviews(target, toggle);
     }
+    logDebug("Action terminée (appel lancée)", {
+      expandedBefore: state.visible,
+      targetId: target.id || null,
+    });
   });
 
   if (document.readyState === "loading") {
@@ -870,19 +957,19 @@
       return;
     }
     editLocks.add(slug);
-    const section = document.querySelector(`.dat-sub-section[data-sub-section-slug="${slug}"]`);
+    const section = document.querySelector(`.dat-sub-section[data-sub-section-slug=\"${slug}\"]`);
     if (!section) {
       return;
     }
-    const button = section.querySelector(BUTTON_SELECTOR);
+    const toggle = section.querySelector(TOGGLE_SELECTOR);
     const target = section.querySelector(TARGET_SELECTOR);
-    if (button) {
-      button.dataset.drawioLocked = "1";
-      button.classList.add("disabled");
-      button.setAttribute("aria-disabled", "true");
+    if (toggle) {
+      toggle.dataset.drawioLocked = "1";
+      toggle.disabled = true;
+      toggle.setAttribute("aria-disabled", "true");
     }
     if (target) {
-      hidePreviews(target, button);
+      hidePreviews(target, toggle);
     }
   }
 
@@ -891,17 +978,16 @@
       return;
     }
     editLocks.delete(slug);
-    const section = document.querySelector(`.dat-sub-section[data-sub-section-slug="${slug}"]`);
+    const section = document.querySelector(`.dat-sub-section[data-sub-section-slug=\"${slug}\"]`);
     if (!section) {
       return;
     }
-    const button = section.querySelector(BUTTON_SELECTOR);
-    if (button) {
-      button.classList.remove("disabled");
-      button.removeAttribute("aria-disabled");
-      button.dataset.drawioLocked = "0";
-      button.dataset.drawioToggleBound = "";
-      initButton(button);
+    const toggle = section.querySelector(TOGGLE_SELECTOR);
+    if (toggle) {
+      toggle.disabled = false;
+      toggle.removeAttribute("aria-disabled");
+      toggle.dataset.drawioLocked = "0";
+      initToggle(toggle);
     }
   }
 

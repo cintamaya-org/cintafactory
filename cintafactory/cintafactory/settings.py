@@ -114,6 +114,9 @@ WHITENOISE_USE_FINDERS = True
 
 ROOT_URLCONF = 'cintafactory.urls'
 
+# Allow same-origin iframes (draw.io embed) while still blocking third-party framing.
+X_FRAME_OPTIONS = "SAMEORIGIN"
+
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',

@@ -1911,6 +1911,32 @@
                   ]
                 },
                 {
+                  "key": "statut_responsable",
+                  "label": "Statut responsable",
+                  "type": "select",
+                  "choices": [
+                    {
+                      "value": "en_cours",
+                      "label": "En cours"
+                    },
+                    {
+                      "value": "bloque",
+                      "label": "Bloqué"
+                    },
+                    {
+                      "value": "valide",
+                      "label": "Validé"
+                    }
+                  ]
+                },
+                {
+                  "key": "reserve_message",
+                  "label": "Réserve",
+                  "type": "textarea",
+                  "rows": 2,
+                  "minHeight": 120
+                },
+                {
                   "key": "commentaire",
                   "label": "Commentaire",
                   "type": "textarea",

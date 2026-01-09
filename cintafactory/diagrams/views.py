@@ -201,9 +201,13 @@ def _resolve_public_drawio_url(request=None) -> str:
     return public_url
 
 
-def _build_embed_url(library_urls: list[str], public_url: str | None = None) -> str:
+def _build_embed_url(library_urls: list[str], public_url: str | None = None, request=None) -> str:
     base_url = public_url or settings.DRAWIO_PUBLIC_URL
     base_parts = urlsplit(base_url)
+    if not base_parts.netloc and request is not None:
+        # Ensure we generate an absolute URL when the proxy path is relative.
+        base_url = request.build_absolute_uri(base_url)
+        base_parts = urlsplit(base_url)
     base_path = base_parts.path or "/"
     base_query = base_parts.query
     libs = settings.DRAWIO_LIBS or DRAWIO_DEFAULT_LIBS
@@ -345,7 +349,7 @@ class DiagramEditView(ModuleContextMixin, LoginRequiredMixin, TemplateView):
         context["diagram"] = diagram
         library_urls = _collect_library_urls(self.request)
         public_url = _resolve_public_drawio_url(self.request)
-        context["drawio_embed_url"] = _build_embed_url(library_urls, public_url)
+        context["drawio_embed_url"] = _build_embed_url(library_urls, public_url, self.request)
         context["drawio_origin"] = _origin_from(public_url)
         return context
 
@@ -384,7 +388,6 @@ def diagram_save_thumbnail(request, pk: int):
     return JsonResponse({"ok": True, "thumbnail_url": diagram.thumbnail.url})
 
 
-@login_required
 @require_http_methods(["GET", "HEAD"])
 @xframe_options_exempt
 def drawio_proxy(request, path: str = ""):
@@ -426,7 +429,7 @@ def diagram_embed_context(request, pk: int):
     diagram = get_object_or_404(Diagram, pk=pk, owner=request.user)
     library_urls = _collect_library_urls(request)
     public_url = _resolve_public_drawio_url(request)
-    embed_url = _build_embed_url(library_urls, public_url)
+    embed_url = _build_embed_url(library_urls, public_url, request)
     payload = {
         "ok": True,
         "diagram": {"id": diagram.pk, "title": diagram.title},
@@ -513,14 +516,34 @@ def diagram_import_xml(request, pk: int):
         normalized_xml = validate_drawio_xml(xml_payload)
     except ValidationError as exc:
         message = exc.messages[0] if getattr(exc, "messages", None) else str(exc)
-        logger.warning(
-            "diagram_import_xml: validation error diagram_id=%s user_id=%s filename=%s error=%s",
-            log_context["diagram_id"],
-            log_context["user_id"],
-            log_context.get("file_name"),
-            message,
-        )
-        return JsonResponse({"ok": False, "error": "invalid_diagram", "message": message}, status=400)
+        params = getattr(exc, "params", None) or {}
+        details = {}
+        if isinstance(params, dict):
+            raw_tag = params.get("raw_tag")
+            tag = params.get("tag")
+            if raw_tag or tag:
+                details = {"tag": tag, "raw_tag": raw_tag}
+        if details:
+            logger.warning(
+                "diagram_import_xml: validation error diagram_id=%s user_id=%s filename=%s error=%s details=%s",
+                log_context["diagram_id"],
+                log_context["user_id"],
+                log_context.get("file_name"),
+                message,
+                details,
+            )
+        else:
+            logger.warning(
+                "diagram_import_xml: validation error diagram_id=%s user_id=%s filename=%s error=%s",
+                log_context["diagram_id"],
+                log_context["user_id"],
+                log_context.get("file_name"),
+                message,
+            )
+        payload = {"ok": False, "error": "invalid_diagram", "message": message}
+        if details:
+            payload["details"] = details
+        return JsonResponse(payload, status=400)
 
     diagram.xml = normalized_xml
     diagram.updated_at = timezone.now()

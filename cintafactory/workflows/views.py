@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 from django.utils.functional import cached_property
 from django.views.generic import TemplateView
@@ -15,6 +16,7 @@ from .notifications import (
     DEFAULT_NOTIFICATION_LIMIT,
     fetch_notifications_for_user,
     get_seen_notification_ids,
+    mark_all_notifications_as_seen,
     mark_notifications_as_seen,
     mark_user_notifications_as_viewed,
 )
@@ -215,15 +217,21 @@ class WorkflowNotificationsView(LoginRequiredMixin, TemplateView):
     template_name = "workflows/notifications.html"
     notification_limit = DEFAULT_NOTIFICATION_LIMIT
 
+    def post(self, request, *args, **kwargs):
+        if request.POST.get("mark_all") == "1":
+            mark_all_notifications_as_seen(request.user)
+            messages.success(request, "Toutes les notifications ont ete marquees comme lues.")
+        return redirect("workflows:notifications")
+
     def get_notifications(self):
         entries = fetch_notifications_for_user(
             self.request.user,
             limit=self.notification_limit,
             with_related=True,
         )
-        seen_ids = get_seen_notification_ids(self.request)
+        history_ids = [entry.history.id for entry in entries if entry.history is not None]
+        seen_ids = get_seen_notification_ids(self.request, history_ids=history_ids)
         notifications = []
-        history_ids = []
         user_notification_ids = []
         for entry in entries:
             dat = entry.dat
@@ -236,7 +244,6 @@ class WorkflowNotificationsView(LoginRequiredMixin, TemplateView):
                 "dat_application_name": getattr(application, "name", "") if application else "",
             }
             if entry.history is not None:
-                history_ids.append(entry.history.id)
                 payload.update(
                     {
                         "history": entry.history,
@@ -245,8 +252,8 @@ class WorkflowNotificationsView(LoginRequiredMixin, TemplateView):
                         "created_at": entry.history.performed_at,
                         "details": entry.history.details or {},
                         "action": entry.history.action,
-                        "status_before": entry.history.status_before,
-                        "status_after": entry.history.status_after,
+                        "status_from": entry.history.status_change_from,
+                        "status_to": entry.history.status_change_to,
                         "is_unread": entry.history.id not in seen_ids,
                     }
                 )
@@ -267,15 +274,28 @@ class WorkflowNotificationsView(LoginRequiredMixin, TemplateView):
                     }
                 )
             notifications.append(payload)
-        mark_notifications_as_seen(
-            self.request,
-            history_ids,
-        )
-        mark_user_notifications_as_viewed(
-            self.request.user,
-            user_notification_ids,
-        )
+        self._notification_history_ids = history_ids
+        self._notification_user_ids = user_notification_ids
         return notifications
+
+    def _mark_notifications_as_seen(self) -> None:
+        history_ids = getattr(self, "_notification_history_ids", [])
+        user_notification_ids = getattr(self, "_notification_user_ids", [])
+        if history_ids:
+            mark_notifications_as_seen(
+                self.request,
+                history_ids,
+            )
+        if user_notification_ids:
+            mark_user_notifications_as_viewed(
+                self.request.user,
+                user_notification_ids,
+            )
+
+    def render_to_response(self, context, **response_kwargs):
+        response = super().render_to_response(context, **response_kwargs)
+        response.add_post_render_callback(lambda _response: self._mark_notifications_as_seen())
+        return response
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

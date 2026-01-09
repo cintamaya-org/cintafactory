@@ -166,6 +166,7 @@ class DATHistoryAction(models.TextChoices):
     STATUS_CHANGED = "status_changed", "Changement de statut"
     OWNER_CHANGED = "owner_changed", "Changement de responsable"
     SECTION_UPDATED = "section_updated", "Section mise à jour"
+    RESPONSIBLE_VALIDATION = "responsible_validation", "Validation référent"
     DELETED = "deleted", "Suppression"
 
 
@@ -178,18 +179,6 @@ class DATHistory(models.Model):
     action = models.CharField(
         max_length=32,
         choices=DATHistoryAction.choices,
-    )
-    status_before = models.CharField(
-        max_length=64,
-        choices=DATStatus.choices,
-        blank=True,
-        null=True,
-    )
-    status_after = models.CharField(
-        max_length=64,
-        choices=DATStatus.choices,
-        blank=True,
-        null=True,
     )
     performed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -220,9 +209,89 @@ class DATHistory(models.Model):
         reference = timezone.localtime(self.performed_at)
         return reference.strftime("%d/%m/%Y à %Hh%M")
 
+    @property
+    def status_change(self):
+        if self.action != DATHistoryAction.STATUS_CHANGED:
+            return None
+        details = self.details or {}
+        if not isinstance(details, dict):
+            return None
+        status_from = details.get("from")
+        status_to = details.get("to")
+        if status_from in ("", None) and status_to in ("", None):
+            return None
+        return {"from": status_from, "to": status_to}
+
+    @property
+    def status_change_from(self) -> str:
+        details = self.status_change
+        if details is None:
+            return ""
+        return details.get("from") or ""
+
+    @property
+    def status_change_to(self) -> str:
+        details = self.status_change
+        if details is None:
+            return ""
+        return details.get("to") or ""
+
     def __str__(self) -> str:
         username = self.actor_name()
         timestamp = timezone.localtime(self.performed_at)
+        return f"{self.get_action_display()} par {username} le {timestamp.strftime('%d/%m/%Y %H:%M:%S')}"
+
+
+class DATReserveHistoryAction(models.TextChoices):
+    SET = "set", "Mise en réserve"
+    CLEARED = "cleared", "Réserve levée"
+
+
+class DATReserveHistory(models.Model):
+    dat = models.ForeignKey(
+        DAT,
+        on_delete=models.CASCADE,
+        related_name="reserve_history_entries",
+    )
+    action = models.CharField(
+        max_length=20,
+        choices=DATReserveHistoryAction.choices,
+        default=DATReserveHistoryAction.SET,
+    )
+    section_slug = models.SlugField(max_length=100, blank=True)
+    section_title = models.CharField(max_length=200, blank=True)
+    reserve_message = models.TextField(blank=True)
+    reserved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="dat_reserve_history_entries",
+    )
+    reserved_by_display = models.CharField(max_length=255, blank=True)
+    reserved_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "dat_reserve_history"
+        ordering = ["-reserved_at", "-id"]
+
+    def actor_name(self) -> str:
+        if self.reserved_by_display:
+            return self.reserved_by_display
+        if self.reserved_by:
+            full_name = self.reserved_by.get_full_name()
+            if full_name:
+                return full_name
+            return self.reserved_by.get_username()
+        return "Système"
+
+    def formatted_reserved_at(self) -> str:
+        reference = timezone.localtime(self.reserved_at)
+        return reference.strftime("%d/%m/%Y à %Hh%M")
+
+    def __str__(self) -> str:
+        username = self.actor_name()
+        timestamp = timezone.localtime(self.reserved_at)
         return f"{self.get_action_display()} par {username} le {timestamp.strftime('%d/%m/%Y %H:%M:%S')}"
 
 
