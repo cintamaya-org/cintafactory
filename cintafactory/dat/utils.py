@@ -73,18 +73,21 @@ def get_dat_pdf_export_path(dat) -> str:
     return os.path.join("dat_exports", str(dat.pk), basename)
 
 
-def store_dat_pdf_export(dat, content: bytes) -> str:
+def store_dat_pdf_export(dat, content: bytes, *, refresh_modified: bool = True) -> str:
     path = get_dat_pdf_export_path(dat)
-    new_hash = hashlib.sha256(content).hexdigest()
     if default_storage.exists(path):
-        try:
-            with default_storage.open(path, "rb") as existing:
-                current_hash = hashlib.sha256(existing.read()).hexdigest()
-        except Exception:
-            current_hash = None
-        if current_hash and current_hash == new_hash:
-            return path
-        default_storage.delete(path)
+        if refresh_modified:
+            default_storage.delete(path)
+        else:
+            new_hash = hashlib.sha256(content).hexdigest()
+            try:
+                with default_storage.open(path, "rb") as existing:
+                    current_hash = hashlib.sha256(existing.read()).hexdigest()
+            except Exception:
+                current_hash = None
+            if current_hash and current_hash == new_hash:
+                return path
+            default_storage.delete(path)
     default_storage.save(path, ContentFile(content))
     return path
 

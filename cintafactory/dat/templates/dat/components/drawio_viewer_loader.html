@@ -11,6 +11,12 @@
     container: null,
     viewer: null,
   };
+  const EASTER_EGG_DURATION_MS = 3500;
+  const EASTER_EGG_INTERVAL_MS = 90;
+  const K_SEQUENCE = ["up", "up", "down", "down", "left", "right", "left", "right", "b", "a"];
+  let easterEggInterval = null;
+  let konamiIndex = 0;
+  let konamiActive = false;
 
   function getViewerOverlay() {
     return runtime.viewer && runtime.viewer.viewer;
@@ -33,13 +39,114 @@
     }
   }
 
+  function handleViewerShown() {
+    setViewerAccessibility(true);
+    setKonamiActive(true);
+  }
+
+  function handleViewerHidden() {
+    setViewerAccessibility(false);
+    setKonamiActive(false);
+    stopEasterEgg();
+  }
+
   function ensureViewerAccessibilityHooks(wrapper) {
     if (!wrapper || wrapper.dataset.viewerA11yBound === "1") {
       return;
     }
     wrapper.dataset.viewerA11yBound = "1";
-    wrapper.addEventListener("shown", () => setViewerAccessibility(true));
-    wrapper.addEventListener("hidden", () => setViewerAccessibility(false));
+    wrapper.addEventListener("shown", handleViewerShown);
+    wrapper.addEventListener("hidden", handleViewerHidden);
+  }
+
+  function stopEasterEgg() {
+    if (easterEggInterval) {
+      window.clearInterval(easterEggInterval);
+      easterEggInterval = null;
+    }
+    const viewer = runtime.viewer;
+    if (viewer) {
+      if (typeof viewer.scaleX === "function") {
+        viewer.scaleX(1);
+      }
+      if (typeof viewer.scaleY === "function") {
+        viewer.scaleY(1);
+      }
+    }
+  }
+
+  function normalizeKonamiKey(event) {
+    if (!event || typeof event.key !== "string") {
+      return "";
+    }
+    switch (event.key) {
+      case "ArrowUp":
+        return "up";
+      case "ArrowDown":
+        return "down";
+      case "ArrowLeft":
+        return "left";
+      case "ArrowRight":
+        return "right";
+      default:
+        return event.key.toLowerCase();
+    }
+  }
+
+  function handleKonamiKey(event) {
+    if (!konamiActive) {
+      return;
+    }
+    const key = normalizeKonamiKey(event);
+    if (!key) {
+      return;
+    }
+    const expected = K_SEQUENCE[konamiIndex];
+    if (key === expected) {
+      konamiIndex += 1;
+      if (konamiIndex >= K_SEQUENCE.length) {
+        konamiIndex = 0;
+        startEasterEgg();
+      }
+      return;
+    }
+    konamiIndex = key === K_SEQUENCE[0] ? 1 : 0;
+  }
+
+  function setKonamiActive(isActive) {
+    if (konamiActive === isActive) {
+      return;
+    }
+    konamiActive = isActive;
+    konamiIndex = 0;
+    if (konamiActive) {
+      document.addEventListener("keydown", handleKonamiKey);
+    } else {
+      document.removeEventListener("keydown", handleKonamiKey);
+    }
+  }
+
+  function startEasterEgg() {
+    const viewer = runtime.viewer;
+    if (!viewer) {
+      return;
+    }
+    stopEasterEgg();
+    const maxTicks = Math.ceil(EASTER_EGG_DURATION_MS / EASTER_EGG_INTERVAL_MS);
+    let ticks = 0;
+    easterEggInterval = window.setInterval(() => {
+      ticks += 1;
+      const flipX = Math.random() < 0.5;
+      const flipValue = Math.random() < 0.5 ? 1 : -1;
+      if (flipX && typeof viewer.scaleX === "function") {
+        viewer.scaleX(flipValue);
+      } else if (typeof viewer.scaleY === "function") {
+        viewer.scaleY(flipValue);
+      }
+      if (ticks >= maxTicks) {
+        stopEasterEgg();
+      }
+    }, EASTER_EGG_INTERVAL_MS);
   }
 
   function loadViewerResources() {
@@ -174,7 +281,7 @@
           runtime.viewer.update();
         }
         runtime.viewer.view(0);
-        setViewerAccessibility(true);
+        handleViewerShown();
       })
       .catch((error) => {
         console.error("Impossible d'afficher le diagramme:", error);
