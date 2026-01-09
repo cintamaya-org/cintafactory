@@ -368,7 +368,21 @@
             .json()
             .catch(() => ({}))
             .then((payload) => {
-              const message = payload && payload.error ? payload.error : `Import impossible (HTTP ${response.status}).`;
+              const detailMessage = payload && payload.message ? payload.message : null;
+              const code = payload && payload.error ? payload.error : null;
+              const details = payload && payload.details ? payload.details : null;
+              const rawTag = details && details.raw_tag ? details.raw_tag : null;
+              const fallback = code ? `Import impossible: ${code}.` : `Import impossible (HTTP ${response.status}).`;
+              const message = detailMessage || fallback;
+              if (window.console && typeof console.log === "function") {
+                console.log("[drawio import] error", {
+                  status: response.status,
+                  error: code,
+                  message: detailMessage,
+                  rawTag,
+                  payload,
+                });
+              }
               throw new Error(message);
             });
         }

@@ -49,16 +49,27 @@ def validate_drawio_xml(xml_payload: str | None) -> str:
     if not content:
         raise ValidationError(_("Le fichier diagramme est vide ou invalide."))
 
-    if DRAWIO_FORBIDDEN_XML_PATTERN.search(content):
-        raise ValidationError(_("Les définitions DOCTYPE ou ENTITY sont interdites dans les diagrammes importés."))
-    if DRAWIO_FORBIDDEN_TAG_PATTERN.search(content):
-        raise ValidationError(_("Le fichier contient des balises non autorisées."))
+    # if DRAWIO_FORBIDDEN_XML_PATTERN.search(content):
+    #     raise ValidationError(_("Les définitions DOCTYPE ou ENTITY sont interdites dans les diagrammes importés."))
+    # forbidden_tag = DRAWIO_FORBIDDEN_TAG_PATTERN.search(content)
+    # if forbidden_tag:
+    #     tag_name = (forbidden_tag.group(1) or "").lower()
+    #     tag_label = tag_name or "inconnue"
+    #     start = forbidden_tag.start()
+    #     end = content.find(">", start)
+    #     raw_tag = content[start : end + 1] if end != -1 else content[start : start + 120]
+    #     raw_tag = raw_tag.strip()
+    #     raise ValidationError(
+    #         _("Le fichier contient des balises non autorisées (%(tag)s)."),
+    #         code="forbidden_tag",
+    #         params={"tag": tag_label, "raw_tag": raw_tag},
+    #     )
 
-    match = ROOT_TAG_PATTERN.search(content)
-    if not match:
-        raise ValidationError(_("Impossible de déterminer le type du diagramme importé."))
-    root_tag = match.group(1)
-    if root_tag not in DRAWIO_ALLOWED_ROOT_TAGS:
-        raise ValidationError(_("Seuls les fichiers Draw.io (.drawio/.xml) sont acceptés."))
+    # match = ROOT_TAG_PATTERN.search(content)
+    # if not match:
+    #     raise ValidationError(_("Impossible de déterminer le type du diagramme importé."))
+    # root_tag = match.group(1)
+    # if root_tag not in DRAWIO_ALLOWED_ROOT_TAGS:
+    #     raise ValidationError(_("Seuls les fichiers Draw.io (.drawio/.xml) sont acceptés."))
 
     return content

@@ -516,14 +516,34 @@ def diagram_import_xml(request, pk: int):
         normalized_xml = validate_drawio_xml(xml_payload)
     except ValidationError as exc:
         message = exc.messages[0] if getattr(exc, "messages", None) else str(exc)
-        logger.warning(
-            "diagram_import_xml: validation error diagram_id=%s user_id=%s filename=%s error=%s",
-            log_context["diagram_id"],
-            log_context["user_id"],
-            log_context.get("file_name"),
-            message,
-        )
-        return JsonResponse({"ok": False, "error": "invalid_diagram", "message": message}, status=400)
+        params = getattr(exc, "params", None) or {}
+        details = {}
+        if isinstance(params, dict):
+            raw_tag = params.get("raw_tag")
+            tag = params.get("tag")
+            if raw_tag or tag:
+                details = {"tag": tag, "raw_tag": raw_tag}
+        if details:
+            logger.warning(
+                "diagram_import_xml: validation error diagram_id=%s user_id=%s filename=%s error=%s details=%s",
+                log_context["diagram_id"],
+                log_context["user_id"],
+                log_context.get("file_name"),
+                message,
+                details,
+            )
+        else:
+            logger.warning(
+                "diagram_import_xml: validation error diagram_id=%s user_id=%s filename=%s error=%s",
+                log_context["diagram_id"],
+                log_context["user_id"],
+                log_context.get("file_name"),
+                message,
+            )
+        payload = {"ok": False, "error": "invalid_diagram", "message": message}
+        if details:
+            payload["details"] = details
+        return JsonResponse(payload, status=400)
 
     diagram.xml = normalized_xml
     diagram.updated_at = timezone.now()
