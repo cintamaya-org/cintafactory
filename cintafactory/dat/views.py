@@ -10,7 +10,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.db.models import Count, Prefetch, Q
+from django.db.models import Count, F, Prefetch, Q
 from django.db.models.functions import TruncMonth
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.utils import timezone
@@ -30,12 +30,20 @@ from material.frontend.views import CreateModelView, DetailModelView, ListModelV
 from diagrams.models import Diagram
 from diagrams.validation import sanitize_diagram_title
 
+from .attachments import (
+    build_attachment_ui_context,
+    build_download_filename,
+    create_section_attachment,
+    delete_section_attachment as delete_section_attachment_file,
+    get_attachment_storage,
+)
 from .constants import (
     DAT_PORTEUR_ROLE_SLUG,
     DAT_REQUIRED_PARTICIPANT_ROLE_LABELS,
     DAT_REQUIRED_PARTICIPANT_ROLE_SLUGS,
     DAT_STATUS_REQUIRED_ROLES,
 )
+from .drawio_parser import dedupe_architecture_rows, parse_architecture_diagram
 from .exporters import get_dat_export_model_builder
 from .forms import DATForm, DATImportForm, DATSubSectionForm
 from .importers import DATImportError, DATImportService
@@ -43,10 +51,12 @@ from .models import (
     Application,
     DAT,
     DATPart,
+    DATPartEntryType,
     DATPartEntry,
     DATReserveHistory,
     DATReserveHistoryAction,
     DATSection,
+    DATSectionAttachment,
     DATSubSection,
     DATStatus,
     DATHistory,
@@ -59,6 +69,7 @@ from .sections import (
     SECTION_STATUS_DEFAULT,
     SECTION_STATUS_ENTRY_KEY,
     SECTION_STATUS_VALIDATED_VALUE,
+    section_has_attachments,
     section_has_status,
     sync_dat_sections_if_needed,
 )
@@ -489,7 +500,7 @@ def reset_section_statuses_to_default(
     if status_part is None or status_choices is None:
         return
     default_status = _default_status_value(status_choices)
-    sections = list(dat.sections.order_by("order", "id"))
+    sections = list(dat.sections.order_by("order", "id").select_related("metadata"))
     updated_rows = []
     for section in sections:
         if not section_has_status(section.slug):
@@ -513,7 +524,7 @@ def reset_section_statuses_to_default(
 
 
 def build_section_status_map(dat: DAT, sections_list: list[DATSection] | None = None):
-    sections = sections_list or list(dat.sections.order_by("order", "id"))
+    sections = sections_list or list(dat.sections.order_by("order", "id").select_related("metadata"))
     status_part = _find_section_status_part(dat, sections)
     choice_map = _status_choice_map(status_part)
     default_status = _default_status_value(choice_map)
@@ -713,9 +724,17 @@ def build_section_payload(
         .prefetch_related("allowed_roles")
         .prefetch_related(part_prefetch),
     )
-    sections_qs = dat.sections.order_by("order", "id").prefetch_related(sub_section_prefetch)
+    attachment_prefetch = Prefetch(
+        "attachments",
+        queryset=DATSectionAttachment.objects.select_related("uploaded_by").order_by("-created_at", "-id"),
+    )
+    sections_qs = (
+        dat.sections.order_by("order", "id")
+        .select_related("metadata")
+        .prefetch_related(sub_section_prefetch, attachment_prefetch)
+    )
     if section_slug:
-        sections_qs = sections_qs.filter(slug=section_slug)
+        sections_qs = sections_qs.filter(metadata__slug=section_slug)
     sections_list = list(sections_qs)
     if section_slug and not sections_list:
         return []
@@ -746,6 +765,8 @@ def build_section_payload(
             section_can_edit = False
         elif is_locked:
             section_can_edit = False
+        attachments_enabled = section_has_attachments(section.slug)
+        attachments = list(section.attachments.all()) if attachments_enabled else []
         validation_allowed_sections: dict[str, bool] | None = None
         validation_reserve_allowed_sections: dict[str, bool] | None = None
         validation_reserve_clear_allowed_sections: dict[str, bool] | None = None
@@ -753,7 +774,7 @@ def build_section_payload(
             if validation_targets is None:
                 try:
                     validation_targets = list(
-                        dat.sections.exclude(slug="validation")
+                        dat.sections.exclude(metadata__slug="validation")
                         .order_by("order", "id")
                         .prefetch_related("allowed_roles")
                     )
@@ -879,6 +900,9 @@ def build_section_payload(
                 "section": section,
                 "parts": parts_payload,
                 "can_edit": section_can_edit,
+                "attachments_enabled": attachments_enabled,
+                "attachments": attachments,
+                "attachments_can_upload": bool(section_can_edit and attachments_enabled),
                 "has_status": bool(section_status.get("has_status")),
                 "status": section_status,
                 "status_locked": is_locked,
@@ -922,6 +946,212 @@ def render_sub_section_snippet(dat: DAT, user, section_slug: str, sub_section_sl
     )
 
 
+def is_ajax_request(request) -> bool:
+    return request.headers.get("x-requested-with") == "XMLHttpRequest"
+
+
+def render_section_attachments_snippet(
+    request,
+    dat: DAT,
+    section: DATSection,
+    user,
+    *,
+    attachments_show_upload: bool,
+) -> str:
+    attachments_enabled = section_has_attachments(section.slug)
+    attachments = []
+    if attachments_enabled:
+        attachments = list(
+            DATSectionAttachment.objects.select_related("uploaded_by")
+            .filter(section=section)
+            .order_by("-created_at", "-id")
+        )
+    section_can_edit = False if section.slug == "validation" else section.can_user_edit(user)
+    if section_is_locked(None, dat=dat):
+        section_can_edit = False
+    container = {
+        "section": section,
+        "attachments_enabled": attachments_enabled,
+        "attachments": attachments,
+        "attachments_can_upload": bool(section_can_edit and attachments_enabled),
+    }
+    context = {
+        "container": container,
+        "dat": dat,
+        "attachments_show_upload": attachments_show_upload,
+    }
+    context.update(build_attachment_ui_context())
+    return render_to_string("dat/partials/dat_section_attachments.html", context, request=request)
+
+
+@login_required
+@require_POST
+def upload_section_attachment(request, dat_pk: int, section_slug: str):
+    base_queryset = filter_dat_queryset_for_user(DAT.objects.all(), request.user)
+    dat = get_object_or_404(base_queryset, pk=dat_pk)
+    if dat.status in FINAL_DAT_STATUSES:
+        raise PermissionDenied
+    section = get_object_or_404(DATSection, dat=dat, metadata__slug=section_slug)
+    if not section.can_user_edit(request.user):
+        raise PermissionDenied
+    is_ajax = is_ajax_request(request)
+    redirect_url = f"{reverse('dat:my_detail', args=[dat.pk])}?section={section.slug}#section-{section.slug}"
+    if not section_has_attachments(section.slug):
+        if is_ajax:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "messages": ["Les pieces jointes sont desactivees pour cette section."],
+                    "attachments_html": render_section_attachments_snippet(
+                        request,
+                        dat,
+                        section,
+                        request.user,
+                        attachments_show_upload=True,
+                    ),
+                }
+            )
+        messages.error(request, "Les pieces jointes sont desactivees pour cette section.")
+        return redirect(redirect_url)
+    files = request.FILES.getlist("attachments")
+    if not files:
+        if is_ajax:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "messages": ["Aucun fichier selectionne."],
+                    "attachments_html": render_section_attachments_snippet(
+                        request,
+                        dat,
+                        section,
+                        request.user,
+                        attachments_show_upload=True,
+                    ),
+                }
+            )
+        messages.error(request, "Aucun fichier selectionne.")
+        return redirect(redirect_url)
+    saved_count = 0
+    message_list = []
+    for uploaded_file in files:
+        try:
+            create_section_attachment(section, uploaded_file, uploaded_by=request.user)
+            saved_count += 1
+        except ValidationError as exc:
+            error_msg = exc.messages[0] if getattr(exc, "messages", None) else str(exc)
+            if is_ajax:
+                message_list.append(f"{uploaded_file.name}: {error_msg}")
+            else:
+                messages.error(request, f"{uploaded_file.name}: {error_msg}")
+        except Exception:
+            logger.exception("Erreur lors de l'upload de piece jointe (dat=%s, section=%s).", dat.pk, section.slug)
+            if is_ajax:
+                message_list.append(f"{uploaded_file.name}: erreur lors de l'envoi du fichier.")
+            else:
+                messages.error(request, f"{uploaded_file.name}: erreur lors de l'envoi du fichier.")
+    if saved_count:
+        if is_ajax:
+            message_list.append(f"{saved_count} piece(s) jointe(s) ajoutee(s).")
+        else:
+            messages.success(request, f"{saved_count} piece(s) jointe(s) ajoutee(s).")
+    if is_ajax:
+        return JsonResponse(
+            {
+                "success": bool(saved_count),
+                "messages": message_list,
+                "attachments_html": render_section_attachments_snippet(
+                    request,
+                    dat,
+                    section,
+                    request.user,
+                    attachments_show_upload=True,
+                ),
+            }
+        )
+    return redirect(redirect_url)
+
+
+@login_required
+def download_section_attachment(request, dat_pk: int, attachment_pk: int):
+    base_queryset = filter_dat_queryset_for_user(DAT.objects.all(), request.user)
+    dat = get_object_or_404(base_queryset, pk=dat_pk)
+    attachment = get_object_or_404(
+        DATSectionAttachment.objects.select_related("section__dat"),
+        pk=attachment_pk,
+        section__dat=dat,
+    )
+    storage = get_attachment_storage()
+    try:
+        file_handle = storage.open(attachment.storage_path, "rb")
+    except FileNotFoundError:
+        redirect_url = f"{reverse('dat:my_detail', args=[dat.pk])}?section={attachment.section.slug}"
+        messages.error(request, "Le fichier demande est introuvable.")
+        return redirect(redirect_url)
+    download_name = build_download_filename(attachment.display_name, attachment.extension)
+    response = FileResponse(
+        file_handle,
+        content_type=attachment.content_type or "application/octet-stream",
+        as_attachment=True,
+        filename=download_name,
+    )
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
+@login_required
+@require_POST
+def remove_section_attachment(request, dat_pk: int, attachment_pk: int):
+    base_queryset = filter_dat_queryset_for_user(DAT.objects.all(), request.user)
+    dat = get_object_or_404(base_queryset, pk=dat_pk)
+    if dat.status in FINAL_DAT_STATUSES:
+        raise PermissionDenied
+    attachment = get_object_or_404(
+        DATSectionAttachment.objects.select_related("section__dat"),
+        pk=attachment_pk,
+        section__dat=dat,
+    )
+    if not attachment.section.can_user_edit(request.user):
+        raise PermissionDenied
+    is_ajax = is_ajax_request(request)
+    redirect_url = f"{reverse('dat:my_detail', args=[dat.pk])}?section={attachment.section.slug}#section-{attachment.section.slug}"
+    try:
+        delete_section_attachment_file(attachment)
+    except Exception:
+        logger.exception("Erreur lors de la suppression de piece jointe (id=%s).", attachment.pk)
+        if is_ajax:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "messages": ["Impossible de supprimer la piece jointe."],
+                    "attachments_html": render_section_attachments_snippet(
+                        request,
+                        dat,
+                        attachment.section,
+                        request.user,
+                        attachments_show_upload=True,
+                    ),
+                }
+            )
+        messages.error(request, "Impossible de supprimer la piece jointe.")
+        return redirect(redirect_url)
+    if is_ajax:
+        return JsonResponse(
+            {
+                "success": True,
+                "messages": ["Piece jointe supprimee."],
+                "attachments_html": render_section_attachments_snippet(
+                    request,
+                    dat,
+                    attachment.section,
+                    request.user,
+                    attachments_show_upload=True,
+                ),
+            }
+        )
+    messages.success(request, "Piece jointe supprimee.")
+    return redirect(redirect_url)
+
+
 @login_required
 @require_POST
 def update_section_status(request, dat_pk: int, section_slug: str):
@@ -929,7 +1159,7 @@ def update_section_status(request, dat_pk: int, section_slug: str):
     dat = get_object_or_404(base_queryset, pk=dat_pk)
     if dat.status in FINAL_DAT_STATUSES:
         raise PermissionDenied
-    section = get_object_or_404(DATSection, dat=dat, slug=section_slug)
+    section = get_object_or_404(DATSection, dat=dat, metadata__slug=section_slug)
     sync_dat_sections_if_needed(dat)
     if not section_has_status(section.slug):
         raise Http404("Section sans statut.")
@@ -967,7 +1197,7 @@ def update_section_status(request, dat_pk: int, section_slug: str):
             slug = row.get("section_slug")
             if slug not in (None, ""):
                 existing_row_map[str(slug)] = row
-    sections = list(dat.sections.order_by("order", "id"))
+    sections = list(dat.sections.order_by("order", "id").select_related("metadata"))
     updated_rows = []
     validated_value = SECTION_STATUS_VALIDATED_VALUE
     confirm_reset = request.POST.get("confirm_responsable_reset") == "1"
@@ -1059,7 +1289,7 @@ def update_section_responsible_status(request, dat_pk: int, section_slug: str):
     dat = get_object_or_404(base_queryset, pk=dat_pk)
     if dat.status in FINAL_DAT_STATUSES:
         raise PermissionDenied
-    section = get_object_or_404(DATSection, dat=dat, slug=section_slug)
+    section = get_object_or_404(DATSection, dat=dat, metadata__slug=section_slug)
     sync_dat_sections_if_needed(dat)
     if not section_has_status(section.slug):
         raise Http404("Section sans statut.")
@@ -1112,7 +1342,7 @@ def update_section_responsible_status(request, dat_pk: int, section_slug: str):
         messages.info(request, "Le statut de validation est déjà à jour.")
         return redirect(redirect_url)
 
-    sections = list(dat.sections.order_by("order", "id"))
+    sections = list(dat.sections.order_by("order", "id").select_related("metadata"))
     updated_rows: list[dict[str, object]] = []
     for item in sections:
         if not section_has_status(item.slug):
@@ -1167,7 +1397,7 @@ def update_section_reserve(request, dat_pk: int, section_slug: str):
     dat = get_object_or_404(base_queryset, pk=dat_pk)
     if dat.status in FINAL_DAT_STATUSES:
         raise PermissionDenied
-    section = get_object_or_404(DATSection, dat=dat, slug=section_slug)
+    section = get_object_or_404(DATSection, dat=dat, metadata__slug=section_slug)
     sync_dat_sections_if_needed(dat)
     if section.slug == "validation" or not section_has_status(section.slug):
         raise Http404("Section sans statut.")
@@ -1218,7 +1448,7 @@ def update_section_reserve(request, dat_pk: int, section_slug: str):
         raise PermissionDenied
 
     reserve_by_display = format_user_display(request.user)
-    sections = list(dat.sections.order_by("order", "id"))
+    sections = list(dat.sections.order_by("order", "id").select_related("metadata"))
     updated_rows: list[dict[str, object]] = []
     for item in sections:
         if not section_has_status(item.slug):
@@ -1312,7 +1542,7 @@ def update_section_reserve(request, dat_pk: int, section_slug: str):
 def clear_section_reserve(request, dat_pk: int, section_slug: str):
     base_queryset = filter_dat_queryset_for_user(DAT.objects.all(), request.user)
     dat = get_object_or_404(base_queryset, pk=dat_pk)
-    section = get_object_or_404(DATSection, dat=dat, slug=section_slug)
+    section = get_object_or_404(DATSection, dat=dat, metadata__slug=section_slug)
     sync_dat_sections_if_needed(dat)
     if section.slug == "validation" or not section_has_status(section.slug):
         raise Http404("Section sans statut.")
@@ -1344,7 +1574,7 @@ def clear_section_reserve(request, dat_pk: int, section_slug: str):
     if reserve_by_id != getattr(request.user, "id", None):
         raise PermissionDenied
 
-    sections = list(dat.sections.order_by("order", "id"))
+    sections = list(dat.sections.order_by("order", "id").select_related("metadata"))
     updated_rows: list[dict[str, object]] = []
     for item in sections:
         if not section_has_status(item.slug):
@@ -1551,9 +1781,14 @@ class DATDetailView(ModuleContextMixin, DetailModelView):
         context["current_responsibles"] = get_current_responsibles(self.object)
         context["sections_payload"] = build_section_payload(self.object, self.request.user)
         context["section_nav"] = list(
-            self.object.sections.order_by("order", "id").values("slug", "title")
+            self.object.sections.order_by("order", "id").values(
+                slug=F("metadata__slug"),
+                title=F("metadata__title"),
+            )
         )
         context["can_review_dat"] = user_can_review_dat(self.object, self.request.user)
+        context.update(build_attachment_ui_context())
+        context["attachments_show_upload"] = False
         return context
 
 
@@ -1720,8 +1955,13 @@ class DatDetail(ModuleContextMixin, LoginRequiredMixin, DetailView):
         context["pdf_export_requested_by_display"] = self.object.pdf_export_requested_by_display
         sync_dat_sections_if_needed(self.object)
         context.update(build_dat_overview_context(self.object, self.request.user))
+        context.update(build_attachment_ui_context())
+        context["attachments_show_upload"] = True
         section_nav = list(
-            self.object.sections.order_by("order", "id").values("slug", "title")
+            self.object.sections.order_by("order", "id").values(
+                slug=F("metadata__slug"),
+                title=F("metadata__title"),
+            )
         )
         section_status_map, section_status_choices = build_section_status_map(self.object)
         context["section_status_map"] = section_status_map
@@ -1876,30 +2116,44 @@ class DatSubSectionUpdateView(ModuleContextMixin, LoginRequiredMixin, FormView):
         dat_pk = kwargs.get("dat_pk")
         section_slug = kwargs.get("section_slug")
         sub_section_slug = kwargs.get("sub_section_slug")
-        base_queryset = DATSubSection.objects.select_related("section__dat").prefetch_related("allowed_roles")
-        self.sub_section = get_object_or_404(
-            base_queryset,
-            section__dat_id=dat_pk,
-            section__slug=section_slug,
-            slug=sub_section_slug,
-        )
-        self.section = self.sub_section.section
-        dat = self.section.dat
-        if dat.status in FINAL_DAT_STATUSES:
-            raise PermissionDenied
-        if sync_dat_sections_if_needed(self.section.dat):
+        try:
+            base_queryset = DATSubSection.objects.select_related("section__dat").prefetch_related("allowed_roles")
             self.sub_section = get_object_or_404(
                 base_queryset,
                 section__dat_id=dat_pk,
-                section__slug=section_slug,
+                section__metadata__slug=section_slug,
                 slug=sub_section_slug,
             )
             self.section = self.sub_section.section
-        if not self.sub_section.can_user_edit(request.user):
-            raise PermissionDenied
-        status_map, _choices = build_section_status_map(self.section.dat)
-        if section_is_locked(status_map.get(self.section.slug), dat=self.section.dat):
-            raise PermissionDenied
+            dat = self.section.dat
+            if dat.status in FINAL_DAT_STATUSES:
+                raise PermissionDenied
+            if sync_dat_sections_if_needed(self.section.dat):
+                self.sub_section = get_object_or_404(
+                    base_queryset,
+                    section__dat_id=dat_pk,
+                    section__metadata__slug=section_slug,
+                    slug=sub_section_slug,
+                )
+                self.section = self.sub_section.section
+            if not self.sub_section.can_user_edit(request.user):
+                raise PermissionDenied
+            status_map, _choices = build_section_status_map(self.section.dat)
+            if section_is_locked(status_map.get(self.section.slug), dat=self.section.dat):
+                raise PermissionDenied
+        except (Http404, PermissionDenied):
+            raise
+        except Exception:
+            logger.exception(
+                "Failed to load DAT sub-section edit form",
+                extra={
+                    "dat_id": dat_pk,
+                    "section_slug": section_slug,
+                    "sub_section_slug": sub_section_slug,
+                    "user_id": getattr(request.user, "id", None),
+                },
+            )
+            raise
         return super().dispatch(request, *args, **kwargs)
 
     def get_form_kwargs(self):
@@ -2188,10 +2442,10 @@ def create_schema_diagram(request, dat_pk: int):
         return JsonResponse({"error": "Méthode non autorisée"}, status=405)
 
     dat = get_object_or_404(DAT.objects.prefetch_related("sections__allowed_roles"), pk=dat_pk)
-    architecture_section = dat.sections.filter(slug="architecture").first()
+    architecture_section = dat.sections.filter(metadata__slug="architecture").first()
     if architecture_section is None:
         sync_dat_sections_if_needed(dat)
-        architecture_section = dat.sections.filter(slug="architecture").first()
+        architecture_section = dat.sections.filter(metadata__slug="architecture").first()
     if architecture_section is None or not architecture_section.can_user_edit(request.user):
         raise PermissionDenied
 
@@ -2227,6 +2481,182 @@ def create_schema_diagram(request, dat_pk: int):
         },
     }
     return JsonResponse(response_payload, status=201)
+
+
+def _normalize_diagram_ids(raw_ids) -> list[int]:
+    if not isinstance(raw_ids, (list, tuple)):
+        return []
+    cleaned: list[int] = []
+    seen = set()
+    for raw in raw_ids:
+        try:
+            value = int(str(raw).strip())
+        except (TypeError, ValueError):
+            continue
+        if value < 1 or value in seen:
+            continue
+        seen.add(value)
+        cleaned.append(value)
+    return cleaned
+
+
+def _extract_schema_diagram_ids(sub_section: DATSubSection) -> list[int]:
+    if sub_section is None:
+        return []
+    part = sub_section.parts.filter(key="schemas").first()
+    if part is None:
+        return []
+    rows = part.value or []
+    if not isinstance(rows, list):
+        return []
+    ids = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        ids.append(row.get("diagramme_id"))
+    return _normalize_diagram_ids(ids)
+
+
+def _update_repeater_part(part: DATPart, rows: list[dict[str, str]]) -> tuple[bool, dict[str, dict[str, str]]]:
+    if part is None:
+        return False, {}
+    prepared = part.prepare_value(rows)
+    if prepared == part.value:
+        return False, {}
+    before_display = part.render_value(part.value)
+    part.update_value(prepared)
+    after_display = part.render_value(part.value)
+    if part.data_type == DATPartEntryType.REPEATER:
+        before_display = json.dumps(before_display or [], ensure_ascii=False)
+        after_display = json.dumps(after_display or [], ensure_ascii=False)
+    return True, {
+        part.key: {
+            "label": part.label,
+            "part": part.sub_section.title,
+            "from": before_display,
+            "to": after_display,
+        }
+    }
+
+
+@login_required
+@require_POST
+def parse_schema_diagram(request, dat_pk: int):
+    base_queryset = filter_dat_queryset_for_user(DAT.objects.all(), request.user)
+    dat = get_object_or_404(base_queryset, pk=dat_pk)
+    if dat.status in FINAL_DAT_STATUSES:
+        raise PermissionDenied
+    architecture_section = dat.sections.select_related("metadata").filter(metadata__slug="architecture").first()
+    if architecture_section is None:
+        sync_dat_sections_if_needed(dat)
+        architecture_section = dat.sections.select_related("metadata").filter(metadata__slug="architecture").first()
+    if architecture_section is None or not architecture_section.can_user_edit(request.user):
+        raise PermissionDenied
+    schema_sub_section = architecture_section.sub_sections.filter(slug="schemas").first()
+    if schema_sub_section is None or not schema_sub_section.can_user_edit(request.user):
+        raise PermissionDenied
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        payload = {}
+
+    diagram_ids = _normalize_diagram_ids(payload.get("diagram_ids"))
+    if not diagram_ids:
+        diagram_ids = _extract_schema_diagram_ids(schema_sub_section)
+    if not diagram_ids:
+        return JsonResponse(
+            {"ok": False, "error": "missing_diagrams", "message": "Aucun diagramme à analyser."},
+            status=400,
+        )
+
+    diagrams = Diagram.objects.filter(pk__in=diagram_ids).only("pk", "xml_file")
+    if not diagrams:
+        return JsonResponse(
+            {"ok": False, "error": "diagram_not_found", "message": "Aucun diagramme n'a été trouvé."},
+            status=404,
+        )
+
+    briques_rows: list[dict[str, str]] = []
+    flux_rows: list[dict[str, str]] = []
+    for diagram in diagrams:
+        diagram_xml = diagram.read_xml() or ""
+        briques, fluxes = parse_architecture_diagram(diagram_xml)
+        if briques:
+            briques_rows.extend(briques)
+        if fluxes:
+            flux_rows.extend(fluxes)
+    briques_rows, flux_rows = dedupe_architecture_rows(briques_rows, flux_rows)
+
+    briques_sub_section = architecture_section.sub_sections.filter(slug="briques-techniques").first()
+    flux_sub_section = architecture_section.sub_sections.filter(slug="flux").first()
+    if briques_sub_section is None or flux_sub_section is None:
+        return JsonResponse(
+            {"ok": False, "error": "missing_sections", "message": "Sous-section introuvable."},
+            status=400,
+        )
+    if not briques_sub_section.can_user_edit(request.user) or not flux_sub_section.can_user_edit(request.user):
+        raise PermissionDenied
+
+    briques_part = briques_sub_section.parts.filter(key="briques").first()
+    flux_part = flux_sub_section.parts.filter(key="flux").first()
+    if briques_part is None or flux_part is None:
+        return JsonResponse(
+            {"ok": False, "error": "missing_parts", "message": "Configuration du tableau introuvable."},
+            status=400,
+        )
+
+    changes_by_sub_section: dict[str, dict[str, dict[str, str]]] = {}
+    updated_briques, briques_changes = _update_repeater_part(briques_part, briques_rows)
+    updated_flux, flux_changes = _update_repeater_part(flux_part, flux_rows)
+    if updated_briques:
+        changes_by_sub_section[briques_sub_section.slug] = briques_changes
+    if updated_flux:
+        changes_by_sub_section[flux_sub_section.slug] = flux_changes
+
+    if changes_by_sub_section:
+        actor_display = format_user_display(request.user)
+        for sub_section_slug, changes in changes_by_sub_section.items():
+            sub_section = briques_sub_section if sub_section_slug == briques_sub_section.slug else flux_sub_section
+            DATHistory.objects.create(
+                dat=dat,
+                action=DATHistoryAction.SECTION_UPDATED,
+                performed_by=request.user,
+                performed_by_display=actor_display,
+                details={
+                    "section": {"slug": architecture_section.slug, "title": architecture_section.title},
+                    "sub_section": {"slug": sub_section.slug, "title": sub_section.title},
+                    "changes": changes,
+                },
+            )
+        refresh_dat_status(dat, actor=request.user, force_in_progress=True)
+
+    sub_sections_html: dict[str, str] = {}
+    if updated_briques:
+        sub_sections_html[briques_sub_section.slug] = render_sub_section_snippet(
+            dat, request.user, architecture_section.slug, briques_sub_section.slug
+        )
+    if updated_flux:
+        sub_sections_html[flux_sub_section.slug] = render_sub_section_snippet(
+            dat, request.user, architecture_section.slug, flux_sub_section.slug
+        )
+
+    total_flux = len(flux_rows)
+    total_briques = len(briques_rows)
+    if total_flux or total_briques:
+        message = f"Analyse terminée : {total_flux} flux, {total_briques} brique(s) détectée(s)."
+    else:
+        message = "Analyse terminée : aucun flux ou brique détecté."
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "message": message,
+            "parsed": {"flux": total_flux, "briques": total_briques},
+            "updated": {"flux": updated_flux, "briques": updated_briques},
+            "sub_sections": sub_sections_html,
+        }
+    )
 
 
 class DatAdvanceStatusView(LoginRequiredMixin, View):

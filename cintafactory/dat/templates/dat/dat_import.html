@@ -4,9 +4,9 @@
   <div class="card cinta-card">
     <div class="card-content">
       <h5>Importer un DAT</h5>
-      <p class="flow-text" style="font-size:1rem; color:#555;">
+      <p class="flow-text dat-import__subtitle">
       </p>
-      <form method="post" enctype="multipart/form-data" class="cinta-form" style="margin-top:1.5rem;">
+      <form method="post" enctype="multipart/form-data" class="cinta-form u-mt-1-5">
         {% csrf_token %}
         {% if form.non_field_errors %}
           <p class="red-text text-darken-2">{{ form.non_field_errors|join:" " }}</p>

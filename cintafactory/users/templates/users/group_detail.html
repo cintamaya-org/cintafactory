@@ -11,12 +11,12 @@
 {% with members=member_list|default:group.users.all %}
 <div class="card cinta-card">
   <div class="card-content">
-    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+    <div class="page-header">
       <div>
-        <h5 style="margin:0;">Groupe métier</h5>
-        <p style="margin:0; color:#666;">Détails pour {{ group.name }}</p>
+        <h5 class="page-header__title">Groupe métier</h5>
+        <p class="page-header__subtitle">Détails pour {{ group.name }}</p>
       </div>
-      <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+      <div class="page-header__actions">
         <a href="{% url 'users:businessgroup_change' pk=group.pk %}" class="btn waves-effect waves-light cinta-btn-primary">
           <i class="material-icons left">edit</i>Modifier
         </a>
@@ -26,12 +26,12 @@
       </div>
     </div>
 
-    <div class="divider" style="margin:1.5rem 0;"></div>
+    <div class="divider section-divider"></div>
 
     <div class="row">
       <div class="col s12 m6">
-        <h6 style="font-weight:600;">Informations générales</h6>
-        <ul class="collection" style="border:none;">
+        <h6 class="section-title">Informations générales</h6>
+        <ul class="collection collection--borderless">
           <li class="collection-item"><strong>Nom :</strong> {{ group.name }}</li>
           <li class="collection-item"><strong>Direction technique :</strong>
             {% if group.direction %}{{ group.direction.name }}{% else %}—{% endif %}
@@ -44,8 +44,8 @@
         </ul>
       </div>
       <div class="col s12 m6">
-        <h6 style="font-weight:600;">Responsable</h6>
-        <ul class="collection" style="border:none;">
+        <h6 class="section-title">Responsable</h6>
+        <ul class="collection collection--borderless">
           <li class="collection-item"><strong>Nom :</strong>
             {% if group.responsible %}
               {{ group.responsible.get_full_name|default:group.responsible.username }}
@@ -64,15 +64,15 @@
       </div>
     </div>
 
-    <div class="divider" style="margin:1.5rem 0;"></div>
+    <div class="divider section-divider"></div>
 
     <div>
-      <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:0.5rem; align-items:center;">
+      <div class="u-flex u-justify-between u-flex-wrap u-gap-0-5 u-items-center">
         <div>
-          <h6 style="font-weight:600; margin:0;">Dépendances du groupe</h6>
-          <p style="margin:0; color:#666;">Visualise les liens entre le groupe, ses directions et son responsable.</p>
+          <h6 class="section-title u-m-0">Dépendances du groupe</h6>
+          <p class="u-m-0 text-muted">Visualise les liens entre le groupe, ses directions et son responsable.</p>
         </div>
-        <span style="font-size:0.85rem; color:#777;">Les éléments sont cliquables pour accéder au détail.</span>
+        <span class="u-text-sm text-muted-secondary">Les éléments sont cliquables pour accéder au détail.</span>
       </div>
       <div id="group-dependency-graph"
            class="user-relationship-graph"
@@ -80,14 +80,14 @@
       </div>
     </div>
 
-    <div class="divider" style="margin:1.5rem 0;"></div>
+    <div class="divider section-divider"></div>
 
     <div>
-      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
-        <h6 style="font-weight:600; margin:0;">Utilisateurs du groupe</h6>
-        <span style="color:#777;">{{ members|length }} utilisateur{% if members|length != 1 %}s{% endif %}</span>
+      <div class="u-flex u-justify-between u-items-center u-flex-wrap u-gap-0-5">
+        <h6 class="section-title u-m-0">Utilisateurs du groupe</h6>
+        <span class="text-muted-secondary">{{ members|length }} utilisateur{% if members|length != 1 %}s{% endif %}</span>
       </div>
-      <div style="margin-top:1rem; overflow-x:auto;">
+      <div class="table-wrapper">
         <table class="highlight responsive-table">
           <thead>
             <tr>
@@ -96,7 +96,7 @@
               <th>Rôle</th>
               <th>Direction (rôle)</th>
               <th>Actif</th>
-              <th style="width:1%; white-space:nowrap;">Actions</th>
+              <th class="table-actions-col">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -123,7 +123,7 @@
               {% endfor %}
             {% else %}
               <tr>
-                <td colspan="6" style="color:#666; text-align:center;">Aucun utilisateur dans ce groupe.</td>
+                <td colspan="6" class="table-empty table-empty--center">Aucun utilisateur dans ce groupe.</td>
               </tr>
             {% endif %}
           </tbody>

@@ -263,6 +263,7 @@ class DATExportModelBuilder:
         )
         return (
             dat.sections.order_by("order", "id")
+            .select_related("metadata")
             .prefetch_related("allowed_roles")
             .prefetch_related(sub_section_prefetch)
         )
@@ -390,7 +391,7 @@ class DATExportModelBuilder:
         return f"data:{mime_type};base64,{encoded}"
 
     def _generate_drawio_thumbnail(self, diagram: Diagram) -> str | None:
-        xml_payload = diagram.xml or "<mxGraphModel/>"
+        xml_payload = diagram.read_xml() or "<mxGraphModel/>"
         for export_url in self._get_drawio_export_candidates():
             payload = urlencode(
                 {

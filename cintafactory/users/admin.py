@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 
-from .models import BusinessDirection, TechnicalDirection, BusinessGroup, Role, User
+from .models import BusinessDirection, TechnicalDirection, BusinessGroup, Role, User, OAuthAccount
 
 
 @admin.register(BusinessDirection)
@@ -113,3 +113,11 @@ class UserAdmin(DjangoUserAdmin):
         return None
 
     role_direction.short_description = "Direction technique (rôle)"
+
+
+@admin.register(OAuthAccount)
+class OAuthAccountAdmin(admin.ModelAdmin):
+    list_display = ("provider", "provider_user_id", "email", "user", "updated_at")
+    list_filter = ("provider",)
+    search_fields = ("provider", "provider_user_id", "email", "user__username")
+    ordering = ("provider", "id")

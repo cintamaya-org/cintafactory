@@ -65,9 +65,29 @@ urlpatterns = [
         name="section_reserve_clear",
     ),
     path(
+        "my/<int:dat_pk>/sections/<slug:section_slug>/attachments/upload/",
+        views.upload_section_attachment,
+        name="section_attachment_upload",
+    ),
+    path(
+        "my/<int:dat_pk>/attachments/<int:attachment_pk>/download/",
+        views.download_section_attachment,
+        name="section_attachment_download",
+    ),
+    path(
+        "my/<int:dat_pk>/attachments/<int:attachment_pk>/delete/",
+        views.remove_section_attachment,
+        name="section_attachment_delete",
+    ),
+    path(
         "my/<int:dat_pk>/schemas/create-diagram/",
         views.create_schema_diagram,
         name="schema_create_diagram",
+    ),
+    path(
+        "my/<int:dat_pk>/schemas/parse-diagram/",
+        views.parse_schema_diagram,
+        name="schema_parse_diagram",
     ),
 
     # Dashboard

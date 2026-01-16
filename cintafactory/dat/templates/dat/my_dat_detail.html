@@ -7,189 +7,18 @@
   rel="stylesheet"
   href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24..48,400..700,0..1,-50..200"
 />
-<style>
-.material-symbols-outlined {
-  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-.dat-section-part-icon {
-  font-size: 1.25rem;
-  line-height: 1;
-}
-</style>
 {% endblock %}
 
 {% block content %}
 {% include "dat/components/drawio_viewer_loader.html" %}
-<style>
-.dat-section-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  transition: background-color 0.2s ease, color 0.2s ease;
-}
-.dat-section-link.active-section {
-  background-color: #e3f2fd !important;
-  color: #0d47a1 !important;
-} 
-.dat-modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.2s ease;
-  z-index: 998;
-}
-.dat-modal-overlay.visible {
-  opacity: 1;
-  pointer-events: auto;
-}
-.dat-modal {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1.5rem;
-  visibility: hidden;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-  z-index: 999;
-}
-.dat-modal.open {
-  visibility: visible;
-  opacity: 1;
-}
-.dat-modal-card {
-  background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.12);
-  max-height: 85vh;
-  width: 100%;
-  max-width: 960px;
-  display: flex;
-  flex-direction: column;
-}
-.dat-modal-card .dat-modal-content {
-  padding: 1.5rem;
-  overflow-y: auto;
-}
-.dat-modal-card .dat-modal-footer {
-  padding: 0 1.5rem 1.25rem;
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
-}
-body.dat-modal-open {
-  overflow: hidden;
-}
-.dat-drawio-action-button {
-  border-radius: 999px;
-  padding: 0 1.25rem;
-  height: 40px;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  text-transform: uppercase;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  background-color: #ffffff;
-  border: 1px solid rgba(13, 71, 161, 0.25);
-  color: #0d47a1;
-  box-shadow: none;
-}
-.dat-drawio-action-button .material-icons {
-  font-size: 1.1rem;
-}
-.dat-section-sticky-card {
-  position: sticky;
-  top: 0;
-  z-index: 5;
-  border-radius: 16px;
-  overflow: hidden;
-  display: block;
-  box-sizing: border-box;
-  width: calc(100% + 8rem); /* stretch across card-content + cinta-card horizontal padding on desktop */
-  margin-left: -4rem;
-  margin-right: -4rem;
-  margin-top: -4rem; /* pull up to align with top of the outer card */
-}
-.dat-section-sticky-card .card-content {
-  padding: 0.75rem 1rem;
-  border-radius: inherit;
-}
-@media (max-width: 1024px) {
-  .dat-section-sticky-card {
-    width: calc(100% + 7rem); /* 2rem card padding + 1.5rem card-content padding per side */
-    margin-left: -3.5rem;
-    margin-right: -3.5rem;
-    margin-top: -3.5rem;
-  }
-}
-@media (max-width: 640px) {
-  .dat-section-sticky-card {
-    width: calc(100% + 6rem); /* 1.5rem card padding + 1.5rem card-content padding per side */
-    margin-left: -3rem;
-    margin-right: -3rem;
-    margin-top: -3rem;
-  }
-}
-.dat-sub-section.dat-sub-section-editing {
-  border: 1px dashed #90caf9;
-  border-radius: 12px;
-  padding: 1.25rem;
-  background: #f5faff;
-}
-.dat-sub-section.dat-sub-section-blocked {
-  border: 1px dashed #ef9a9a;
-  border-radius: 12px;
-  padding: 1.25rem;
-  background: #ffebee;
-}
-.dat-sub-section.dat-sub-section-reserve {
-  border: 1px dashed #bdbdbd;
-  border-radius: 12px;
-  padding: 1.25rem;
-  background: #f5f5f5;
-}
-.dat-sub-section-updated {
-  animation: datSubSectionPulse 1.4s ease-out;
-}
-@keyframes datSubSectionPulse {
-  0% { box-shadow: 0 0 0 0 rgba(13, 71, 161, 0.35); }
-  100% { box-shadow: 0 0 0 22px rgba(13, 71, 161, 0); }
-}
-.dat-subsection-edit-btn.disabled {
-  pointer-events: none;
-  opacity: 0.45;
-}
-.dat-subsection-edit-btn.editing {
-  cursor: progress;
-}
-.dat-section-status-icon {
-  font-size: 1.15rem;
-  line-height: 1;
-}
-
-.material-symbols-outlined {
-  font-size: 1.05rem;
-}
-.dat-section-age-value {
-  font-weight: 600;
-  color: #0d47a1;
-}
-</style>
 
 <div class="card cinta-card">
   <div class="card-content">
     {% if section_nav %}
     <div class="card dat-section-sticky-card">
       <div class="card-content">
-      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; flex-wrap:wrap;">
-        <div class="dat-section-nav" style="display:flex; flex-wrap:wrap; gap:0.5rem; align-items:center;">
+      <div class="dat-section-header">
+        <div class="dat-section-nav u-flex u-flex-wrap u-gap-0-5 u-items-center">
           {% for entry in section_nav %}
             {% with status_info=section_status_map|get_item:entry.slug %}
               <a
@@ -230,16 +59,16 @@ body.dat-modal-open {
     </div>
     {% endif %}
 
-    <div class="dat-section-body" style="margin-top:1.5rem;">
+    <div class="dat-section-body">
       {% if selected_section_slug == "informations-generales" %}
         {% include "dat/partials/dat_overview.html" %}
       {% endif %}
-      <div {% if selected_section_slug == "informations-generales" %}style="margin-top:1.5rem;"{% endif %}>
+      <div{% if selected_section_slug == "informations-generales" %} class="u-mt-1-5"{% endif %}>
         {% for container in selected_sections %}
           {% include "dat/partials/dat_section_card.html" with container=container dat=dat wrap=False %}
         {% empty %}
           {% if selected_section_slug != "informations-generales" %}
-            <p style="margin:0;">Aucune donnée n'est disponible pour cette section.</p>
+            <p class="u-m-0">Aucune donnée n'est disponible pour cette section.</p>
           {% endif %}
         {% endfor %}
       </div>
@@ -251,12 +80,12 @@ body.dat-modal-open {
 <div id="dat-history-modal" class="dat-modal" role="dialog" aria-modal="true" aria-labelledby="dat-history-modal-title">
   <div class="dat-modal-card">
     <div class="dat-modal-content">
-      <span id="dat-history-modal-title" class="card-title" style="display:flex; align-items:center; gap:0.5rem;">
+      <span id="dat-history-modal-title" class="card-title dat-modal-title">
         <i class="material-icons" aria-hidden="true">history</i>
         Historique du dossier
       </span>
       {% if history_entries %}
-        <div class="responsive-table" style="margin-top:1rem;">
+        <div class="responsive-table dat-history-table">
           <table class="highlight">
             <thead>
               <tr>
@@ -279,7 +108,7 @@ body.dat-modal-open {
                       Responsable : <strong>{{ entry.details.from_username|default:"-" }}</strong> -> <strong>{{ entry.details.to_username|default:"-" }}</strong>.
                     {% elif entry.action == history_actions.UPDATED %}
                       {% if entry.details.changes %}
-                        <ul style="margin:0; padding-left:1.2rem;">
+                        <ul>
                           {% for field, data in entry.details.changes.items %}
                             <li>
                               <strong>{{ field|capfirst }}</strong> :
@@ -315,7 +144,7 @@ body.dat-modal-open {
                           :
                         {% endif %}
                         {% if details.changes %}
-                          <ul style="margin:0; padding-left:1.2rem;">
+                          <ul>
                             {% for key, change in details.changes.items %}
                               <li>
                                 {% if change.part %}<strong>{{ change.part }}</strong> · {% endif %}
@@ -338,7 +167,7 @@ body.dat-modal-open {
           </table>
         </div>
       {% else %}
-        <p style="margin:0;">Aucun événement n'a encore été enregistré.</p>
+        <p class="u-m-0">Aucun événement n'a encore été enregistré.</p>
       {% endif %}
     </div>
     <div class="dat-modal-footer">
@@ -352,13 +181,13 @@ body.dat-modal-open {
 <div id="dat-reserve-history-modal" class="dat-modal" role="dialog" aria-modal="true" aria-labelledby="dat-reserve-history-modal-title">
   <div class="dat-modal-card">
     <div class="dat-modal-content">
-      <span id="dat-reserve-history-modal-title" class="card-title" style="display:flex; align-items:center; gap:0.5rem;">
+      <span id="dat-reserve-history-modal-title" class="card-title dat-modal-title">
         <i class="material-icons" aria-hidden="true">bookmark</i>
         Historique des réserves et validations
       </span>
       {% if reserve_validation_history_entries %}
-        <div style="display:flex; flex-wrap:wrap; gap:0.75rem; margin-top:1rem;">
-          <div style="min-width:200px;">
+        <div class="dat-section-history-meta">
+          <div class="dat-section-history-meta__item">
             <label for="dat-history-type-filter" class="active">Type</label>
             <select id="dat-history-type-filter" class="browser-default" data-history-filter="type">
               <option value="all">Tous</option>
@@ -366,7 +195,7 @@ body.dat-modal-open {
               <option value="validation">Validations</option>
             </select>
           </div>
-          <div style="min-width:200px;">
+          <div class="dat-section-history-meta__item">
             <label for="dat-history-user-filter" class="active">Utilisateur</label>
             <select id="dat-history-user-filter" class="browser-default" data-history-filter="user">
               <option value="all">Tous les utilisateurs</option>
@@ -376,7 +205,7 @@ body.dat-modal-open {
             </select>
           </div>
         </div>
-        <div class="responsive-table" style="margin-top:1rem;">
+        <div class="responsive-table dat-history-table">
           <table class="highlight">
             <thead>
               <tr>
@@ -400,7 +229,7 @@ body.dat-modal-open {
                     <td>
                       {% if item.kind == "validation" %}
                         {% if entry.action == history_actions.RESPONSIBLE_VALIDATION %}
-                          <div style="margin-bottom:0.35rem;">
+                          <div class="dat-section-history-entry">
                             <span class="chip green lighten-4">Validation référent</span>
                           </div>
                           {% with details=entry.details %}
@@ -418,7 +247,7 @@ body.dat-modal-open {
                             {% endif %}
                           {% endwith %}
                         {% else %}
-                          <div style="margin-bottom:0.35rem;">
+                          <div class="dat-section-history-entry">
                             <span class="chip green lighten-4">Validation</span>
                           </div>
                           {% if entry.details.from or entry.details.to %}
@@ -428,7 +257,7 @@ body.dat-modal-open {
                           {% endif %}
                         {% endif %}
                       {% else %}
-                        <div style="margin-bottom:0.35rem;">
+                        <div class="dat-section-history-entry">
                           {% if entry.action == "cleared" %}
                             <span class="chip blue lighten-4">Réserve levée</span>
                           {% else %}
@@ -436,7 +265,7 @@ body.dat-modal-open {
                           {% endif %}
                         </div>
                         {% if entry.section_title or entry.section_slug %}
-                          <div style="margin-bottom:0.35rem; color:#757575;">
+                          <div class="dat-section-history-entry dat-section-history-entry--muted">
                             {% if entry.section_title %}<strong>{{ entry.section_title }}</strong>{% endif %}
                             {% if entry.section_slug %}
                               {% if entry.section_title %} · {% endif %}
@@ -445,9 +274,9 @@ body.dat-modal-open {
                           </div>
                         {% endif %}
                         {% if entry.action == "cleared" and entry.reserve_message %}
-                          <p style="margin:0 0 0.35rem 0; color:#757575;">Commentaire initial :</p>
+                          <p class="dat-section-history-entry__label">Commentaire initial :</p>
                         {% endif %}
-                        <p style="margin:0; white-space:pre-wrap;">{{ entry.reserve_message|default:"—" }}</p>
+                        <p class="dat-section-history-entry__message">{{ entry.reserve_message|default:"—" }}</p>
                       {% endif %}
                     </td>
                   </tr>
@@ -456,9 +285,9 @@ body.dat-modal-open {
             </tbody>
           </table>
         </div>
-        <p class="dat-history-empty" style="margin:1rem 0; display:none;">Aucun événement pour ces filtres.</p>
+        <p class="dat-history-empty">Aucun événement pour ces filtres.</p>
       {% else %}
-        <p style="margin:0;">Aucune réserve ou validation n'a encore été enregistrée.</p>
+        <p class="u-m-0">Aucune réserve ou validation n'a encore été enregistrée.</p>
       {% endif %}
     </div>
     <div class="dat-modal-footer">
@@ -470,24 +299,24 @@ body.dat-modal-open {
 </div>
 
 <div id="dat-block-comment-modal" class="dat-modal" role="dialog" aria-modal="true" aria-labelledby="dat-block-comment-modal-title">
-  <div class="dat-modal-card" style="max-width:680px;">
+  <div class="dat-modal-card dat-modal-card--compact">
     <div class="dat-modal-content">
-      <span id="dat-block-comment-modal-title" class="card-title" style="display:flex; align-items:center; gap:0.5rem;">
-        <i class="material-icons" aria-hidden="true" style="color:#c62828;">block</i>
+      <span id="dat-block-comment-modal-title" class="card-title dat-modal-title">
+        <i class="material-icons dat-block-modal-icon" aria-hidden="true">block</i>
         Bloquer la section
       </span>
-      <p style="margin:0.75rem 0 0; color:#424242;">
+      <p class="dat-modal-note">
         Merci d’indiquer un commentaire de blocage pour <strong id="dat-block-comment-section-title">cette section</strong>.
       </p>
-      <div class="input-field" style="margin-top:1.25rem;">
-        <textarea id="dat-block-comment-textarea" class="materialize-textarea" rows="3" style="min-height:120px;"></textarea>
+      <div class="input-field dat-modal-textarea">
+        <textarea id="dat-block-comment-textarea" class="materialize-textarea" rows="3"></textarea>
         <label for="dat-block-comment-textarea" class="active">Commentaire (obligatoire)</label>
       </div>
-      <p id="dat-block-comment-error" style="margin:0; color:#c62828; display:none;">Le commentaire est obligatoire.</p>
+      <p id="dat-block-comment-error" class="dat-modal-error">Le commentaire est obligatoire.</p>
     </div>
     <div class="dat-modal-footer">
       <button type="button" class="btn-flat waves-effect dat-modal-close">Annuler</button>
-      <button type="button" id="dat-block-comment-confirm" class="btn waves-effect waves-light cinta-btn-primary" style="background-color:#c62828;">
+      <button type="button" id="dat-block-comment-confirm" class="btn waves-effect waves-light cinta-btn-primary dat-modal-action--danger">
         Bloquer
       </button>
     </div>
@@ -495,24 +324,24 @@ body.dat-modal-open {
 </div>
 
 <div id="dat-reserve-modal" class="dat-modal" role="dialog" aria-modal="true" aria-labelledby="dat-reserve-modal-title">
-  <div class="dat-modal-card" style="max-width:680px;">
+  <div class="dat-modal-card dat-modal-card--compact">
     <div class="dat-modal-content">
-      <span id="dat-reserve-modal-title" class="card-title" style="display:flex; align-items:center; gap:0.5rem;">
-        <i class="material-icons" aria-hidden="true" style="color:#616161;">bookmark</i>
+      <span id="dat-reserve-modal-title" class="card-title dat-modal-title">
+        <i class="material-icons dat-reserve-modal-icon" aria-hidden="true">bookmark</i>
         Mettre en réserve
       </span>
-      <p style="margin:0.75rem 0 0; color:#424242;">
+      <p class="dat-modal-note">
         Ajoutez un message pour la réserve sur <strong id="dat-reserve-section-title">cette section</strong>.
       </p>
-      <div class="input-field" style="margin-top:1.25rem;">
-        <textarea id="dat-reserve-textarea" class="materialize-textarea" rows="3" style="min-height:120px;"></textarea>
+      <div class="input-field dat-modal-textarea">
+        <textarea id="dat-reserve-textarea" class="materialize-textarea" rows="3"></textarea>
         <label for="dat-reserve-textarea" class="active">Message (obligatoire)</label>
       </div>
-      <p id="dat-reserve-error" style="margin:0; color:#c62828; display:none;">Le message est obligatoire.</p>
+      <p id="dat-reserve-error" class="dat-modal-error">Le message est obligatoire.</p>
     </div>
     <div class="dat-modal-footer">
       <button type="button" class="btn-flat waves-effect dat-modal-close">Annuler</button>
-      <button type="button" id="dat-reserve-confirm" class="btn waves-effect waves-light cinta-btn-primary" style="background-color:#616161;">
+      <button type="button" id="dat-reserve-confirm" class="btn waves-effect waves-light cinta-btn-primary dat-modal-action--neutral">
         Mettre en réserve
       </button>
     </div>
@@ -520,20 +349,20 @@ body.dat-modal-open {
 </div>
 
 <div id="dat-devalidate-responsible-modal" class="dat-modal" role="dialog" aria-modal="true" aria-labelledby="dat-devalidate-responsible-modal-title">
-  <div class="dat-modal-card" style="max-width:680px;">
+  <div class="dat-modal-card dat-modal-card--compact">
     <div class="dat-modal-content">
-      <span id="dat-devalidate-responsible-modal-title" class="card-title" style="display:flex; align-items:center; gap:0.5rem;">
-        <i class="material-icons" aria-hidden="true" style="color:#c62828;">warning</i>
+      <span id="dat-devalidate-responsible-modal-title" class="card-title dat-modal-title">
+        <i class="material-icons dat-block-modal-icon" aria-hidden="true">warning</i>
         Confirmer la dévalidation
       </span>
-      <p style="margin:0.75rem 0 0; color:#424242;">
+      <p class="dat-modal-note">
         La section <strong id="dat-devalidate-section-title">cette section</strong> a déjà été validée par le responsable.
         Si vous dévalidez, la validation responsable sera aussi réinitialisée.
       </p>
     </div>
     <div class="dat-modal-footer">
       <button type="button" class="btn-flat waves-effect dat-modal-close">Annuler</button>
-      <button type="button" id="dat-devalidate-responsible-confirm" class="btn waves-effect waves-light cinta-btn-primary" style="background-color:#c62828;">
+      <button type="button" id="dat-devalidate-responsible-confirm" class="btn waves-effect waves-light cinta-btn-primary dat-modal-action--danger">
         Dévalider
       </button>
     </div>
@@ -1256,7 +1085,7 @@ document.addEventListener("DOMContentLoaded", () => {
     container.classList.add("dat-sub-section-editing");
     emitSectionEditEvent("dat:section-edit-start", slug);
     container.innerHTML = `
-      <div class="dat-sub-section-loading" style="padding:1.5rem; text-align:center;">
+      <div class="dat-sub-section-loading">
         <div class="preloader-wrapper small active">
           <div class="spinner-layer spinner-blue-only">
             <div class="circle-clipper left"><div class="circle"></div></div>
@@ -1264,7 +1093,7 @@ document.addEventListener("DOMContentLoaded", () => {
             <div class="circle-clipper right"><div class="circle"></div></div>
           </div>
         </div>
-        <p style="margin-top:0.5rem; color:#616161;">Chargement du formulaire…</p>
+        <p class="u-mt-0-5 text-muted-dark">Chargement du formulaire…</p>
       </div>
     `;
     const url = button.dataset.editUrl || button.getAttribute("href");
@@ -1305,6 +1134,16 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
     event.preventDefault();
+    const likec4Url = viewerBtn.getAttribute("data-likec4-preview-url");
+    if (likec4Url) {
+      const title = viewerBtn.getAttribute("data-likec4-title") || "Diagramme LikeC4";
+      if (window.CintaDatViewer && typeof window.CintaDatViewer.openImage === "function") {
+        window.CintaDatViewer.openImage(likec4Url, title);
+      } else {
+        window.open(likec4Url, "_blank", "noopener");
+      }
+      return;
+    }
     const diagramId = viewerBtn.getAttribute("data-diagram-id");
     if (window.CintaDatViewer && typeof window.CintaDatViewer.open === "function") {
       window.CintaDatViewer.open(diagramId);
@@ -1312,6 +1151,367 @@ document.addEventListener("DOMContentLoaded", () => {
       alert("Affichage du diagramme indisponible pour le moment.");
     }
   });
+
+  function parseAllowedExtensions(value) {
+    return (value || "")
+      .split(",")
+      .map((item) => item.trim().toLowerCase())
+      .filter((item) => item);
+  }
+
+  function fileExtension(filename) {
+    const index = filename.lastIndexOf(".");
+    if (index < 0) {
+      return "";
+    }
+    return filename.slice(index).toLowerCase();
+  }
+
+  function showAttachmentMessage(message) {
+    if (window.M && M.toast) {
+      M.toast({html: message});
+      return;
+    }
+    alert(message);
+  }
+
+  function showAttachmentMessages(messages) {
+    if (!Array.isArray(messages)) {
+      return;
+    }
+    messages.forEach((message) => {
+      if (message) {
+        showAttachmentMessage(message);
+      }
+    });
+  }
+
+  function supportsAttachmentAjax() {
+    return typeof window.FormData === "function" && typeof window.XMLHttpRequest === "function";
+  }
+
+  function validateAttachmentFiles(files, allowedExtensions, maxSize, maxSizeLabel) {
+    const errors = [];
+    files.forEach((file) => {
+      if (maxSize && file.size > maxSize) {
+        errors.push(`Le fichier ${file.name} depasse la taille maximale (${maxSizeLabel}).`);
+      }
+      const ext = fileExtension(file.name);
+      if (!ext || (allowedExtensions.length && !allowedExtensions.includes(ext))) {
+        errors.push(`Le fichier ${file.name} a une extension non autorisee.`);
+      }
+    });
+    return errors;
+  }
+
+  function getAttachmentsOpenState(container) {
+    if (!container) {
+      return null;
+    }
+    const details = container.querySelector(".dat-attachments-collapsible");
+    if (!details) {
+      return null;
+    }
+    return details.open;
+  }
+
+  function updateAttachmentsContainer(container, html, wasOpen) {
+    if (!container) {
+      return;
+    }
+    if (!html) {
+      container.remove();
+      return;
+    }
+    const parent = container.parentElement;
+    const slug = container.dataset.sectionSlug || "";
+    container.outerHTML = html;
+    if (!parent) {
+      return;
+    }
+    const selector = slug
+      ? `.dat-section-attachments[data-section-slug="${slug}"]`
+      : ".dat-section-attachments";
+    const nextContainer = parent.querySelector(selector);
+    if (!nextContainer) {
+      return;
+    }
+    if (typeof wasOpen === "boolean") {
+      const details = nextContainer.querySelector(".dat-attachments-collapsible");
+      if (details) {
+        details.open = wasOpen;
+      }
+    }
+    attachAttachmentForms(nextContainer);
+  }
+
+  function handleAttachmentPayload(container, payload, wasOpen) {
+    if (!payload) {
+      return;
+    }
+    const messages = Array.isArray(payload.messages) ? payload.messages : [];
+    showAttachmentMessages(messages);
+    if (typeof payload.attachments_html === "string") {
+      updateAttachmentsContainer(container, payload.attachments_html, wasOpen);
+    }
+  }
+
+  function parseJsonXhrResponse(xhr) {
+    if (!xhr) {
+      return null;
+    }
+    const contentType = xhr.getResponseHeader("content-type") || "";
+    if (!contentType.includes("application/json")) {
+      return null;
+    }
+    try {
+      return JSON.parse(xhr.responseText || "");
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function getAttachmentProgressElements(form) {
+    if (!form) {
+      return null;
+    }
+    const wrapper = form.querySelector("[data-attachment-progress]");
+    if (!wrapper) {
+      return null;
+    }
+    return {
+      wrapper,
+      bar: wrapper.querySelector("[data-attachment-progress-bar]"),
+      label: wrapper.querySelector("[data-attachment-progress-label]"),
+    };
+  }
+
+  function setAttachmentProgressValue(form, percent, label) {
+    const elements = getAttachmentProgressElements(form);
+    if (!elements) {
+      return;
+    }
+    const safePercent = Math.max(0, Math.min(100, percent));
+    elements.wrapper.hidden = false;
+    if (elements.bar) {
+      elements.bar.classList.remove("indeterminate");
+      elements.bar.classList.add("determinate");
+      elements.bar.style.width = `${safePercent}%`;
+    }
+    if (elements.label) {
+      elements.label.textContent = label || `Envoi ${safePercent}%`;
+    }
+  }
+
+  function setAttachmentProgressIndeterminate(form, label) {
+    const elements = getAttachmentProgressElements(form);
+    if (!elements) {
+      return;
+    }
+    elements.wrapper.hidden = false;
+    if (elements.bar) {
+      elements.bar.classList.remove("determinate");
+      elements.bar.classList.add("indeterminate");
+      elements.bar.style.removeProperty("width");
+    }
+    if (elements.label) {
+      elements.label.textContent = label || "Analyse en cours...";
+    }
+  }
+
+  function resetAttachmentProgress(form) {
+    const elements = getAttachmentProgressElements(form);
+    if (!elements) {
+      return;
+    }
+    elements.wrapper.hidden = true;
+    if (elements.bar) {
+      elements.bar.classList.remove("indeterminate");
+      elements.bar.classList.add("determinate");
+      elements.bar.style.width = "0%";
+    }
+    if (elements.label) {
+      elements.label.textContent = "";
+    }
+  }
+
+  function setFormButtonsDisabled(form, disabled) {
+    if (!form) {
+      return;
+    }
+    const trigger = form.querySelector("[data-attachment-trigger]");
+    if (trigger) {
+      trigger.disabled = disabled;
+      trigger.classList.toggle("disabled", disabled);
+    }
+    form.querySelectorAll("button").forEach((button) => {
+      button.disabled = disabled;
+      button.classList.toggle("disabled", disabled);
+    });
+  }
+
+  function submitAttachmentForm(form) {
+    if (!form || form.dataset.attachmentSubmitting === "1") {
+      return;
+    }
+    const container = form.closest(".dat-section-attachments");
+    const wasOpen = getAttachmentsOpenState(container);
+    const formData = new FormData(form);
+    form.dataset.attachmentSubmitting = "1";
+    setFormButtonsDisabled(form, true);
+    setAttachmentProgressValue(form, 0, "Envoi 0%");
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", form.action);
+    xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+    xhr.upload.addEventListener("progress", (event) => {
+      if (event.lengthComputable) {
+        const percent = Math.round((event.loaded / event.total) * 100);
+        setAttachmentProgressValue(form, percent, `Envoi ${percent}%`);
+      } else {
+        setAttachmentProgressIndeterminate(form, "Envoi en cours...");
+      }
+    });
+    xhr.upload.addEventListener("load", () => {
+      setAttachmentProgressIndeterminate(form, "Analyse en cours...");
+    });
+    xhr.addEventListener("load", () => {
+      const payload = parseJsonXhrResponse(xhr);
+      if (!payload) {
+        window.location.href = xhr.responseURL || form.action;
+        return;
+      }
+      handleAttachmentPayload(container, payload, wasOpen);
+    });
+    xhr.addEventListener("error", () => {
+      showAttachmentMessage("Impossible d'envoyer la piece jointe.");
+    });
+    xhr.addEventListener("loadend", () => {
+      form.dataset.attachmentSubmitting = "0";
+      setFormButtonsDisabled(form, false);
+      resetAttachmentProgress(form);
+      const input = form.querySelector("[data-attachment-input]");
+      if (input) {
+        input.value = "";
+      }
+    });
+    xhr.send(formData);
+  }
+
+  function submitAttachmentDeleteForm(form) {
+    if (!form || form.dataset.attachmentSubmitting === "1") {
+      return;
+    }
+    const container = form.closest(".dat-section-attachments");
+    const wasOpen = getAttachmentsOpenState(container);
+    const formData = new FormData(form);
+    form.dataset.attachmentSubmitting = "1";
+    setFormButtonsDisabled(form, true);
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", form.action);
+    xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+    xhr.addEventListener("load", () => {
+      const payload = parseJsonXhrResponse(xhr);
+      if (!payload) {
+        window.location.href = xhr.responseURL || form.action;
+        return;
+      }
+      handleAttachmentPayload(container, payload, wasOpen);
+    });
+    xhr.addEventListener("error", () => {
+      showAttachmentMessage("Impossible de supprimer la piece jointe.");
+    });
+    xhr.addEventListener("loadend", () => {
+      form.dataset.attachmentSubmitting = "0";
+      setFormButtonsDisabled(form, false);
+    });
+    xhr.send(formData);
+  }
+
+  function attachAttachmentForm(form) {
+    if (form.dataset.attachmentBound === "1") {
+      return;
+    }
+    const input = form.querySelector("[data-attachment-input]");
+    const trigger = form.querySelector("[data-attachment-trigger]");
+    if (!input || !trigger) {
+      return;
+    }
+    form.dataset.attachmentBound = "1";
+    const allowedExtensions = parseAllowedExtensions(form.dataset.allowedExtensions);
+    const maxSize = parseInt(form.dataset.maxSize || "0", 10);
+    const maxSizeLabel = form.dataset.maxSizeLabel || "";
+
+    function handleFiles() {
+      const files = Array.from(input.files || []);
+      if (!files.length) {
+        return;
+      }
+      const errors = validateAttachmentFiles(files, allowedExtensions, maxSize, maxSizeLabel);
+      if (errors.length) {
+        showAttachmentMessage(errors[0]);
+        input.value = "";
+        return;
+      }
+      if (!supportsAttachmentAjax()) {
+        form.submit();
+        return;
+      }
+      submitAttachmentForm(form);
+    }
+
+    trigger.addEventListener("click", () => input.click());
+    input.addEventListener("change", handleFiles);
+    form.addEventListener("submit", (event) => {
+      if (!supportsAttachmentAjax()) {
+        return;
+      }
+      const files = Array.from(input.files || []);
+      if (!files.length) {
+        event.preventDefault();
+        showAttachmentMessage("Veuillez selectionner au moins un fichier.");
+        return;
+      }
+      const errors = validateAttachmentFiles(files, allowedExtensions, maxSize, maxSizeLabel);
+      if (errors.length) {
+        event.preventDefault();
+        showAttachmentMessage(errors[0]);
+        input.value = "";
+        return;
+      }
+      event.preventDefault();
+      submitAttachmentForm(form);
+    });
+  }
+
+  function attachAttachmentDeleteForm(form) {
+    if (form.dataset.attachmentDeleteBound === "1") {
+      return;
+    }
+    form.dataset.attachmentDeleteBound = "1";
+    if (supportsAttachmentAjax()) {
+      form.removeAttribute("onsubmit");
+    }
+    form.addEventListener("submit", (event) => {
+      if (!supportsAttachmentAjax()) {
+        return;
+      }
+      event.preventDefault();
+      const confirmMessage = form.dataset.confirm || "Supprimer cette piece jointe ?";
+      if (!window.confirm(confirmMessage)) {
+        return;
+      }
+      submitAttachmentDeleteForm(form);
+    });
+  }
+
+  function attachAttachmentForms(scope) {
+    const root = scope && typeof scope.querySelectorAll === "function" ? scope : document;
+    root.querySelectorAll(".dat-attachments-form").forEach(attachAttachmentForm);
+    root.querySelectorAll(".dat-attachments-delete-form").forEach(attachAttachmentDeleteForm);
+  }
+
+  attachAttachmentForms();
+  document.addEventListener("turbolinks:load", attachAttachmentForms);
 
   document.addEventListener("turbolinks:before-visit", cancelActiveInlineEdit);
   document.addEventListener("turbolinks:before-cache", cancelActiveInlineEdit);

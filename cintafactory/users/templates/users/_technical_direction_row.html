@@ -5,7 +5,7 @@
     {% if request.user.is_superuser %}
       <a href="{% url 'users:technicaldirection_change' pk=obj.pk %}" class="btn-flat waves-effect">Modifier</a>
     {% else %}
-      <span title="Aucune permission" style="color:#888;">—</span>
+      <span title="Aucune permission" class="text-muted-light">—</span>
     {% endif %}
   </td>
 </tr>

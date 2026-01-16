@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Application, DAT, DATParticipant
+from .models import Application, DAT, DATParticipant, DATSectionAttachment
 
 
 @admin.register(Application)
@@ -24,3 +24,12 @@ class DATAdmin(admin.ModelAdmin):
     search_fields = ("reference", "title", "description", "application__name", "business_direction__name")
     ordering = ("-created_at",)
     inlines = (DATParticipantInline,)
+
+
+@admin.register(DATSectionAttachment)
+class DATSectionAttachmentAdmin(admin.ModelAdmin):
+    list_display = ("display_name", "section", "uploaded_by", "size", "created_at")
+    list_filter = ("created_at", "section__dat__reference")
+    search_fields = ("display_name", "original_name", "section__title", "section__dat__reference")
+    ordering = ("-created_at",)
+    readonly_fields = ("created_at",)

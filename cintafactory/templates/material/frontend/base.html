@@ -28,20 +28,22 @@
                     {% block sidenav_header %}
                     <li>
                         <div class="user-view">
-                            {% comment %} {% block userphoto %}
-                            {% if user.photo.url %}
-                            <a href="#"><img class="circle" src="{{ user.photo.url }}"></a>
+                            {% if request.user.is_authenticated and request.user.profile_picture %}
+                              <a href="{% url 'account:profile' %}">
+                                <img class="circle user-view__avatar" src="{{ request.user.profile_picture.url }}" alt="Photo de profil">
+                              </a>
                             {% else %}
-                            <a href="#"><img class="circle" src="{% static 'material/imgs/user.png' %}"></a>
+                              <a href="{% url 'account:profile' %}">
+                                <img class="circle user-view__avatar" src="{% static 'material/imgs/user.png' %}" alt="Photo de profil">
+                              </a>
                             {% endif %}
-                            {% endblock %} {% endcomment %}
                             <div class="chip user-identity-chip light-blue lighten-5">
                                 <span class="user-identity-chip__name">{{ request.user.get_username|title }}</span>
                                 <span class="user-identity-chip__email">{{ request.user.email }}</span>
                             </div>
                             <a href="{% url 'account:profile' %}"
                                class="btn waves-effect waves-light cinta-btn-primary my-account__link"
-                               style="margin-top:0.75rem; min-width:170px; text-align:center;">
+                               >
                                 <i class="material-icons left">person</i>Mon compte
                             </a>
                         </div>
@@ -78,9 +80,9 @@
                         <a href="{% url 'workflows:notifications' %}"
                            class="cinta-btn-secondary cinta-btn-secondary--block"
                            data-turbolinks="false">
-                            <i class="material-icons" style="margin:0;" aria-hidden="true">notifications</i>
+                            <i class="material-icons icon--no-margin" aria-hidden="true">notifications</i>
                             <span class="sidenav-notifications__text">{% trans "Notifications" %}</span>
-                            <span class="chip red darken-1 white-text sidenav-notifications__badge" role="status">
+                            <span class="chip {% if workflow_unread_notification_count %}red darken-1 white-text{% else %}grey lighten-2 grey-text text-darken-2{% endif %} sidenav-notifications__badge" role="status">
                                 {{ workflow_unread_notification_count|default:0 }}
                             </span>
                         </a>
@@ -116,10 +118,10 @@
                         {% if user.is_authenticated %}
                          <li>
                              <a href="{% url 'logout' %}"
-                                class="btn waves-effect waves-light cinta-btn-primary"
+                                class="btn waves-effect waves-light cinta-btn-primary u-inline-flex u-items-center u-gap-0-35"
                                 data-turbolinks="false"
-                                style="display:inline-flex; align-items:center; gap:0.35rem;">
-                                 <i class="material-icons" style="margin:0;">exit_to_app</i>Deconnexion
+                                >
+                                 <i class="material-icons icon--no-margin">exit_to_app</i>Deconnexion
                              </a>
                          </li>
                         {% else %}
@@ -228,6 +230,50 @@
               };
               M.toast.__cintaPatched = true;
             }
+          })();
+        </script>
+        <script>
+          (function () {
+            function triggerAttachmentDownload(url) {
+              if (!url) {
+                return;
+              }
+              var win = window.open(url, "_blank");
+              if (win) {
+                setTimeout(function () {
+                  try {
+                    win.close();
+                  } catch (err) {}
+                }, 1500);
+                return;
+              }
+              var iframe = document.createElement("iframe");
+              iframe.style.display = "none";
+              iframe.src = url;
+              document.body.appendChild(iframe);
+              setTimeout(function () {
+                if (iframe.parentNode) {
+                  iframe.parentNode.removeChild(iframe);
+                }
+              }, 60000);
+            }
+
+            document.addEventListener("click", function (event) {
+              var link = event.target.closest("[data-attachment-download]");
+              if (!link) {
+                return;
+              }
+              if (link.dataset.attachmentDownloading === "1") {
+                event.preventDefault();
+                return;
+              }
+              event.preventDefault();
+              link.dataset.attachmentDownloading = "1";
+              setTimeout(function () {
+                link.removeAttribute("data-attachment-downloading");
+              }, 2000);
+              triggerAttachmentDownload(link.getAttribute("href"));
+            });
           })();
         </script>
         {% endblock messages %}

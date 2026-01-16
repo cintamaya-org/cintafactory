@@ -223,7 +223,7 @@ class UserViewSet(BaseSecuredViewSet):
     detail_view_class = UserDetailGraphView
     layout = Layout(
         Fieldset("Compte", Row("username", "email")),
-        Fieldset("Profil", Row("first_name", "last_name")),
+        Fieldset("Profil", Row("first_name", "last_name"), Row("profile_picture")),
         Fieldset("Organisation", Row("business_group", "role")),
         Fieldset("Securite", Row("password1", "password2")),
         Fieldset("Roles et droits", Row("is_active", "is_staff", "is_superuser")),

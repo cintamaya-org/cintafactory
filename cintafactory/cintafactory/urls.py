@@ -23,6 +23,7 @@ from django.views.generic import RedirectView
 from material.frontend import urls as material_urls
 
 from account.views import AccountLogoutView
+from users import oauth_views
 
 urlpatterns = [
     path("admin/", admin.site.urls),      # Django admin
@@ -31,8 +32,10 @@ urlpatterns = [
     path("dat/", include(("dat.urls", "dat"), namespace="dat")),
     path("workflows/", include(("workflows.urls", "workflows"), namespace="workflows")),
     path("diagrams/", include(("diagrams.urls", "diagrams"), namespace="diagrams")),
-    path("accounts/login/", auth_views.LoginView.as_view(), name="login"),
+    path("accounts/login/", oauth_views.LoginViewWithProviders.as_view(), name="login"),
     path("accounts/logout/", AccountLogoutView.as_view(), name="logout"),
+    path("accounts/oauth/<slug:provider>/", oauth_views.oauth_login, name="oauth_login"),
+    path("accounts/oauth/<slug:provider>/callback/", oauth_views.oauth_callback, name="oauth_callback"),
     path(
         "accounts/password_change/",
         auth_views.PasswordChangeView.as_view(),
@@ -63,6 +66,7 @@ urlpatterns = [
         auth_views.PasswordResetCompleteView.as_view(),
         name="password_reset_complete",
     ),
+    path("oauth/", include("oauth2_provider.urls", namespace="oauth2_provider")),
     path("", include(material_urls)),     # Material shell
 ]
 

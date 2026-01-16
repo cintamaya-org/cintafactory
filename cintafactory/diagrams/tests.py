@@ -1,4 +1,3 @@
-import os
 import shutil
 import tempfile
 from unittest.mock import patch
@@ -86,7 +85,7 @@ class DiagramImportViewTest(TestCase):
         args, _ = mock_regenerate.call_args
         self.assertEqual(args[1], xml)
         self.diagram.refresh_from_db()
-        self.assertEqual(self.diagram.xml, xml)
+        self.assertEqual(self.diagram.read_xml(), xml)
 
 
 class DiagramViewerContextTest(TestCase):
@@ -97,7 +96,8 @@ class DiagramViewerContextTest(TestCase):
         self._media_override = self.settings(MEDIA_ROOT=self._media_dir)
         self._media_override.enable()
         self.user = get_user_model().objects.create_user(username="viewer", password="pwd")
-        self.diagram = Diagram.objects.create(title="Diag", owner=self.user, xml="<mxGraphModel/>")
+        self.diagram = Diagram.objects.create(title="Diag", owner=self.user)
+        self.diagram.write_xml("<mxGraphModel/>")
         self.url = reverse("diagrams:viewer_context", args=[self.diagram.pk])
 
     def tearDown(self) -> None:
@@ -108,8 +108,10 @@ class DiagramViewerContextTest(TestCase):
     def test_regenerates_missing_thumbnail_on_view(self, mock_regenerate):
         self.client.force_login(self.user)
         self.diagram.thumbnail.save("thumb.png", ContentFile(b"stale"), save=True)
-        stale_path = self.diagram.thumbnail.path
-        os.remove(stale_path)
+        try:
+            self.diagram.thumbnail.storage.delete(self.diagram.thumbnail.name)
+        except Exception:
+            pass
 
         def fake_regen(diagram, xml_payload):
             diagram.thumbnail.save("thumb.png", ContentFile(b"fresh"), save=False)

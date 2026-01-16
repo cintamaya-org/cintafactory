@@ -5,8 +5,11 @@ import re
 from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
 
+
 CONTROL_CHARACTERS_RE = re.compile(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]")
 DISALLOWED_DIAGRAM_CHARS_RE = re.compile(r"[<>[\]{}]")
+
+# Disabled
 DRAWIO_FORBIDDEN_XML_PATTERN = re.compile(r"<!\s*(DOCTYPE|ENTITY)", re.IGNORECASE)
 DRAWIO_FORBIDDEN_TAG_PATTERN = re.compile(r"<\s*(script|iframe|object|embed)\b", re.IGNORECASE)
 ROOT_TAG_PATTERN = re.compile(r"<\s*([a-zA-Z0-9:_-]+)")

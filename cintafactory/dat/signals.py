@@ -8,7 +8,7 @@ from django.dispatch import receiver
 
 from cintafactory.logging_utils import get_request_context, log_info
 
-from .models import DAT, DATHistory, DATHistoryAction
+from .models import DAT, DATSection, DATSectionMetadata, DATHistory, DATHistoryAction
 from .sections import ensure_default_sections
 
 TRACKED_FIELDS = ("title", "description", "status", "owner_id")
@@ -222,6 +222,19 @@ def log_dat_save(sender, instance: DAT, created: bool, **kwargs) -> None:
             actor_display=actor_display,
             details={"changes": other_changes},
         )
+
+
+@receiver(post_save, sender=DATSection)
+def sync_dat_section_metadata(sender, instance: DATSection, **kwargs) -> None:
+    metadata = getattr(instance, "metadata", None)
+    if metadata is not None:
+        return
+    placeholder = DATSectionMetadata.objects.create(
+        title=f"Section {instance.pk}",
+        slug=f"section-{instance.pk}",
+        description="",
+    )
+    DATSection.objects.filter(pk=instance.pk).update(metadata=placeholder)
 
     if hasattr(instance, "_original_dat_snapshot"):
         delattr(instance, "_original_dat_snapshot")

@@ -6,6 +6,8 @@ from django.db.models import Q
 from django.db.utils import OperationalError, ProgrammingError
 from django.core.exceptions import ValidationError
 
+from .profile_pictures import build_profile_picture_storage_name, get_profile_picture_storage
+
 
 def _get_default_group_responsible():
     User = get_user_model()
@@ -163,6 +165,12 @@ class Role(models.Model):
         return self.name
 
 class User(AbstractUser):
+    profile_picture = models.ImageField(
+        upload_to=build_profile_picture_storage_name,
+        storage=get_profile_picture_storage(),
+        blank=True,
+        null=True,
+    )
     role = models.ForeignKey(
         Role, on_delete=models.PROTECT, null=True, blank=True, related_name="users"
     )
@@ -186,7 +194,7 @@ class User(AbstractUser):
         except (ProgrammingError, OperationalError):
             roles_exist = False
 
-        if not self.role_id and roles_exist:
+        if not self.role_id and roles_exist and self._state.adding:
             raise ValidationError({"role": "Chaque utilisateur doit avoir un rôle."})
 
         role = None
@@ -223,6 +231,16 @@ class User(AbstractUser):
             )
 
     def save(self, *args, **kwargs):
+        old_profile_picture = None
+        if self.pk:
+            try:
+                old_profile_picture = (
+                    type(self).objects.filter(pk=self.pk)
+                    .values_list("profile_picture", flat=True)
+                    .first()
+                )
+            except (ProgrammingError, OperationalError):
+                old_profile_picture = None
         if not self.password:
             # Ensure new users created without an explicit password get an unusable one
             self.set_unusable_password()
@@ -262,3 +280,39 @@ class User(AbstractUser):
                     self.business_group = default_group
         self.full_clean()
         super().save(*args, **kwargs)
+        if old_profile_picture and old_profile_picture != self.profile_picture.name:
+            try:
+                self.profile_picture.storage.delete(old_profile_picture)
+            except Exception:
+                pass
+
+
+class OAuthAccount(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="oauth_accounts",
+    )
+    provider = models.CharField(max_length=50)
+    provider_user_id = models.CharField(max_length=255)
+    email = models.EmailField(blank=True)
+    access_token = models.TextField(blank=True)
+    refresh_token = models.TextField(blank=True)
+    token_expires_at = models.DateTimeField(null=True, blank=True)
+    token_type = models.CharField(max_length=40, blank=True)
+    scope = models.TextField(blank=True)
+    raw_profile = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "user_oauth_account"
+        ordering = ["provider", "id"]
+        unique_together = (("provider", "provider_user_id"),)
+        indexes = [
+            models.Index(fields=["provider", "email"]),
+            models.Index(fields=["user", "provider"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.provider}:{self.provider_user_id}"

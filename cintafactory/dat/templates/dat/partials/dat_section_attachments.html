@@ -1,0 +1,97 @@
+{% if container.attachments_enabled and attachments_show_upload or container.attachments %}
+<div class="dat-section-attachments" data-section-slug="{{ container.section.metadata.slug }}">
+  <div class="dat-section-attachments__header">
+    <h6 class="dat-section-attachments__title">Pièces jointes</h6>
+    {% if attachments_show_upload and container.attachments_can_upload %}
+      <form
+        method="post"
+        action="{% url 'dat:section_attachment_upload' dat.pk container.section.metadata.slug %}"
+        enctype="multipart/form-data"
+        class="dat-attachments-form"
+        data-allowed-extensions="{{ attachments_allowed_extensions|join:',' }}"
+        data-max-size="{{ attachments_max_size_bytes }}"
+        data-max-size-label="{{ attachments_max_size_label }}"
+      >
+        {% csrf_token %}
+        <input
+          type="file"
+          name="attachments"
+          multiple
+          accept="{{ attachments_accept }}"
+          class="dat-attachments-input"
+          data-attachment-input
+        >
+        <button type="button" class="btn waves-effect waves-light cinta-btn-primary" data-attachment-trigger>
+          <i class="material-icons left" aria-hidden="true">attach_file</i>
+          Ajouter une pièce jointe
+        </button>
+        <div class="dat-attachments-progress" data-attachment-progress hidden>
+          <span class="dat-attachments-progress__label" data-attachment-progress-label role="status" aria-live="polite"></span>
+          <div class="progress">
+            <div class="determinate" data-attachment-progress-bar style="width: 0%"></div>
+          </div>
+        </div>
+      </form>
+    {% endif %}
+  </div>
+  {% if attachments_show_upload and container.attachments_can_upload %}
+    <p class="dat-attachments-help">
+      Formats autorisés : {{ attachments_allowed_extensions_display }} · Taille max : {{ attachments_max_size_label }}.
+    </p>
+  {% endif %}
+  {% if container.attachments %}
+    <details class="dat-attachments-collapsible" data-attachments-collapsible>
+      <summary class="dat-attachments-toggle">
+        <span class="dat-attachments-toggle-label dat-attachments-toggle-label--closed">
+          Afficher les pieces jointes ({{ container.attachments|length }})
+        </span>
+        <span class="dat-attachments-toggle-label dat-attachments-toggle-label--open">
+          Masquer les pieces jointes ({{ container.attachments|length }})
+        </span>
+        <i class="material-icons dat-attachments-toggle-icon" aria-hidden="true">expand_more</i>
+      </summary>
+      <ul class="dat-attachments-list">
+        {% for attachment in container.attachments %}
+          <li class="dat-attachments-item">
+            <div class="dat-attachments-item__meta">
+              <span class="dat-attachments-item__name">{{ attachment.display_name }}</span>
+              <span class="chip grey lighten-3">{{ attachment.size|filesizeformat }}</span>
+              <span class="text-muted-soft">
+                {{ attachment.created_at|date:"d/m/Y" }}
+                {% if attachment.uploader_name %}· {{ attachment.uploader_name }}{% endif %}
+              </span>
+            </div>
+            <div class="dat-attachments-item__actions">
+              {% if attachments_show_upload and container.attachments_can_upload %}
+              <form
+                method="post"
+                action="{% url 'dat:section_attachment_delete' dat.pk attachment.pk %}"
+                class="dat-attachments-delete-form"
+                data-confirm="Supprimer cette piece jointe ?"
+                onsubmit="return confirm('Supprimer cette piece jointe ?');"
+              >
+                  {% csrf_token %}
+                  <button type="submit" class="btn-flat waves-effect cinta-btn-secondary dat-attachment-delete">
+                    <i class="material-icons left" aria-hidden="true">delete</i>
+                    Supprimer
+                  </button>
+                </form>
+              {% endif %}
+              <a
+                href="{% url 'dat:section_attachment_download' dat.pk attachment.pk %}"
+                class="btn-flat waves-effect cinta-btn-secondary dat-attachment-download"
+                data-attachment-download="true"
+              >
+                <i class="material-icons left" aria-hidden="true">download</i>
+                Télécharger
+              </a>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    </details>
+  {% else %}
+    <p class="u-m-0 text-muted-soft">Aucune pièce jointe.</p>
+  {% endif %}
+</div>
+{% endif %}

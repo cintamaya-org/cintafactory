@@ -19,7 +19,17 @@ from .constants import (
 )
 from .exporters import DATExportModelBuilder
 from .forms import DATForm
-from .models import Application, DAT, DATParticipant, DATPart, DATPartEntryType, DATStatus, DATHistoryAction
+from .models import (
+    Application,
+    DAT,
+    DATParticipant,
+    DATPart,
+    DATPartEntryType,
+    DATSection,
+    DATSectionMetadata,
+    DATStatus,
+    DATHistoryAction,
+)
 from .sections import SECTION_STATUS_VALIDATED_VALUE, sync_dat_sections_if_needed
 from .tasks import _run_pdf_generation
 from workflows.models import UserNotification
@@ -267,7 +277,7 @@ class DatImportViewTest(TestCase):
         sync_dat_sections_if_needed(dat)
         DATParticipant.objects.create(dat=dat, role=self.porteur_role, user=self.porteur)
         part = (
-            dat.sections.get(slug="architecture")
+            dat.sections.get(metadata__slug="architecture")
             .sub_sections.get(slug="presentation-generale")
             .parts.get(key="presentation_generale")
         )
@@ -300,7 +310,7 @@ class DatImportViewTest(TestCase):
         participant_qs = imported.participants.filter(role__slug=DAT_PORTEUR_ROLE_SLUG)
         self.assertEqual(participant_qs.count(), 1)
         part = (
-            imported.sections.get(slug="architecture")
+            imported.sections.get(metadata__slug="architecture")
             .sub_sections.get(slug="presentation-generale")
             .parts.get(key="presentation_generale")
         )
@@ -794,7 +804,7 @@ class DatSectionIntegrationTest(TestCase):
         self.assertIn("Nouveau besoin prioritaire", content)
 
     def _prepare_sub_section_with_entry(self):
-        section = self.dat.sections.get(slug="besoins")
+        section = self.dat.sections.get(metadata__slug="besoins")
         sub_section = section.sub_sections.first()
         if not sub_section:
             self.fail("Section sans sous-section initialisée")
@@ -835,7 +845,7 @@ class DatSectionIntegrationTest(TestCase):
         self.assertEqual(entry.value, "Mise à jour via AJAX")
 
     def test_user_without_assignment_cannot_edit_section(self):
-        section = self.dat.sections.get(slug="besoins")
+        section = self.dat.sections.get(metadata__slug="besoins")
         sub_section = section.sub_sections.first()
         url = reverse("dat:sub_section_edit", args=[self.dat.pk, section.slug, sub_section.slug])
         self.client.force_login(self.architect)
@@ -871,10 +881,14 @@ class CreateSchemaDiagramViewTest(TestCase):
             status=DATStatus.NOUVELLE_DEMANDE,
             owner=self.user,
         )
-        DATSection.objects.create(
-            dat=self.dat,
+        metadata = DATSectionMetadata.objects.create(
             title="Architecture",
             slug="architecture",
+            description="",
+        )
+        DATSection.objects.create(
+            dat=self.dat,
+            metadata=metadata,
             order=1,
         )
         self.url = reverse("dat:schema_create_diagram", args=[self.dat.pk])

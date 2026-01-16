@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import os
+from functools import lru_cache
 from typing import Any, Dict
 
 from django.core.files.base import ContentFile
-from django.core.files.storage import default_storage
 from django.utils import timezone
 from django.utils.text import slugify
 
+from cintafactory.seaweedfs_storage import SeaweedFSStorage
 
 def format_user_display(user) -> str:
     """
@@ -73,42 +74,56 @@ def get_dat_pdf_export_path(dat) -> str:
     return os.path.join("dat_exports", str(dat.pk), basename)
 
 
+@lru_cache(maxsize=1)
+def get_dat_export_storage() -> SeaweedFSStorage:
+    return SeaweedFSStorage()
+
+
 def store_dat_pdf_export(dat, content: bytes, *, refresh_modified: bool = True) -> str:
     path = get_dat_pdf_export_path(dat)
-    if default_storage.exists(path):
+    storage = get_dat_export_storage()
+    if storage.exists(path):
         if refresh_modified:
-            default_storage.delete(path)
+            storage.delete(path)
         else:
             new_hash = hashlib.sha256(content).hexdigest()
             try:
-                with default_storage.open(path, "rb") as existing:
+                with storage.open(path, "rb") as existing:
                     current_hash = hashlib.sha256(existing.read()).hexdigest()
             except Exception:
                 current_hash = None
             if current_hash and current_hash == new_hash:
                 return path
-            default_storage.delete(path)
-    default_storage.save(path, ContentFile(content))
+            storage.delete(path)
+    storage.save(path, ContentFile(content))
+    dat.pdf_export_path = path
+    dat.pdf_export_size = len(content or b"")
+    dat.pdf_export_content_type = "application/pdf"
+    dat.save(update_fields=["pdf_export_path", "pdf_export_size", "pdf_export_content_type", "updated_at"])
     return path
 
 
 def dat_pdf_export_exists(dat) -> bool:
-    return default_storage.exists(get_dat_pdf_export_path(dat))
+    storage = get_dat_export_storage()
+    path = dat.pdf_export_path or get_dat_pdf_export_path(dat)
+    return storage.exists(path)
 
 
 def dat_pdf_export_modified_at(dat):
-    path = get_dat_pdf_export_path(dat)
-    if not default_storage.exists(path):
+    storage = get_dat_export_storage()
+    path = dat.pdf_export_path or get_dat_pdf_export_path(dat)
+    if not storage.exists(path):
         return None
     try:
-        modified = default_storage.get_modified_time(path)
+        modified = storage.get_modified_time(path)
     except (OSError, NotImplementedError):
         return None
     return timezone.localtime(modified)
 
 
 def open_dat_pdf_export(dat):
-    path = get_dat_pdf_export_path(dat)
-    if not default_storage.exists(path):
+    storage = get_dat_export_storage()
+    path = dat.pdf_export_path or get_dat_pdf_export_path(dat)
+    if not storage.exists(path):
         return None
-    return default_storage.open(path, "rb")
+    return storage.open(path, "rb")

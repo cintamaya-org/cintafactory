@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import random
+from pathlib import Path
 from typing import List, Tuple
 
 from django import template
+from django.conf import settings
 from django.urls import NoReverseMatch, reverse
 
-from diagrams.models import Diagram
+from cintafactory.seaweedfs_storage import SeaweedFSStorage
+from diagrams.models import Diagram, likec4_png_path_for
 
 register = template.Library()
 
@@ -155,6 +158,30 @@ def diagram_links(diagram_id):
         }
     except NoReverseMatch:
         return None
+
+
+def _normalize_likec4_path(raw_path):
+    if not raw_path:
+        return ""
+    cleaned = str(raw_path).strip().lstrip("/")
+    if not cleaned or not cleaned.lower().endswith(".c4"):
+        return ""
+    parts = Path(cleaned).parts
+    if any(part in (".", "..") for part in parts):
+        return ""
+    return cleaned
+
+
+@register.simple_tag
+def likec4_png_url(storage_path):
+    normalized = _normalize_likec4_path(storage_path)
+    if not normalized:
+        return ""
+    try:
+        storage = SeaweedFSStorage(public_url=settings.SEAWEEDFS_PUBLIC_URL_PP)
+        return storage.url(likec4_png_path_for(normalized))
+    except Exception:
+        return ""
 
 
 @register.filter

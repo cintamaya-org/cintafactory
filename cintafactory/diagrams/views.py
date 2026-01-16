@@ -2,7 +2,10 @@ import base64
 import hashlib
 import json
 import logging
+from time import time
+from uuid import uuid4
 from pathlib import Path
+from urllib.error import HTTPError
 from urllib.parse import quote, urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
@@ -12,12 +15,13 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
-from django.http import Http404, HttpResponse, JsonResponse
+from django.http import FileResponse, Http404, HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.text import slugify
 from django.views.decorators.clickjacking import xframe_options_exempt
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST, require_http_methods
 from django.views.generic import CreateView, DetailView, ListView, TemplateView
 from django.templatetags.static import static
@@ -25,8 +29,9 @@ from material.frontend.registry import modules as module_registry
 from types import SimpleNamespace
 
 from .forms import DiagramForm
-from .models import Diagram
+from .models import Diagram, LikeC4File, likec4_png_path_for
 from .validation import validate_drawio_xml
+from cintafactory.seaweedfs_storage import SeaweedFSStorage
 
 
 DRAWIO_DEFAULT_LIBS = "general"
@@ -111,8 +116,8 @@ class DiagramCreateView(ModuleContextMixin, LoginRequiredMixin, CreateView):
     def form_valid(self, form):
         obj = form.save(commit=False)
         obj.owner = self.request.user
-        obj.xml = "<mxGraphModel/>"
         obj.save()
+        obj.write_xml("<mxGraphModel/>")
         return redirect("diagrams:edit", pk=obj.pk)
 
 
@@ -291,8 +296,10 @@ def _save_thumbnail_from_data_uri(diagram: Diagram, data_uri: str) -> bool:
         diagram.save(update_fields=["updated_at"])
         return True
     diagram.thumbnail.save("thumb.png", ContentFile(raw), save=False)
+    diagram.thumbnail_size = len(raw)
+    diagram.thumbnail_content_type = "image/png"
     diagram.updated_at = timezone.now()
-    diagram.save(update_fields=["thumbnail", "updated_at"])
+    diagram.save(update_fields=["thumbnail", "thumbnail_size", "thumbnail_content_type", "updated_at"])
     return True
 
 
@@ -347,6 +354,7 @@ class DiagramEditView(ModuleContextMixin, LoginRequiredMixin, TemplateView):
         context = super().get_context_data(**kwargs)
         diagram = get_object_or_404(Diagram, pk=kwargs["pk"], owner=self.request.user)
         context["diagram"] = diagram
+        context["diagram_xml"] = diagram.read_xml()
         library_urls = _collect_library_urls(self.request)
         public_url = _resolve_public_drawio_url(self.request)
         context["drawio_embed_url"] = _build_embed_url(library_urls, public_url, self.request)
@@ -367,10 +375,190 @@ def diagram_save_xml(request, pk: int):
     if not isinstance(xml, str):
         return JsonResponse({"ok": False, "error": "invalid xml"}, status=400)
 
-    diagram.xml = xml
-    diagram.updated_at = timezone.now()
-    diagram.save(update_fields=["xml", "updated_at"])
+    diagram.write_xml(xml)
     return JsonResponse({"ok": True})
+
+
+@csrf_exempt
+@require_POST
+def likec4_metadata(request):
+    token = getattr(settings, "LIKEC4_METADATA_TOKEN", "")
+    if token:
+        provided = request.headers.get("X-LikeC4-Token", "") or request.GET.get("token", "")
+        if str(provided or "").strip() != str(token or "").strip():
+            logger.warning(
+                "likec4_metadata unauthorized: has_header=%s has_query=%s user_agent=%s",
+                bool(request.headers.get("X-LikeC4-Token", "")),
+                bool(request.GET.get("token", "")),
+                request.headers.get("User-Agent", ""),
+            )
+            return JsonResponse({"ok": False, "error": "unauthorized"}, status=403)
+    try:
+        data = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        logger.warning("likec4_metadata invalid payload (json decode error)")
+        return JsonResponse({"ok": False, "error": "invalid payload"}, status=400)
+    path = data.get("path")
+    storage_path = _normalize_likec4_path(path if isinstance(path, str) else None)
+    if not storage_path:
+        logger.warning("likec4_metadata missing/invalid path: %s", path)
+        return JsonResponse({"ok": False, "error": "missing path"}, status=400)
+    size = data.get("size") or 0
+    try:
+        size_value = int(size)
+    except (TypeError, ValueError):
+        size_value = 0
+    content_type = data.get("content_type") or ""
+    defaults = {
+        "content_type": str(content_type or ""),
+        "size": max(size_value, 0),
+        "updated_at": timezone.now(),
+    }
+
+    png_path_raw = data.get("png_path")
+    png_path = _normalize_likec4_asset_path(png_path_raw if isinstance(png_path_raw, str) else None, ".png")
+    if png_path_raw and not png_path:
+        logger.warning("likec4_metadata invalid png path: %s", png_path_raw)
+        return JsonResponse({"ok": False, "error": "invalid png path"}, status=400)
+    if png_path:
+        png_size = data.get("png_size") or 0
+        try:
+            png_size_value = int(png_size)
+        except (TypeError, ValueError):
+            png_size_value = 0
+        png_content_type = data.get("png_content_type") or "image/png"
+        defaults.update(
+            {
+                "png_path": png_path,
+                "png_size": max(png_size_value, 0),
+                "png_content_type": str(png_content_type or "image/png"),
+                "png_updated_at": timezone.now(),
+            }
+        )
+
+    LikeC4File.objects.update_or_create(storage_path=storage_path, defaults=defaults)
+    logger.info(
+        "likec4_metadata updated: path=%s size=%s png_path=%s",
+        storage_path,
+        defaults.get("size"),
+        defaults.get("png_path"),
+    )
+    return JsonResponse({"ok": True})
+
+
+def _normalize_likec4_path(raw_path: str | None) -> str:
+    return _normalize_likec4_asset_path(raw_path, ".c4")
+
+
+def _normalize_likec4_asset_path(raw_path: str | None, suffix: str) -> str:
+    if not raw_path:
+        return ""
+    cleaned = str(raw_path).strip().lstrip("/")
+    if not cleaned:
+        return ""
+    parts = Path(cleaned).parts
+    if any(part in (".", "..") for part in parts):
+        return ""
+    if suffix and not cleaned.lower().endswith(suffix):
+        return ""
+    return cleaned
+
+
+@login_required
+@require_POST
+def likec4_import(request):
+    uploaded_file = request.FILES.get("file")
+    if not uploaded_file:
+        return JsonResponse({"ok": False, "error": "missing_file"}, status=400)
+    filename = uploaded_file.name or "diagram.c4"
+    if not filename.lower().endswith(".c4"):
+        return JsonResponse({"ok": False, "error": "invalid_extension"}, status=400)
+
+    requested_path = request.POST.get("path")
+    storage_path = _normalize_likec4_path(requested_path)
+    if not storage_path:
+        unique_id = f"{int(time() * 1000)}{uuid4().hex[:4]}"
+        storage_path = f"diagrams/{unique_id}/likec4.c4"
+
+    content_type = getattr(uploaded_file, "content_type", "") or "text/plain"
+    storage = SeaweedFSStorage()
+    try:
+        storage.save(storage_path, uploaded_file)
+    except HTTPError as exc:
+        logger.warning("LikeC4 import failed for %s: %s", storage_path, exc)
+        return JsonResponse({"ok": False, "error": "storage_failed"}, status=502)
+
+    size = int(getattr(uploaded_file, "size", 0) or 0)
+    LikeC4File.objects.update_or_create(
+        storage_path=storage_path,
+        defaults={
+            "content_type": content_type,
+            "size": max(size, 0),
+            "updated_at": timezone.now(),
+        },
+    )
+    return JsonResponse(
+        {
+            "ok": True,
+            "path": storage_path,
+            "size": size,
+            "content_type": content_type,
+        }
+    )
+
+
+@login_required
+def likec4_png(request):
+    raw_path = request.GET.get("file")
+    png_path = _normalize_likec4_asset_path(raw_path, ".png")
+    c4_path = _normalize_likec4_path(raw_path)
+    if not png_path and not c4_path:
+        return HttpResponseBadRequest("Invalid LikeC4 file path.")
+    if not png_path and c4_path:
+        png_path = likec4_png_path_for(c4_path)
+
+    storage_path = png_path
+    storage = SeaweedFSStorage(public_url=settings.SEAWEEDFS_PUBLIC_URL_PP)
+    file_meta = None
+    if c4_path:
+        file_meta = LikeC4File.objects.filter(storage_path=c4_path).only("png_path", "png_content_type").first()
+    if not file_meta and png_path:
+        file_meta = LikeC4File.objects.filter(png_path=png_path).only("png_path", "png_content_type").first()
+    if file_meta and file_meta.png_path:
+        storage_path = file_meta.png_path
+    try:
+        exists = storage.exists(storage_path)
+    except Exception as exc:
+        logger.warning("LikeC4 PNG lookup failed for %s: %s", storage_path, exc)
+        raise Http404("LikeC4 PNG not found.")
+    if not exists:
+        raise Http404("LikeC4 PNG not found.")
+
+    public_url = storage.url(storage_path)
+    return redirect(public_url)
+
+
+@login_required
+def likec4_export(request):
+    storage_path = _normalize_likec4_path(request.GET.get("file"))
+    if not storage_path:
+        return HttpResponseBadRequest("Invalid LikeC4 file path.")
+
+    storage = SeaweedFSStorage()
+    file_meta = LikeC4File.objects.filter(storage_path=storage_path).only("content_type").first()
+    content_type = file_meta.content_type if file_meta and file_meta.content_type else "text/plain"
+    if content_type.startswith("text/") and "charset=" not in content_type:
+        content_type = f"{content_type}; charset=utf-8"
+
+    try:
+        file_handle = storage.open(storage_path, "rb")
+    except FileNotFoundError:
+        raise Http404("LikeC4 file not found.")
+
+    filename = Path(storage_path).name or "diagram.c4"
+    response = FileResponse(file_handle, content_type=content_type)
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
 
 
 @login_required
@@ -430,13 +618,14 @@ def diagram_embed_context(request, pk: int):
     library_urls = _collect_library_urls(request)
     public_url = _resolve_public_drawio_url(request)
     embed_url = _build_embed_url(library_urls, public_url, request)
+    diagram_xml = diagram.read_xml() or "<mxGraphModel/>"
     payload = {
         "ok": True,
         "diagram": {"id": diagram.pk, "title": diagram.title},
         "drawio": {
             "embed_url": embed_url,
             "origin": _origin_from(public_url),
-            "xml": diagram.xml or "<mxGraphModel/>",
+            "xml": diagram_xml,
             "save_xml_url": reverse("diagrams:save_xml", args=[diagram.pk]),
             "save_thumbnail_url": reverse("diagrams:save_thumbnail", args=[diagram.pk]),
         },
@@ -448,7 +637,8 @@ def diagram_embed_context(request, pk: int):
 def diagram_viewer_context(request, pk: int):
     diagram = get_object_or_404(Diagram, pk=pk, owner=request.user)
     thumbnail_url = _current_thumbnail_url(diagram)
-    if not thumbnail_url and _regenerate_drawio_thumbnail(diagram, diagram.xml or "<mxGraphModel/>"):
+    diagram_xml = diagram.read_xml() or "<mxGraphModel/>"
+    if not thumbnail_url and _regenerate_drawio_thumbnail(diagram, diagram_xml):
         thumbnail_url = _current_thumbnail_url(diagram)
     payload = {
         "ok": True,
@@ -545,12 +735,14 @@ def diagram_import_xml(request, pk: int):
             payload["details"] = details
         return JsonResponse(payload, status=400)
 
-    diagram.xml = normalized_xml
-    diagram.updated_at = timezone.now()
+    content_type = str(getattr(uploaded_file, "content_type", "") or "") or "application/xml"
+    diagram.write_xml(normalized_xml, content_type=content_type)
     if diagram.thumbnail:
         diagram.thumbnail.delete(save=False)
         diagram.thumbnail = None
-    diagram.save(update_fields=["xml", "thumbnail", "updated_at"])
+    diagram.thumbnail_size = 0
+    diagram.thumbnail_content_type = ""
+    diagram.save(update_fields=["thumbnail", "thumbnail_size", "thumbnail_content_type"])
     regenerated = _regenerate_drawio_thumbnail(diagram, normalized_xml)
     logger.info(
         "diagram_import_xml: thumbnail regeneration diagram_id=%s user_id=%s regenerated=%s",
@@ -584,7 +776,7 @@ def diagram_import_xml(request, pk: int):
 @login_required
 def diagram_export_xml(request, pk: int):
     diagram = get_object_or_404(Diagram, pk=pk, owner=request.user)
-    xml_payload = diagram.xml or "<mxGraphModel/>"
+    xml_payload = diagram.read_xml() or "<mxGraphModel/>"
     filename_root = slugify(diagram.title) or f"diagram-{diagram.pk}"
     response = HttpResponse(xml_payload, content_type="application/xml; charset=utf-8")
     response["Content-Disposition"] = f'attachment; filename="{filename_root}.drawio"'

@@ -1,18 +1,18 @@
-{% load static %}
+{% load static tz %}
 <div id="dat-details">
-  <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:1rem;">
-    <div style="display:flex; flex-direction:column; gap:0.5rem;">
-      <a href="{% url 'dat:my_list' %}" class="btn-flat waves-effect" style="padding-left:0;">
+  <div class="dat-overview-header">
+    <div class="dat-overview-header__details">
+      <a href="{% url 'dat:my_list' %}" class="btn-flat waves-effect btn-flat--no-pad-left">
         <i class="material-icons left" aria-hidden="true">arrow_back</i>
         Retour à la liste
       </a>
-      <h5 style="margin:0; display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+      <h5 class="dat-overview-title">
         <span>{{ dat.reference }}</span>
-        <span style="color:#9e9e9e;">·</span>
+        <span class="dat-overview-title__divider">·</span>
         <span>{{ dat.title }}</span>
       </h5>
     </div>
-    <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+    <div class="dat-overview-actions">
       <span class="chip blue lighten-4" title="Statut actuel">{{ dat.get_status_display }}</span>
         <a
           href="#dat-history-modal"
@@ -26,24 +26,23 @@
     </div>
 
   {% if export_urls %}
-  <div class="section" style="margin-top:1.5rem;">
+  <div class="section dat-overview-section">
     <div
-      class="card cinta-card"
-      style="border-radius:16px;"
+      class="card cinta-card dat-overview-card"
       data-pdf-export-card="true"
       data-status-url="{{ export_urls.status }}"
       data-in-progress="{{ pdf_export_in_progress|yesno:'true,false' }}"
     >
       <div class="card-content">
-        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; flex-wrap:wrap;">
+        <div class="dat-overview-card__header">
           <div>
-            <span class="card-title" style="margin:0;">Exports</span>
-            <p style="margin:0.4rem 0 0 0; color:#546e7a;">
+            <span class="card-title dat-overview-card__title">Exports</span>
+            <p class="dat-overview-card__subtitle">
               Téléchargez le dernier PDF généré ou relancez une nouvelle exportation complète. Le JSON reste disponible à tout moment.
             </p>
           </div>
-          <div style="display:flex; gap:0.5rem; flex-wrap:wrap; justify-content:flex-end;">
-            <form method="post" action="{{ export_urls.pdf_trigger }}" style="margin:0;">
+          <div class="dat-overview-card__actions">
+            <form method="post" action="{{ export_urls.pdf_trigger }}">
               {% csrf_token %}
               <button
                 type="submit"
@@ -66,7 +65,7 @@
                 Télécharger PDF
               </a>
             {% else %}
-              <span class="cinta-btn-secondary" aria-disabled="true" style="pointer-events:none; opacity:0.6;">
+              <span class="cinta-btn-secondary dat-overview-chip--disabled" aria-disabled="true">
                 <i class="material-icons left" aria-hidden="true">download</i>
                 Télécharger PDF
               </span>
@@ -77,17 +76,17 @@
             </a>
           </div>
         </div>
-        <div style="margin:0.75rem 0 0 0; color:#546e7a; text-align:right;">
+        <div class="dat-overview-card__footer">
           {% if pdf_export_in_progress %}
-            <p style="margin:0;">
+            <p>
               Une génération de PDF a été lancée
               {% if pdf_export_requested_by_display %}par {{ pdf_export_requested_by_display }}{% endif %}
-              {% if pdf_export_requested_at %}le {{ pdf_export_requested_at|date:"d/m/Y H:i" }}{% endif %}.
+              {% if pdf_export_requested_at %}le {{ pdf_export_requested_at|timezone:"Europe/Paris"|date:"d/m/Y H:i" }}{% endif %}.
             </p>
           {% endif %}
-            <p style="margin:0;">
+            <p>
               {% if pdf_export_generated_at %}
-                Dernier PDF généré le {{ pdf_export_generated_at|date:"d/m/Y H:i" }}.
+                Dernier PDF généré le {{ pdf_export_generated_at|timezone:"Europe/Paris"|date:"d/m/Y H:i" }}.
               {% else %}
                 Aucun export PDF enregistré pour l'instant.
               {% endif %}
@@ -183,8 +182,7 @@
 
   {% if participant_overview %}
       <div
-      class="card cinta-card"
-      style="border-radius:16px;"
+      class="card cinta-card dat-overview-card"
       data-pdf-export-card="true"
       data-status-url="{{ export_urls.status }}"
       data-in-progress="{{ pdf_export_in_progress|yesno:'true,false' }}"
@@ -192,19 +190,19 @@
     <div class="card-content">
       <div class="section">
         <div>
-          <span class="card-title" style="margin:0;">Participants</span>
+          <span class="card-title dat-overview-card__title">Participants</span>
 
           
 
     {% if current_responsibles %}
-      <p style="margin:0 0 0.75rem 0; color:#424242;">
+      <p class="dat-overview-participants-note">
         Validation actuelle : 
         {% for item in current_responsibles %}
           <strong>{{ item.role_label }}</strong>
           {% if item.is_assigned %}
             &nbsp;→ {{ item.user_display }}
           {% else %}
-            &nbsp;→ <span style="color:#c62828;">Non affecté</span>
+            &nbsp;→ <span class="dat-overview-alert">Non affecté</span>
           {% endif %}
           {% if not forloop.last %}&nbsp;| {% endif %}
         {% endfor %}
@@ -227,7 +225,7 @@
                 {% if item.user %}
                   {{ item.user_display }}
                   {% if item.is_responsible %}
-                    <span class="chip green lighten-4" title="Acteur attendu" style="margin-left:0.5rem;">Responsable</span>
+                    <span class="chip green lighten-4 u-ml-0-5" title="Acteur attendu">Responsable</span>
                   {% endif %}
                 {% else %}
                   <span class="chip red lighten-4" title="Affectation requise">Non affecté</span>
@@ -244,8 +242,7 @@
 
   {% endif %}
       <div
-      class="card cinta-card"
-      style="border-radius:16px;"
+      class="card cinta-card dat-overview-card"
       data-pdf-export-card="true"
       data-status-url="{{ export_urls.status }}"
       data-in-progress="{{ pdf_export_in_progress|yesno:'true,false' }}"
@@ -253,13 +250,13 @@
     <div class="card-content">
       <div class="section">
         <div>
-          <span class="card-title" style="margin:0;">Informations principales</span>
+          <span class="card-title dat-overview-card__title">Informations principales</span>
         </div>
     <div class="responsive-table">
-      <table class="highlight">
+      <table class="highlight dat-overview-info-table">
         <tbody>
           <tr>
-            <th scope="row" style="width:220px;">Application</th>
+            <th scope="row">Application</th>
             <td>{{ dat.application|default:"—" }}</td>
           </tr>
           <tr>

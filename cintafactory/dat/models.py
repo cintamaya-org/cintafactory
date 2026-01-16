@@ -96,6 +96,9 @@ class DAT(models.Model):
         related_name="+",
     )
     pdf_export_requested_by_display = models.CharField(max_length=255, blank=True)
+    pdf_export_path = models.CharField(max_length=500, blank=True, default="")
+    pdf_export_content_type = models.CharField(max_length=120, blank=True, default="application/pdf")
+    pdf_export_size = models.PositiveBigIntegerField(default=0)
 
     class Meta:
         db_table = "dat_dat"
@@ -302,10 +305,13 @@ class DATSection(models.Model):
         related_name="sections",
         verbose_name="DAT",
     )
-    title = models.CharField(max_length=200, verbose_name="Titre")
-    slug = models.SlugField(max_length=100, verbose_name="Identifiant")
+    metadata = models.OneToOneField(
+        "DATSectionMetadata",
+        on_delete=models.PROTECT,
+        related_name="section",
+        verbose_name="Metadata",
+    )
     order = models.PositiveIntegerField(default=0, verbose_name="Ordre")
-    description = models.TextField(blank=True, verbose_name="Description")
     allowed_roles = models.ManyToManyField(
         "users.Role",
         related_name="editable_dat_sections",
@@ -318,12 +324,27 @@ class DATSection(models.Model):
     class Meta:
         db_table = "dat_section"
         ordering = ["order", "id"]
-        unique_together = (("dat", "slug"),)
         verbose_name = "Section de DAT"
         verbose_name_plural = "Sections de DAT"
 
     def __str__(self) -> str:
-        return f"{self.dat.reference} - {self.title}"
+        title = self.title or self.slug or "Section"
+        return f"{self.dat.reference} - {title}"
+
+    @property
+    def title(self) -> str:
+        metadata = getattr(self, "metadata", None)
+        return getattr(metadata, "title", "") or ""
+
+    @property
+    def slug(self) -> str:
+        metadata = getattr(self, "metadata", None)
+        return getattr(metadata, "slug", "") or ""
+
+    @property
+    def description(self) -> str:
+        metadata = getattr(self, "metadata", None)
+        return getattr(metadata, "description", "") or ""
 
     def can_user_edit(self, user) -> bool:
         if user is None or not getattr(user, "is_authenticated", False):
@@ -350,6 +371,20 @@ class DATSection(models.Model):
             if participant.user_id == user_id and participant.role_id == role.pk:
                 return True
         return False
+
+
+class DATSectionMetadata(models.Model):
+    title = models.CharField(max_length=200, verbose_name="Titre")
+    slug = models.SlugField(max_length=100, verbose_name="Identifiant")
+    description = models.TextField(blank=True, verbose_name="Description")
+
+    class Meta:
+        db_table = "dat_section_metada"
+        verbose_name = "Metadata de section"
+        verbose_name_plural = "Metadata de sections"
+
+    def __str__(self) -> str:
+        return self.title or self.slug or f"Metadata #{self.pk}"
 
 
 class DATSubSection(models.Model):
@@ -415,6 +450,50 @@ class DATSubSection(models.Model):
             if participant.user_id == user_id and participant.role_id == role.pk:
                 return True
         return False
+
+
+class DATSectionAttachment(models.Model):
+    section = models.ForeignKey(
+        DATSection,
+        on_delete=models.CASCADE,
+        related_name="attachments",
+        verbose_name="Section",
+    )
+    storage_path = models.CharField(max_length=512, verbose_name="Chemin de stockage")
+    original_name = models.CharField(max_length=255, verbose_name="Nom d'origine")
+    display_name = models.CharField(max_length=255, verbose_name="Nom affiché")
+    extension = models.CharField(max_length=16, verbose_name="Extension")
+    size = models.PositiveIntegerField(verbose_name="Taille")
+    content_type = models.CharField(max_length=100, blank=True, verbose_name="Type de contenu")
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="dat_section_attachments",
+        verbose_name="Déposé par",
+    )
+    uploaded_by_display = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Créé le")
+
+    class Meta:
+        db_table = "dat_section_attachment"
+        ordering = ["-created_at", "-id"]
+        verbose_name = "Pièce jointe de section"
+        verbose_name_plural = "Pièces jointes de section"
+
+    def __str__(self) -> str:
+        return f"{self.section.dat.reference} - {self.display_name}"
+
+    def uploader_name(self) -> str:
+        if self.uploaded_by_display:
+            return self.uploaded_by_display
+        if self.uploaded_by:
+            full_name = self.uploaded_by.get_full_name()
+            if full_name:
+                return full_name
+            return self.uploaded_by.get_username()
+        return "Système"
 
 
 class DATPartEntryType(models.TextChoices):

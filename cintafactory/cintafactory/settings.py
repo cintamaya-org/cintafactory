@@ -14,11 +14,16 @@ import os
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from dotenv import load_dotenv
+
 from .logging_utils import build_logging_dict
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 PROJECT_DIR = Path(__file__).resolve().parent
+
+load_dotenv(BASE_DIR / ".env", override=False)
+load_dotenv(BASE_DIR.parent / ".env", override=False)
 
 
 # Quick-start development settings - unsuitable for production
@@ -81,6 +86,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "oauth2_provider",
 
     # Your apps
     "diagrams.apps.DiagramsConfig",
@@ -201,6 +207,96 @@ STATIC_ROOT = Path(os.getenv("DJANGO_STATIC_ROOT", BASE_DIR / "staticfiles"))
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = Path(os.getenv("DJANGO_MEDIA_ROOT", BASE_DIR / "media"))
+
+SEAWEEDFS_FILER_URL = os.getenv("SEAWEEDFS_FILER_URL", "http://seaweedfs:8888").rstrip("/")
+SEAWEEDFS_PUBLIC_URL = os.getenv("SEAWEEDFS_PUBLIC_URL", SEAWEEDFS_FILER_URL).rstrip("/")
+SEAWEEDFS_PUBLIC_URL_PP = os.getenv("SEAWEEDFS_PUBLIC_URL_PP", "http://localhost:8888").rstrip("/")
+SEAWEEDFS_BASE_DIR = os.getenv("SEAWEEDFS_BASE_DIR", "media").strip("/")
+SEAWEEDFS_TIMEOUT = int(os.getenv("SEAWEEDFS_TIMEOUT", "30"))
+LIKEC4_METADATA_TOKEN = os.getenv("LIKEC4_METADATA_TOKEN", "")
+
+CLAMAV_HOST = os.getenv("CLAMAV_HOST", "clamav")
+CLAMAV_PORT = int(os.getenv("CLAMAV_PORT", "3310"))
+CLAMAV_TIMEOUT = int(os.getenv("CLAMAV_TIMEOUT", "30"))
+CLAMAV_RETRY_COUNT = int(os.getenv("CLAMAV_RETRY_COUNT", "5"))
+CLAMAV_RETRY_DELAY = float(os.getenv("CLAMAV_RETRY_DELAY", "1.0"))
+CLAMAV_SCAN_DIR = os.getenv("CLAMAV_SCAN_DIR", "/clamav_scan")
+
+OAUTH_HTTP_TIMEOUT = int(os.getenv("OAUTH_HTTP_TIMEOUT", "10"))
+OAUTH_ALLOW_EMAIL_LINKING = os.getenv("OAUTH_ALLOW_EMAIL_LINKING", "1").lower() in {"1", "true", "yes", "on"}
+MICROSOFT_OAUTH_TENANT_ID = os.getenv("MICROSOFT_OAUTH_TENANT_ID", "common").strip() or "common"
+OKTA_OAUTH_DOMAIN = os.getenv("OKTA_OAUTH_DOMAIN", "").rstrip("/")
+OAUTH_PROVIDERS = {
+    "google": {
+        "label": "Google",
+        "client_id": os.getenv("GOOGLE_OAUTH_CLIENT_ID", ""),
+        "client_secret": os.getenv("GOOGLE_OAUTH_CLIENT_SECRET", ""),
+        "authorize_url": "https://accounts.google.com/o/oauth2/v2/auth",
+        "token_url": "https://oauth2.googleapis.com/token",
+        "userinfo_url": "https://openidconnect.googleapis.com/v1/userinfo",
+        "scopes": ("openid", "email", "profile"),
+        "extra_authorize_params": {
+            "access_type": "offline",
+            "prompt": "consent",
+            "include_granted_scopes": "true",
+        },
+    },
+    "microsoft": {
+        "label": "Microsoft",
+        "client_id": os.getenv("MICROSOFT_OAUTH_CLIENT_ID", ""),
+        "client_secret": os.getenv("MICROSOFT_OAUTH_CLIENT_SECRET", ""),
+        "authorize_url": f"https://login.microsoftonline.com/{MICROSOFT_OAUTH_TENANT_ID}/oauth2/v2.0/authorize",
+        "token_url": f"https://login.microsoftonline.com/{MICROSOFT_OAUTH_TENANT_ID}/oauth2/v2.0/token",
+        "userinfo_url": "https://graph.microsoft.com/oidc/userinfo",
+        "scopes": ("openid", "email", "profile"),
+        "extra_authorize_params": {},
+    },
+    "amazon": {
+        "label": "Amazon",
+        "client_id": os.getenv("AMAZON_OAUTH_CLIENT_ID", ""),
+        "client_secret": os.getenv("AMAZON_OAUTH_CLIENT_SECRET", ""),
+        "authorize_url": "https://www.amazon.com/ap/oa",
+        "token_url": "https://api.amazon.com/auth/o2/token",
+        "userinfo_url": "https://api.amazon.com/user/profile",
+        "scopes": ("profile", "profile:user_id"),
+        "extra_authorize_params": {},
+        "userinfo_mapping": {
+            "user_id": "user_id",
+            "email": "email",
+            "full_name": "name",
+        },
+    },
+    "okta": {
+        "label": "Okta",
+        "client_id": os.getenv("OKTA_OAUTH_CLIENT_ID", ""),
+        "client_secret": os.getenv("OKTA_OAUTH_CLIENT_SECRET", ""),
+        "authorize_url": f"{OKTA_OAUTH_DOMAIN}/oauth2/default/v1/authorize" if OKTA_OAUTH_DOMAIN else "",
+        "token_url": f"{OKTA_OAUTH_DOMAIN}/oauth2/default/v1/token" if OKTA_OAUTH_DOMAIN else "",
+        "userinfo_url": f"{OKTA_OAUTH_DOMAIN}/oauth2/default/v1/userinfo" if OKTA_OAUTH_DOMAIN else "",
+        "scopes": ("openid", "email", "profile"),
+        "extra_authorize_params": {},
+    },
+    "cintamaya": {
+        "label": "Cintamaya",
+        "client_id": os.getenv("CINTAMAYA_OAUTH_CLIENT_ID", ""),
+        "client_secret": os.getenv("CINTAMAYA_OAUTH_CLIENT_SECRET", ""),
+        "authorize_url": "https://auth.CINTAMAYA.com/authorize",
+        "token_url": "https://auth.CINTAMAYA.com/token",
+        "userinfo_url": "https://auth.CINTAMAYA.com/userinfo",
+        "scopes": ("openid", "email", "profile"),
+        "extra_authorize_params": {},
+    },
+    "riot": {
+        "label": "Riot Games",
+        "client_id": os.getenv("RIOT_OAUTH_CLIENT_ID", ""),
+        "client_secret": os.getenv("RIOT_OAUTH_CLIENT_SECRET", ""),
+        "authorize_url": "https://auth.riotgames.com/authorize",
+        "token_url": "https://auth.riotgames.com/token",
+        "userinfo_url": "https://auth.riotgames.com/userinfo",
+        "scopes": ("openid", "email", "profile"),
+        "extra_authorize_params": {},
+    }
+}
 
 DRAWIO_BASE_URL = os.getenv("DRAWIO_BASE_URL", "http://drawio:8080").rstrip("/")
 if not DRAWIO_BASE_URL:

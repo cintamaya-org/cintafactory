@@ -22,17 +22,17 @@
           <span class="card-title">{{ diagram.title }}</span>
           <p class="grey-text">Dernière mise à jour le {{ diagram.updated_at|date:"d/m/Y à H\\hi" }}</p>
         </div>
-        <div class="card-image" style="padding:1.5rem; background:#fafafa;">
+        <div class="card-image diagram-detail__image">
           {% if diagram.thumbnail %}
-          <img src="{{ diagram.thumbnail.url }}" alt="{{ diagram.title }}" style="width:100%; height:auto; border-radius:8px;" data-diagram-preview-id="{{ diagram.pk }}">
+          <img src="{{ diagram.thumbnail.url }}" alt="{{ diagram.title }}" class="diagram-detail__img" data-diagram-preview-id="{{ diagram.pk }}">
           {% else %}
-          <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:260px; color:rgba(0,0,0,0.45); border:2px dashed rgba(0,0,0,0.1); border-radius:8px;">
-            <i class="material-icons" style="font-size:3rem; margin-bottom:0.75rem;">insert_drive_file</i>
-            <p class="center-align" style="margin:0;">Aucun aperçu disponible. Ouvrez le diagramme dans l'éditeur pour en générer un.</p>
+          <div class="diagram-detail__placeholder">
+            <i class="material-icons diagram-detail__placeholder-icon">insert_drive_file</i>
+            <p class="center-align u-m-0">Aucun aperçu disponible. Ouvrez le diagramme dans l'éditeur pour en générer un.</p>
           </div>
           {% endif %}
         </div>
-        <div class="card-action" style="display:flex; justify-content:space-between; align-items:center;">
+        <div class="card-action diagram-detail__actions">
           <a class="btn-flat waves-effect" href="{% url 'diagrams:list' %}">
             <i class="material-icons left">arrow_back</i>Retour
           </a>

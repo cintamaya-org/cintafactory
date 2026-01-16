@@ -3,6 +3,7 @@
     "slug": "informations-generales",
     "title": "INFORMATIONS GÉNÉRALES",
     "description": "Informations de référence partagées avec l'ensemble des acteurs.",
+    "attachments_enabled": false,
     "allowed_roles": [
       "porteur-demande",
       "architecte-referent"
@@ -281,14 +282,62 @@
               "columns": [
                 {
                   "key": "nom_schema",
-                  "label": "Nom du schéma",
+                  "label": "Nom du diagramme",
                   "type": "text"
                 },
                 {
-                  "key": "diagramme_id",
-                  "label": "Diagramme Draw.io",
+                  "key": "schema_systeme",
+                  "label": "Outil",
+                  "type": "select",
+                  "choices": [
+                    {
+                      "value": "drawio",
+                      "label": "Draw.io (intégré, configuré)",
+                      "enabled": true
+                    },
+                    {
+                      "value": "likec4",
+                      "label": "LikeC4 (intégré, configuré)",
+                      "enabled": true
+                    },
+                    {
+                      "value": "lucidchart",
+                      "label": "Lucidchart (non configuré)",
+                      "enabled": false
+                    },
+                    {
+                      "value": "visio",
+                      "label": "Microsoft Visio (non configuré)",
+                      "enabled": false
+                    },
+                    {
+                      "value": "mermaid",
+                      "label": "Mermaid (non configuré)",
+                      "enabled": false
+                    },
+                    {
+                      "value": "plantuml",
+                      "label": "PlantUML (non configuré)",
+                      "enabled": false
+                    },
+                    {
+                      "value": "autre",
+                      "label": "Autre (non configuré)",
+                      "enabled": false
+                    }
+                  ]
+                },
+                {
+                  "key": "schema_reference",
+                  "label": "Référence externe",
                   "type": "text",
-                  "placeholder": "ID du diagramme (ex: 42)",
+                  "placeholder": "URL ou identifiant externe"
+                },
+                {
+                  "key": "diagramme_id",
+                  "label": "Diagramme (Draw.io)",
+                  "type": "text",
+                  "placeholder": "ID Draw.io (ex: 42)",
                   "render": "drawio_diagram",
                   "drawio": true,
                   "drawio_name_key": "nom_schema",
@@ -368,6 +417,10 @@
                   "type": "select",
                   "choices": [
                     {
+                      "value": "",
+                      "label": "-"
+                    },
+                    {
                       "value": "oui",
                       "label": "Oui"
                     },
@@ -382,6 +435,10 @@
                   "label": "Authentification",
                   "type": "select",
                   "choices": [
+                    {
+                      "value": "",
+                      "label": "-"
+                    },
                     {
                       "value": "oui",
                       "label": "Oui"
@@ -613,6 +670,21 @@
                   "placeholder": "ERP, ESB, API Gateway..."
                 },
                 {
+                  "key": "version",
+                  "label": "Version",
+                  "type": "text"
+                },
+                {
+                  "key": "license",
+                  "label": "License",
+                  "type": "text"
+                },
+                {
+                  "key": "etat",
+                  "label": "Etat",
+                  "type": "text"
+                },
+                {
                   "key": "localisation",
                   "label": "Localisation",
                   "type": "text"
@@ -735,14 +807,52 @@
               "columns": [
                 {
                   "key": "nom_schema",
-                  "label": "Nom du schéma",
+                  "label": "Nom du diagramme",
                   "type": "text"
                 },
                 {
-                  "key": "diagramme_id",
-                  "label": "Diagramme Draw.io",
+                  "key": "schema_systeme",
+                  "label": "Outil",
+                  "type": "select",
+                  "choices": [
+                    {
+                      "value": "drawio",
+                      "label": "Draw.io",
+                      "enabled": true
+                    },
+                    {
+                      "value": "likec4",
+                      "label": "LikeC4",
+                      "enabled": true
+                    },
+                    {
+                      "value": "visio",
+                      "label": "Microsoft Visio",
+                      "enabled": false
+                    },
+                    {
+                      "value": "mermaid",
+                      "label": "Mermaid",
+                      "enabled": false
+                    },
+                    {
+                      "value": "autre",
+                      "label": "Autre",
+                      "enabled": false
+                    }
+                  ]
+                },
+                {
+                  "key": "schema_reference",
+                  "label": "Référence externe",
                   "type": "text",
-                  "placeholder": "ID du diagramme (ex: 42)",
+                  "placeholder": "URL ou identifiant externe"
+                },
+                {
+                  "key": "diagramme_id",
+                  "label": "Diagramme (Draw.io)",
+                  "type": "text",
+                  "placeholder": "ID Draw.io (ex: 42)",
                   "render": "drawio_diagram",
                   "drawio": true,
                   "drawio_name_key": "nom_schema",
@@ -1872,6 +1982,7 @@
     "slug": "validation",
     "title": "VALIDATION",
     "description": "Synthèse des validations et arbitrages.",
+    "attachments_enabled": false,
     "allowed_roles": [],
     "parts": [
       {

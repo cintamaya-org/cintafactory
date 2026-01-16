@@ -208,8 +208,8 @@
     <h2>Sections</h2>
     {% for section in export.sections %}
       <article class="section-card">
-        <h3>{{ section.title }}</h3>
-        {% if section.description %}<p>{{ section.description }}</p>{% endif %}
+        <h3>{{ section.metadata.title }}</h3>
+        {% if section.metadata.description %}<p>{{ section.metadata.description }}</p>{% endif %}
         <p class="muted">
           Responsables :
           {% if section.responsibles %}

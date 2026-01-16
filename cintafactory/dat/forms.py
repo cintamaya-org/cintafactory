@@ -4,10 +4,13 @@ import json
 from typing import Dict, List, Optional, Set
 
 from django import forms
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.validators import RegexValidator
 from django.urls import reverse, reverse_lazy
 from django.utils.safestring import mark_safe
+
+from cintafactory.seaweedfs_storage import SeaweedFSStorage
 
 from users.models import Role
 
@@ -104,6 +107,13 @@ def _attach_drawio_support(entry: DATPart, widget: RepeatableTableWidget) -> Non
     export_template = reverse("diagrams:export_xml", args=[0]).replace("/0/", "/{id}/")
     attrs["data_drawio_import_template"] = import_template
     attrs["data_drawio_export_template"] = export_template
+    attrs["data_likec4_export_template"] = reverse("diagrams:likec4_export")
+    attrs["data_likec4_import_url"] = reverse("diagrams:likec4_import")
+    try:
+        storage = SeaweedFSStorage(public_url=settings.SEAWEEDFS_PUBLIC_URL_PP)
+        attrs["data_likec4_png_public_prefix"] = storage.url("diagrams").rstrip("/")
+    except Exception:
+        attrs["data_likec4_png_public_prefix"] = ""
     # Mark every Draw.io-enabled repeater so the bulk import UI can attach to it.
     attrs["data_schema_repeater"] = "true"
     widget.attrs = attrs

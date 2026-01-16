@@ -8,10 +8,10 @@
 {% block content %}
 {% comment %} {% block left-panel %}
 <div class="left-panel"> {% endcomment %}
-    <div class="card list-card"{% if view.model|verbose_name_plural|lower == 'applications' %} style="width:100%;max-width:100%;"{% endif %}>
+    <div class="card list-card{% if view.model|verbose_name_plural|lower == 'applications' %} list-card--full{% endif %}">
         <div class="card-content">
             <dmc-datatable config="{{ datatable_config|to_json_attr }}">
-                <table id="table" class="table bordered" data-form-control="datatable" style="width:100%">
+                <table id="table" class="table bordered datatable-table" data-form-control="datatable">
                     <thead>
                         <tr>
                             {% for header, header_title in headers %}
@@ -20,7 +20,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <tr style="display:none"><td></td></tr> {# fix for invalid colpan on datatable init #}
+                        <tr class="datatable-empty-row"><td></td></tr> {# fix for invalid colpan on datatable init #}
                         {% for item, row in data %}
                         <tr>
                             {% for column_name, item in row.items %}

@@ -12,9 +12,12 @@
      {% if widget.attrs.data_drawio_edit_template %}data-drawio-edit-template="{{ widget.attrs.data_drawio_edit_template }}"{% endif %}
      {% if widget.attrs.data_drawio_detail_template %}data-drawio-detail-template="{{ widget.attrs.data_drawio_detail_template }}"{% endif %}
      {% if widget.attrs.data_drawio_import_template %}data-drawio-import-template="{{ widget.attrs.data_drawio_import_template }}"{% endif %}
-     {% if widget.attrs.data_drawio_export_template %}data-drawio-export-template="{{ widget.attrs.data_drawio_export_template }}"{% endif %}>
+     {% if widget.attrs.data_drawio_export_template %}data-drawio-export-template="{{ widget.attrs.data_drawio_export_template }}"{% endif %}
+     {% if widget.attrs.data_likec4_export_template %}data-likec4-export-template="{{ widget.attrs.data_likec4_export_template }}"{% endif %}
+     {% if widget.attrs.data_likec4_import_url %}data-likec4-import-url="{{ widget.attrs.data_likec4_import_url }}"{% endif %}
+     {% if widget.attrs.data_likec4_png_public_prefix %}data-likec4-png-public-prefix="{{ widget.attrs.data_likec4_png_public_prefix }}"{% endif %}>
   <input type="hidden" name="{{ widget.name }}" id="{{ widget.attrs.id }}" value="{{ widget.value_json|escape }}">
-  <div class="responsive-table" style="margin-bottom:0.75rem;">
+  <div class="responsive-table dat-repeater__table">
     <table class="highlight dat-repeater-table">
       <thead>
         <tr>
@@ -38,54 +41,18 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
     drawioModal: null,
     drawioState: null,
     drawioListenerAttached: false,
+    likec4ListenerAttached: false,
+    likec4Context: null,
   };
-
-  function ensureRepeaterStyles() {
-    if (document.getElementById("dat-repeater-inline-styles")) {
-      return;
+  const LIKEC4_EMBED_URL = "http://localhost:4173/";
+  const LIKEC4_ORIGIN = (() => {
+    try {
+      return new URL(LIKEC4_EMBED_URL).origin;
+    } catch (error) {
+      return null;
     }
-    const style = document.createElement("style");
-    style.id = "dat-repeater-inline-styles";
-    style.textContent = `
-      .dat-repeater .switch {
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        margin: 0.25rem 0 0.75rem;
-      }
-      .dat-repeater .switch label {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.75rem;
-        margin: 0;
-      }
-      .dat-repeater .dat-repeater-drawio-field .btn,
-      .dat-repeater .dat-repeater-drawio-field .btn-flat {
-        border-radius: 999px;
-        padding: 0 1.25rem;
-        height: 40px;
-        display: inline-flex;
-        align-items: center;
-        gap: 0.4rem;
-        text-transform: uppercase;
-        font-weight: 600;
-        letter-spacing: 0.04em;
-      }
-      .dat-repeater .dat-repeater-drawio-view {
-        background-color: #ffffff;
-        border: 1px solid rgba(13, 71, 161, 0.25);
-        color: #0d47a1;
-        box-shadow: none;
-      }
-      .dat-repeater .dat-repeater-drawio-view .material-icons {
-        font-size: 1.1rem;
-      }
-      .dat-repeater .dat-repeater-drawio-button {
-        box-shadow: none;
-      }
-    `;
-    document.head.appendChild(style);
-  }
+  })();
+
 
   function decodeEntities(value) {
     if (!value) {
@@ -136,33 +103,88 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
     input.value = JSON.stringify(rows);
   }
 
-  function ensureModalStyles() {
-    if (document.getElementById("dat-drawio-modal-style")) {
+  function updateRowOrderControls(tbody) {
+    if (!tbody) {
       return;
     }
-    const style = document.createElement("style");
-    style.id = "dat-drawio-modal-style";
-    style.textContent = `
-      .modal.dat-drawio-modal {
-        top: 1vh !important;
-        transform: translate(0, 0) !important;
-        max-height: 100vh !important;
+    const rows = Array.from(tbody.querySelectorAll("tr"));
+    rows.forEach((row, index) => {
+      const moveUp = row.querySelector(".dat-repeater-move-up");
+      const moveDown = row.querySelector(".dat-repeater-move-down");
+      if (moveUp) {
+        const disabled = index === 0;
+        moveUp.disabled = disabled;
+        moveUp.classList.toggle("disabled", disabled);
       }
-      .modal.dat-drawio-modal.open {
-        transform: translate(0, 0) !important;
+      if (moveDown) {
+        const disabled = index === rows.length - 1;
+        moveDown.disabled = disabled;
+        moveDown.classList.toggle("disabled", disabled);
       }
-      .modal.dat-drawio-modal .modal-content {
-        max-height: calc(100vh - 2.5rem);
-      }
-    `;
-    document.head.appendChild(style);
+    });
   }
+
+  function moveRow(row, direction, container, columns) {
+    if (!row) {
+      return;
+    }
+    const tbody = row.closest("tbody");
+    if (!tbody) {
+      return;
+    }
+    if (direction === "up") {
+      const previous = row.previousElementSibling;
+      if (!previous) {
+        return;
+      }
+      tbody.insertBefore(row, previous);
+    } else {
+      const next = row.nextElementSibling;
+      if (!next) {
+        return;
+      }
+      tbody.insertBefore(row, next.nextElementSibling);
+    }
+    syncHiddenInput(container, columns);
+    updateRowOrderControls(tbody);
+  }
+
 
   function buildDrawioUrl(template, id) {
     if (!template || !id) {
       return "";
     }
     return template.replace("{id}", id);
+  }
+
+  function buildLikeC4Url(baseUrl, filePath) {
+    if (!baseUrl || !filePath) {
+      return "";
+    }
+    const url = new URL(baseUrl, window.location.origin);
+    url.searchParams.set("file", filePath);
+    return url.toString();
+  }
+
+  function buildLikeC4PngUrl(prefix, filePath) {
+    if (!prefix || !filePath) {
+      return "";
+    }
+    const normalizedPrefix = String(prefix).replace(/\/+$/, "");
+    const segments = String(filePath).replace(/^\/+/, "").split("/");
+    if (segments.length >= 3 && segments[0] === "diagrams") {
+      const folder = segments[1];
+      if (!folder) {
+        return "";
+      }
+      return `${normalizedPrefix}/${encodeURIComponent(folder)}/thumb.png`;
+    }
+    const filename = segments[segments.length - 1] || "";
+    const base = filename.replace(/\.c4$/i, "");
+    if (!base) {
+      return "";
+    }
+    return `${normalizedPrefix}/likec4/${encodeURIComponent(base)}.png`;
   }
 
   function updateDrawioChip(wrapper, diagram, options) {
@@ -172,28 +194,50 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
     if (!chip) {
       return;
     }
+    const row = wrapper.closest("tr");
+    const toolInput = row ? row.querySelector('[data-column-key="schema_systeme"]') : null;
+    const toolValue = toolInput ? String(toolInput.value || toolInput.textContent || "").trim().toLowerCase() : "";
+    const referenceInput = row ? row.querySelector('[data-column-key="schema_reference"]') : null;
+    const referenceValue = referenceInput ? String(referenceInput.value || referenceInput.textContent || "").trim() : "";
     const identifier = diagram && diagram.id ? String(diagram.id).trim() : "";
     const title = diagram && diagram.title ? diagram.title : null;
-    if (identifier) {
+    if (toolValue === "likec4") {
+      chip.textContent = "Diagramme LikeC4";
+      chip.title = referenceValue || "";
+      chip.classList.remove("grey", "lighten-3");
+      chip.classList.add("teal", "lighten-5", "teal-text", "text-darken-3");
+    } else if (identifier) {
       chip.textContent = title ? `${title} (#${identifier})` : `Diagramme #${identifier}`;
+      chip.title = "";
       chip.classList.remove("grey", "lighten-3");
       chip.classList.add("blue", "lighten-5", "blue-text", "text-darken-4");
     } else {
       chip.textContent = "Aucun diagramme";
+      chip.title = "";
       chip.classList.add("grey", "lighten-3");
       chip.classList.remove("blue", "lighten-5", "blue-text", "text-darken-4");
+      chip.classList.remove("teal", "lighten-5", "teal-text", "text-darken-3");
     }
 
     const viewBtn = wrapper.querySelector(".dat-repeater-drawio-view");
     if (viewBtn) {
-      if (identifier) {
+      const likec4Prefix = container ? container.getAttribute("data-likec4-png-public-prefix") : null;
+      const likec4PngUrl = buildLikeC4PngUrl(likec4Prefix, referenceValue);
+      if (toolValue === "likec4" && referenceValue && likec4PngUrl) {
+        viewBtn.disabled = false;
+        viewBtn.classList.remove("disabled");
+        viewBtn.dataset.likec4PreviewUrl = likec4PngUrl;
+        delete viewBtn.dataset.diagramId;
+      } else if (identifier) {
         viewBtn.disabled = false;
         viewBtn.classList.remove("disabled");
         viewBtn.dataset.diagramId = identifier;
+        delete viewBtn.dataset.likec4PreviewUrl;
       } else {
         viewBtn.disabled = true;
         viewBtn.classList.add("disabled");
         delete viewBtn.dataset.diagramId;
+        delete viewBtn.dataset.likec4PreviewUrl;
       }
     }
 
@@ -201,16 +245,32 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
     if (importBtn) {
       const importTemplate = container ? container.getAttribute("data-drawio-import-template") : null;
       const importUrl = buildDrawioUrl(importTemplate, identifier);
-      if (identifier && importUrl) {
+      const likec4ImportUrl = container ? container.getAttribute("data-likec4-import-url") : null;
+      if (toolValue === "likec4" && likec4ImportUrl) {
+        importBtn.disabled = false;
+        importBtn.classList.remove("disabled");
+        importBtn.dataset.importUrl = likec4ImportUrl;
+        importBtn.dataset.likec4Import = "1";
+        if (referenceValue) {
+          importBtn.dataset.likec4Path = referenceValue;
+        } else {
+          delete importBtn.dataset.likec4Path;
+        }
+        delete importBtn.dataset.diagramId;
+      } else if (toolValue !== "likec4" && identifier && importUrl) {
         importBtn.disabled = false;
         importBtn.classList.remove("disabled");
         importBtn.dataset.importUrl = importUrl;
         importBtn.dataset.diagramId = identifier;
+        delete importBtn.dataset.likec4Import;
+        delete importBtn.dataset.likec4Path;
       } else {
         importBtn.disabled = true;
         importBtn.classList.add("disabled");
         delete importBtn.dataset.importUrl;
         delete importBtn.dataset.diagramId;
+        delete importBtn.dataset.likec4Import;
+        delete importBtn.dataset.likec4Path;
       }
     }
 
@@ -218,7 +278,14 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
     if (exportBtn) {
       const exportTemplate = container ? container.getAttribute("data-drawio-export-template") : null;
       const exportUrl = buildDrawioUrl(exportTemplate, identifier);
-      if (identifier && exportUrl) {
+      const likec4Template = container ? container.getAttribute("data-likec4-export-template") : null;
+      const likec4ExportUrl = buildLikeC4Url(likec4Template, referenceValue);
+      if (toolValue === "likec4" && referenceValue && likec4ExportUrl) {
+        exportBtn.disabled = false;
+        exportBtn.classList.remove("disabled");
+        exportBtn.dataset.exportUrl = likec4ExportUrl;
+        delete exportBtn.dataset.diagramId;
+      } else if (toolValue !== "likec4" && identifier && exportUrl) {
         exportBtn.disabled = false;
         exportBtn.classList.remove("disabled");
         exportBtn.dataset.exportUrl = exportUrl;
@@ -320,6 +387,83 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
     row.querySelectorAll(".dat-repeater-drawio-actions").forEach((wrapper) => updateDrawioActions(wrapper));
   }
 
+  function getDiagramToolInput(row) {
+    if (!row) {
+      return null;
+    }
+    return row.querySelector('[data-column-key="schema_systeme"]');
+  }
+
+  function getDiagramReferenceInput(row) {
+    if (!row) {
+      return null;
+    }
+    return row.querySelector('[data-column-key="schema_reference"]');
+  }
+
+  function updateRowDiagramState(row, container) {
+    if (!row) {
+      return;
+    }
+    const wrappers = Array.from(row.querySelectorAll(".dat-repeater-drawio-field"));
+    let hasDrawioId = false;
+    const diagramIds = wrappers.map((wrapper) => {
+      const hidden = wrapper.querySelector('input[type="hidden"][data-column-key]');
+      const diagramId = hidden && hidden.value ? String(hidden.value).trim() : "";
+      if (diagramId) {
+        hasDrawioId = true;
+      }
+      return { wrapper, diagramId };
+    });
+    const toolInput = getDiagramToolInput(row);
+    const referenceInput = getDiagramReferenceInput(row);
+    const referenceValue = referenceInput ? String(referenceInput.value || "").trim() : "";
+    let toolValue = toolInput ? String(toolInput.value || "").trim().toLowerCase() : "";
+    if (toolInput && !toolValue) {
+      if (hasDrawioId) {
+        toolInput.value = "drawio";
+        toolValue = "drawio";
+      } else if (referenceValue) {
+        toolInput.value = "likec4";
+        toolValue = "likec4";
+      }
+    }
+    diagramIds.forEach(({ wrapper, diagramId }) => {
+      updateDrawioChip(wrapper, { id: diagramId, title: null }, { container });
+    });
+    const shouldLockTool =
+      (toolValue === "drawio" && hasDrawioId) ||
+      (toolValue === "likec4" && referenceValue);
+    if (toolInput) {
+      toolInput.disabled = shouldLockTool;
+      toolInput.classList.toggle("disabled", shouldLockTool);
+    }
+  }
+
+  function attachRowDiagramHandlers(row, container) {
+    if (!row) {
+      return;
+    }
+    const toolInput = getDiagramToolInput(row);
+    if (toolInput && toolInput.dataset.diagramToolListener !== "1") {
+      toolInput.dataset.diagramToolListener = "1";
+      toolInput.addEventListener("change", () => updateRowDiagramState(row, container));
+    }
+    const referenceInput = getDiagramReferenceInput(row);
+    if (referenceInput && referenceInput.dataset.diagramReferenceListener !== "1") {
+      referenceInput.dataset.diagramReferenceListener = "1";
+      referenceInput.addEventListener("change", () => updateRowDiagramState(row, container));
+    }
+    row.querySelectorAll('input[type="hidden"][data-column-key]').forEach((input) => {
+      if (input.dataset.diagramIdListener === "1") {
+        return;
+      }
+      input.dataset.diagramIdListener = "1";
+      input.addEventListener("change", () => updateRowDiagramState(row, container));
+    });
+    updateRowDiagramState(row, container);
+  }
+
   function createInput(column, value, container, columns) {
     let element;
     const baseValue = value ?? "";
@@ -396,6 +540,11 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
       updateDrawioChip(element, { id: baseValue, title: null }, { container });
 
       viewBtn.addEventListener("click", () => {
+        const likec4PreviewUrl = viewBtn.dataset.likec4PreviewUrl;
+        if (likec4PreviewUrl) {
+          openLikeC4Preview(likec4PreviewUrl);
+          return;
+        }
         const diagramId = hidden.value ? hidden.value.trim() : "";
         if (diagramId) {
           openDiagramViewer(diagramId);
@@ -434,6 +583,10 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
           const option = document.createElement("option");
           option.value = choice.value;
           option.textContent = choice.label || choice.value;
+          const disabled = choice.disabled === true || choice.enabled === false;
+          if (disabled) {
+            option.disabled = true;
+          }
           if (choice.value === baseValue) {
             option.selected = true;
           }
@@ -465,6 +618,7 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
     const config = container.__datRepeaterConfig || {};
     const tbody = container.querySelector("tbody");
     const row = document.createElement("tr");
+    const isEditMode = container.closest("form") !== null;
     columns.forEach((column) => {
       const cell = document.createElement("td");
       const input = createInput(column, initialValues ? initialValues[column.key] : "", container, columns);
@@ -476,28 +630,55 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
       }
       row.appendChild(cell);
     });
-    if (container.closest("form") && config.allowRemove !== false) {
+    if (isEditMode) {
       const actionCell = document.createElement("td");
-      actionCell.style.textAlign = "right";
-      const removeButton = document.createElement("button");
-      removeButton.type = "button";
-      removeButton.className = "btn-flat waves-effect red-text dat-repeater-remove-row";
-      removeButton.innerHTML = '<i class="material-icons" aria-hidden="true">delete</i>';
-      removeButton.addEventListener("click", () => {
-        const minRows = Number.isInteger(config.minRows) ? config.minRows : 0;
-        const currentRows = getRowCount(tbody);
-        if (minRows && currentRows <= minRows) {
-          return;
-        }
-        row.remove();
-        syncHiddenInput(container, columns);
-        updateAddButton(container);
-      });
-      actionCell.appendChild(removeButton);
+      actionCell.className = "dat-repeater-actions-cell";
+      const actionWrapper = document.createElement("div");
+      actionWrapper.className = "dat-repeater-row-actions";
+
+      const moveUpButton = document.createElement("button");
+      moveUpButton.type = "button";
+      moveUpButton.className = "btn-flat waves-effect dat-repeater-move dat-repeater-move-up";
+      moveUpButton.innerHTML = '<i class="material-icons" aria-hidden="true">arrow_upward</i>';
+      moveUpButton.setAttribute("aria-label", "Monter la ligne");
+      moveUpButton.title = "Monter la ligne";
+      moveUpButton.addEventListener("click", () => moveRow(row, "up", container, columns));
+      actionWrapper.appendChild(moveUpButton);
+
+      const moveDownButton = document.createElement("button");
+      moveDownButton.type = "button";
+      moveDownButton.className = "btn-flat waves-effect dat-repeater-move dat-repeater-move-down";
+      moveDownButton.innerHTML = '<i class="material-icons" aria-hidden="true">arrow_downward</i>';
+      moveDownButton.setAttribute("aria-label", "Descendre la ligne");
+      moveDownButton.title = "Descendre la ligne";
+      moveDownButton.addEventListener("click", () => moveRow(row, "down", container, columns));
+      actionWrapper.appendChild(moveDownButton);
+
+      if (config.allowRemove !== false) {
+        const removeButton = document.createElement("button");
+        removeButton.type = "button";
+        removeButton.className = "btn-flat waves-effect red-text dat-repeater-remove-row";
+        removeButton.innerHTML = '<i class="material-icons" aria-hidden="true">delete</i>';
+        removeButton.addEventListener("click", () => {
+          const minRows = Number.isInteger(config.minRows) ? config.minRows : 0;
+          const currentRows = getRowCount(tbody);
+          if (minRows && currentRows <= minRows) {
+            return;
+          }
+          row.remove();
+          syncHiddenInput(container, columns);
+          updateAddButton(container);
+          updateRowOrderControls(tbody);
+        });
+        actionWrapper.appendChild(removeButton);
+      }
+      actionCell.appendChild(actionWrapper);
       row.appendChild(actionCell);
     }
     tbody.appendChild(row);
     updateRowDrawioActions(row);
+    attachRowDiagramHandlers(row, container);
+    updateRowOrderControls(tbody);
     return row;
   }
 
@@ -591,7 +772,6 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
   }
 
   function scanAndInit() {
-    ensureRepeaterStyles();
     document.querySelectorAll(".dat-repeater").forEach((container) => initialise(container));
   }
 
@@ -636,36 +816,31 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
     if (runtime.drawioModal) {
       return runtime.drawioModal;
     }
-    ensureModalStyles();
     const modal = document.createElement("div");
     modal.id = "dat-drawio-modal";
     modal.className = "modal dat-drawio-modal";
-    modal.style.width = "95vw";
-    modal.style.maxWidth = "1800px";
-    modal.style.minHeight = "86vh";
-    modal.style.maxHeight = "91vh";
     modal.innerHTML = `
-      <div class="modal-content" style="padding:0; height:87vh; width:93vw; max-width:1700px; margin:0 auto; display:flex; flex-direction:column;">
-        <div class="dat-drawio-modal-header" style="padding:1rem 1.5rem; border-bottom:1px solid rgba(0,0,0,0.08); display:flex; justify-content:space-between; align-items:center; gap:1rem;">
+      <div class="modal-content dat-drawio-modal-content">
+        <div class="dat-drawio-modal-header">
           <div>
-            <span class="grey-text" style="text-transform:uppercase; font-size:0.8rem;">Schémas</span>
-            <h5 class="dat-drawio-modal-title" style="margin:0;">Éditeur Draw.io</h5>
+            <span class="grey-text">Schémas</span>
+            <h5 class="dat-drawio-modal-title">Éditeur Draw.io</h5>
           </div>
         </div>
-        <div class="dat-drawio-modal-body" style="flex:1; position:relative; min-height:0;">
-          <div class="dat-drawio-modal-loader" style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0.75rem; background:rgba(255,255,255,0.95); z-index:2;">
+        <div class="dat-drawio-modal-body">
+          <div class="dat-drawio-modal-loader">
             <div class="dat-drawio-modal-spinner">
               {% include "dat/components/_loading_spinner.html" %}
             </div>
-            <p class="grey-text text-darken-1" style="margin:0;">Initialisation de l'éditeur…</p>
+            <p class="grey-text text-darken-1">Initialisation de l'éditeur…</p>
           </div>
           <iframe title="Éditeur Draw.io"
                   src="about:blank"
-                  style="border:0; width:100%; height:100%;"
+                  class="dat-drawio-modal-iframe"
                   allowfullscreen></iframe>
         </div>
       </div>
-      <div class="modal-footer" style="padding:0 1.5rem 1rem;">
+      <div class="modal-footer dat-drawio-modal-footer">
         <button type="button" class="modal-close btn waves-effect waves-light cinta-btn-secondary">
           Fermer
         </button>
@@ -685,6 +860,7 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
             resetDrawioState();
             showDrawioLoader();
             setDrawioModalOpen(false);
+            runtime.likec4Context = null;
           },
         });
       }
@@ -726,6 +902,14 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
     }
     window.addEventListener("message", handleDrawioMessage);
     runtime.drawioListenerAttached = true;
+  }
+
+  function ensureLikeC4MessageHandler() {
+    if (runtime.likec4ListenerAttached) {
+      return;
+    }
+    window.addEventListener("message", handleLikeC4Message);
+    runtime.likec4ListenerAttached = true;
   }
 
   function sendToDrawio(payload) {
@@ -782,6 +966,48 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
       handleDrawioSave(payload.xml);
     } else if (payload.event === "export" && payload.data) {
       persistDrawioThumbnail(payload.data);
+    }
+  }
+
+  function handleLikeC4Message(evt) {
+    if (LIKEC4_ORIGIN && evt.origin !== LIKEC4_ORIGIN) {
+      return;
+    }
+    let payload = evt.data;
+    if (typeof payload === "string") {
+      try {
+        payload = JSON.parse(payload);
+      } catch {
+        return;
+      }
+    }
+    if (!payload || typeof payload !== "object") {
+      return;
+    }
+    if (payload.source !== "likec4-editor" || payload.event !== "saved") {
+      return;
+    }
+    const context = runtime.likec4Context;
+    if (!context || !context.row) {
+      return;
+    }
+    const nextPath = String(payload.file || payload.path || payload.storage_path || "").trim();
+    const row = context.row;
+    const container = context.container || row.closest(".dat-repeater");
+    const referenceInput = getDiagramReferenceInput(row);
+    if (referenceInput && nextPath && referenceInput.value !== nextPath) {
+      referenceInput.value = nextPath;
+      referenceInput.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    const toolInput = getDiagramToolInput(row);
+    if (toolInput && String(toolInput.value || "").trim().toLowerCase() !== "likec4") {
+      toolInput.value = "likec4";
+      toolInput.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    updateRowDrawioActions(row);
+    if (container) {
+      updateRowDiagramState(row, container);
+      syncHiddenInput(container, getContainerColumns(container));
     }
   }
 
@@ -848,6 +1074,93 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
     }
   }
 
+  function openLikeC4Preview(url, title) {
+    if (!url) {
+      return;
+    }
+    if (window.CintaDatViewer && typeof window.CintaDatViewer.openImage === "function") {
+      window.CintaDatViewer.openImage(url, title || "Diagramme LikeC4");
+    } else {
+      window.open(url, "_blank", "noopener");
+    }
+  }
+
+  function resolveDiagramTool(column, row) {
+    if (!row) {
+      return "";
+    }
+    const toolKey = column.diagram_tool_key || column.diagramToolKey || "schema_systeme";
+    const toolInput = row.querySelector(`[data-column-key="${toolKey}"]`);
+    if (!toolInput) {
+      return "";
+    }
+    const rawValue = toolInput.value || toolInput.textContent || "";
+    return String(rawValue || "").trim().toLowerCase();
+  }
+
+  function slugifyFileName(value) {
+    if (!value) {
+      return "";
+    }
+    return String(value)
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  }
+
+  function ensureLikeC4Reference(row, column) {
+    if (!row) {
+      return "";
+    }
+    const referenceKey = column.diagram_reference_key || column.diagramReferenceKey || "schema_reference";
+    const referenceInput = row.querySelector(`[data-column-key="${referenceKey}"]`);
+    if (!referenceInput) {
+      return "";
+    }
+    let referenceValue = String(referenceInput.value || referenceInput.textContent || "").trim();
+    if (referenceValue) {
+      return referenceValue;
+    }
+    const nameKey = column.drawio_name_key || column.drawioNameKey || "nom_schema";
+    const nameInput = row.querySelector(`[data-column-key="${nameKey}"]`);
+    const nameValue = nameInput ? String(nameInput.value || nameInput.textContent || "").trim() : "";
+    const uniqueId = `${Date.now()}${Math.floor(Math.random() * 1000)
+      .toString()
+      .padStart(3, "0")}`;
+    referenceValue = `diagrams/${uniqueId}/likec4.c4`;
+    referenceInput.value = referenceValue;
+    referenceInput.dispatchEvent(new Event("change", { bubbles: true }));
+    return referenceValue;
+  }
+
+  function openLikeC4Editor(filePath, title, context) {
+    ensureLikeC4MessageHandler();
+    runtime.likec4Context = context || null;
+    const modal = ensureDrawioModal();
+    resetDrawioState();
+    showDrawioLoader();
+    setDrawioModalOpen(true);
+    if (modal.instance && modal.instance.open) {
+      modal.instance.open();
+    } else {
+      modal.modal.style.display = "block";
+      modal.modal.style.width = "90vw";
+      modal.modal.style.maxWidth = "1500px";
+    }
+    if (modal.title) {
+      modal.title.textContent = title || "Éditeur LikeC4";
+    }
+    modal.iframe.addEventListener("load", hideDrawioLoader, { once: true });
+    const url = new URL(LIKEC4_EMBED_URL);
+    if (filePath) {
+      url.searchParams.set("file", filePath);
+    }
+    modal.iframe.src = url.toString();
+  }
+
 
   function openDrawioEditor(diagramId) {
     ensureDrawioMessageHandler();
@@ -908,6 +1221,25 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
   }
 
   function handleDrawioEdit({ container, wrapper, hiddenInput, column }) {
+    const row = hiddenInput.closest("tr");
+    const tool = resolveDiagramTool(column, row);
+    if (tool && tool !== "drawio") {
+      if (tool === "likec4") {
+        const filePath = ensureLikeC4Reference(row, column);
+        let title = "";
+        if (row) {
+          const titleKey = column.drawio_name_key || column.drawioNameKey || "nom_schema";
+          const titleInput = row.querySelector(`[data-column-key="${titleKey}"]`);
+          if (titleInput) {
+            title = String(titleInput.value || titleInput.textContent || "").trim();
+          }
+        }
+        openLikeC4Editor(filePath, title, { row, column, container });
+      } else {
+        alert("Cet outil de diagramme n'est pas intégré. Merci d'utiliser la référence externe.");
+      }
+      return;
+    }
     ensureDrawioMessageHandler();
     const existingId = hiddenInput.value ? hiddenInput.value.trim() : "";
     if (existingId) {

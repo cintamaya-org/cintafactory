@@ -289,8 +289,56 @@
       });
   }
 
+  function openImage(url, title) {
+    if (!url) {
+      return;
+    }
+    loadViewerResources()
+      .then(() => {
+        const imageUrl = cacheBust(url);
+        const resolvedTitle = title || "Diagramme";
+        const { wrapper, image } = ensureViewerContainer();
+        image.src = imageUrl;
+        image.alt = resolvedTitle;
+        image.dataset.title = resolvedTitle;
+        image.dataset.thumbnailUrl = imageUrl;
+
+        if (!runtime.viewer) {
+          runtime.viewer = new window.Viewer(wrapper, {
+            navbar: false,
+            tooltip: false,
+            toolbar: {
+              zoomIn: 4,
+              zoomOut: 4,
+              oneToOne: 4,
+              reset: 4,
+              prev: 0,
+              play: 0,
+              next: 0,
+              rotateLeft: 4,
+              rotateRight: 4,
+              flipHorizontal: 4,
+              flipVertical: 4,
+            },
+            title: () => image.dataset.title || "",
+          });
+          ensureViewerAccessibilityHooks(wrapper);
+          setViewerAccessibility(false);
+        } else {
+          runtime.viewer.update();
+        }
+        runtime.viewer.view(0);
+        handleViewerShown();
+      })
+      .catch((error) => {
+        console.error("Impossible d'afficher l'aperçu:", error);
+        alert("Affichage du diagramme impossible. Merci de réessayer.");
+      });
+  }
+
   window.CintaDatViewer = {
     open: openViewer,
+    openImage: openImage,
   };
 })();
 
@@ -382,7 +430,7 @@
     }
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = ".drawio,.xml,text/xml";
+    input.accept = ".drawio,.xml,.c4,text/xml,text/plain";
     input.style.display = "none";
     input.addEventListener("change", (event) => {
       const target = event.target;
@@ -457,8 +505,23 @@
       showToast("Import indisponible pour ce diagramme.", true);
       return Promise.reject(new Error("missing_import_url"));
     }
+    const isLikeC4Import = button.dataset.likec4Import === "1";
+    const fileName = (file && file.name ? String(file.name) : "").toLowerCase();
+    const isLikeC4File = fileName.endsWith(".c4");
+    if (isLikeC4Import && !isLikeC4File) {
+      showToast("Veuillez sélectionner un fichier LikeC4 (.c4).", true);
+      return Promise.reject(new Error("invalid_likec4_file"));
+    }
+    if (!isLikeC4Import && isLikeC4File) {
+      showToast("Fichier LikeC4 non compatible avec Draw.io.", true);
+      return Promise.reject(new Error("invalid_drawio_file"));
+    }
     const formData = new FormData();
-    formData.append("file", file, file.name || "diagram.drawio");
+    const fallbackName = isLikeC4Import ? "diagram.c4" : "diagram.drawio";
+    formData.append("file", file, file.name || fallbackName);
+    if (isLikeC4Import && button.dataset.likec4Path) {
+      formData.append("path", button.dataset.likec4Path);
+    }
     setButtonBusy(button, true);
     const request = fetch(importUrl, {
       method: "POST",
@@ -498,12 +561,36 @@
       .then((payload) => {
         const diagramData = payload && payload.diagram ? payload.diagram : {};
         const thumbnailUrl = diagramData.thumbnail_url || diagramData.thumbnailUrl || null;
-        showToast("Diagramme importé avec succès.");
+        if (isLikeC4Import) {
+          showToast("Diagramme LikeC4 importé avec succès.");
+        } else {
+          showToast("Diagramme importé avec succès.");
+        }
+        if (isLikeC4Import) {
+          const likec4Path = payload && (payload.path || payload.storage_path);
+          if (likec4Path) {
+            button.dataset.likec4Path = likec4Path;
+            const row = button.closest("tr");
+            if (row) {
+              const referenceInput = row.querySelector('[data-column-key="schema_reference"]');
+              if (referenceInput) {
+                referenceInput.value = likec4Path;
+                referenceInput.dispatchEvent(new Event("change", { bubbles: true }));
+              }
+              const toolInput = row.querySelector('[data-column-key="schema_systeme"]');
+              if (toolInput && String(toolInput.value || "").trim().toLowerCase() !== "likec4") {
+                toolInput.value = "likec4";
+                toolInput.dispatchEvent(new Event("change", { bubbles: true }));
+              }
+            }
+          }
+        }
         const detail = {
           diagramId: button.dataset.diagramId || null,
           fileName: file.name || null,
           thumbnailUrl,
           thumbnail_url: thumbnailUrl,
+          likec4Path: isLikeC4Import ? (payload && (payload.path || payload.storage_path)) : null,
         };
         document.dispatchEvent(new CustomEvent("dat:diagram-imported", { detail }));
       })
@@ -578,6 +665,129 @@
       return uploadDiagramFile(button, file);
     },
   };
+})();
+
+// Draw.io schema parser trigger (architecture -> schemas)
+(function () {
+  if (window.CintaDatSchemaParser) {
+    return;
+  }
+
+  const BUTTON_SELECTOR = ".dat-schema-parse-trigger";
+
+  function showToast(message, isError) {
+    if (window.M && M.toast) {
+      M.toast({
+        html: message,
+        displayLength: 4000,
+        classes: isError ? "red darken-2" : "green darken-2",
+      });
+    } else {
+      window.alert(message);
+    }
+  }
+
+  function setButtonBusy(button, isBusy) {
+    if (!button) {
+      return;
+    }
+    if (isBusy) {
+      button.dataset.parseBusy = "1";
+      button.disabled = true;
+      button.classList.add("disabled");
+      button.setAttribute("aria-busy", "true");
+    } else {
+      button.disabled = false;
+      button.classList.remove("disabled");
+      button.removeAttribute("aria-busy");
+      delete button.dataset.parseBusy;
+    }
+  }
+
+  function getCsrfToken() {
+    const match = document.cookie
+      .split(";")
+      .map((entry) => entry.trim())
+      .find((entry) => entry.startsWith("csrftoken="));
+    return match ? decodeURIComponent(match.split("=", 2)[1]) : "";
+  }
+
+  function replaceSubSection(slug, html) {
+    if (!slug || !html) {
+      return;
+    }
+    const container = document.querySelector(`.dat-sub-section[data-sub-section-slug="${slug}"]`);
+    if (!container) {
+      return;
+    }
+    const wrapper = document.createElement("div");
+    wrapper.innerHTML = html;
+    const next = wrapper.firstElementChild;
+    if (!next) {
+      return;
+    }
+    container.replaceWith(next);
+    next.classList.add("dat-sub-section-updated");
+    setTimeout(() => next.classList.remove("dat-sub-section-updated"), 1800);
+  }
+
+  function handleParse(button) {
+    if (!button) {
+      return;
+    }
+    const parseUrl = button.dataset.parseUrl;
+    if (!parseUrl) {
+      showToast("Analyse indisponible pour ce DAT.", true);
+      return;
+    }
+    setButtonBusy(button, true);
+    fetch(parseUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+        "X-CSRFToken": getCsrfToken(),
+      },
+      body: JSON.stringify({}),
+    })
+      .then((response) => {
+        return response
+          .json()
+          .catch(() => ({}))
+          .then((payload) => {
+            if (!response.ok) {
+              const message = payload && payload.message ? payload.message : `Erreur ${response.status}`;
+              throw new Error(message);
+            }
+            return payload;
+          });
+      })
+      .then((payload) => {
+        const subSections = payload && payload.sub_sections ? payload.sub_sections : {};
+        Object.keys(subSections).forEach((slug) => replaceSubSection(slug, subSections[slug]));
+        const message = payload && payload.message ? payload.message : "Analyse terminée.";
+        showToast(message, false);
+      })
+      .catch((error) => {
+        const message = error && error.message ? error.message : "Analyse impossible.";
+        showToast(message, true);
+      })
+      .finally(() => setButtonBusy(button, false));
+  }
+
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest(BUTTON_SELECTOR);
+    if (!button) {
+      return;
+    }
+    event.preventDefault();
+    if (button.dataset.parseBusy === "1") {
+      return;
+    }
+    handleParse(button);
+  });
+
+  window.CintaDatSchemaParser = true;
 })();
 
 // Inline Draw.io preview toggler (Afficher/Cacher)
@@ -730,7 +940,26 @@
     return target;
   }
 
-  function getDiagramId(row) {
+  function getDiagramDescriptor(row) {
+    if (!row) {
+      return null;
+    }
+    const likec4Holder = row.querySelector("[data-likec4-preview-url]");
+    if (likec4Holder) {
+      const url = likec4Holder.getAttribute("data-likec4-preview-url") || likec4Holder.dataset.likec4PreviewUrl;
+      if (url) {
+        const title =
+          likec4Holder.getAttribute("data-likec4-title") ||
+          likec4Holder.dataset.likec4Title ||
+          "Diagramme LikeC4";
+        return {
+          key: `likec4:${url}`,
+          type: "likec4",
+          url,
+          title,
+        };
+      }
+    }
     const holder = row.querySelector("[data-diagram-id]");
     if (!holder) {
       return null;
@@ -740,7 +969,15 @@
       return null;
     }
     const trimmed = String(value).trim();
-    return trimmed ? trimmed : null;
+    if (!trimmed) {
+      return null;
+    }
+    return {
+      key: `drawio:${trimmed}`,
+      type: "drawio",
+      id: trimmed,
+      title: `Diagramme #${trimmed}`,
+    };
   }
 
   function setToggleState(toggle, expanded) {
@@ -774,10 +1011,11 @@
     }
   }
 
-  function renderPreview(previewRow, diagramId, payload) {
+  function renderPreview(previewRow, descriptor, payload) {
     if (!previewRow || !previewRow.isConnected) {
       return;
     }
+    const diagramId = descriptor && descriptor.id ? descriptor.id : descriptor && descriptor.key ? descriptor.key : "";
     const td = previewRow.querySelector("td") || previewRow.appendChild(document.createElement("td"));
     const sibling = previewRow.nextElementSibling;
     const siblingCells = sibling && sibling.children ? sibling.children.length : 0;
@@ -786,7 +1024,12 @@
     wrapper.className = "dat-drawio-inline-preview";
     const title = document.createElement("p");
     title.className = "dat-drawio-inline-preview__title";
-    title.textContent = payload && payload.title ? payload.title : `Diagramme #${diagramId}`;
+    title.textContent =
+      payload && payload.title
+        ? payload.title
+        : descriptor && descriptor.title
+          ? descriptor.title
+          : `Diagramme #${diagramId}`;
     wrapper.appendChild(title);
     const body = document.createElement("div");
     body.className = "dat-drawio-inline-preview__body";
@@ -806,7 +1049,7 @@
       });
       const img = document.createElement("img");
       img.className = "dat-drawio-inline-preview__image";
-      img.alt = payload.title || `Diagramme #${diagramId}`;
+      img.alt = payload.title || (descriptor && descriptor.title) || `Diagramme #${diagramId}`;
       const helper = window.CintaDrawioPreview;
       const url = payload.thumbnail;
       img.src = helper && typeof helper.withCacheBuster === "function" ? helper.withCacheBuster(url) : url;
@@ -819,20 +1062,23 @@
     td.appendChild(wrapper);
   }
 
-  function renderLoading(previewRow, diagramId) {
-    renderPreview(previewRow, diagramId, { title: `Diagramme #${diagramId}`, thumbnail: null, loading: true });
+  function renderLoading(previewRow, descriptor) {
+    const title = descriptor && descriptor.title ? descriptor.title : "Diagramme";
+    renderPreview(previewRow, descriptor, { title, thumbnail: null, loading: true });
     const body = previewRow.querySelector(".dat-drawio-inline-preview__body");
     if (body) {
       body.textContent = "Chargement du diagramme...";
     }
   }
 
-  function ensurePreviewRow(row, diagramId) {
+  function ensurePreviewRow(row, previewKey) {
     let previewRow = row.previousElementSibling;
     if (!previewRow || !previewRow.classList.contains(PREVIEW_ROW_CLASS)) {
       previewRow = document.createElement("tr");
       previewRow.className = PREVIEW_ROW_CLASS;
-      previewRow.dataset.diagramId = diagramId;
+      if (previewKey) {
+        previewRow.dataset.previewKey = previewKey;
+      }
       const td = document.createElement("td");
       td.colSpan = Math.max(1, row.children.length || 1);
       previewRow.appendChild(td);
@@ -848,54 +1094,66 @@
       nestedBodies.forEach((tbody) => {
         rows = rows.concat(
           Array.from(tbody.querySelectorAll("tr")).filter(
-            (row) => !row.classList.contains(PREVIEW_ROW_CLASS) && getDiagramId(row)
+            (row) => !row.classList.contains(PREVIEW_ROW_CLASS) && getDiagramDescriptor(row)
           )
         );
       });
     } else {
       rows = Array.from(target.querySelectorAll("table tbody tr")).filter(
-        (row) => !row.classList.contains(PREVIEW_ROW_CLASS) && getDiagramId(row)
+        (row) => !row.classList.contains(PREVIEW_ROW_CLASS) && getDiagramDescriptor(row)
       );
     }
     return rows;
   }
 
-  function fetchPreview(diagramId) {
-    const key = String(diagramId);
+  function fetchPreview(descriptor) {
+    if (!descriptor) {
+      return Promise.resolve({ error: new Error("missing_descriptor") });
+    }
+    const key = String(descriptor.key || "");
     if (previewCache.has(key)) {
       logDebug("Utilisation du cache pour la miniature", { diagramId: key });
       return previewCache.get(key);
     }
-    logDebug("Chargement du contexte viewer pour miniature", { diagramId: key });
-    const promise = fetch(`/diagrams/${key}/viewer-context/`, {
-      method: "GET",
-      credentials: "same-origin",
-      headers: { Accept: "application/json" },
-    })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-        return response.json();
-      })
-      .then((data) => {
-        const diagram = data && data.diagram ? data.diagram : {};
-        logDebug("Contexte preview chargé", {
-          diagramId: key,
-          hasThumbnail: Boolean(diagram.thumbnail_url || diagram.thumbnail),
-        });
-        return {
-          title: diagram.title || `Diagramme #${key}`,
-          thumbnail: diagram.thumbnail_url || diagram.thumbnail || null,
-        };
-      })
-      .catch((error) => {
-        logWarn("Echec du chargement du contexte preview", {
-          diagramId: key,
-          error,
-        });
-        return { error: error || new Error("preview_load_failed") };
+    let promise = null;
+    if (descriptor.type === "likec4") {
+      logDebug("Chargement de la miniature LikeC4", { diagramId: key });
+      promise = Promise.resolve({
+        title: descriptor.title || "Diagramme LikeC4",
+        thumbnail: descriptor.url || null,
       });
+    } else {
+      logDebug("Chargement du contexte viewer pour miniature", { diagramId: key });
+      promise = fetch(`/diagrams/${descriptor.id}/viewer-context/`, {
+        method: "GET",
+        credentials: "same-origin",
+        headers: { Accept: "application/json" },
+      })
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+          return response.json();
+        })
+        .then((data) => {
+          const diagram = data && data.diagram ? data.diagram : {};
+          logDebug("Contexte preview chargé", {
+            diagramId: key,
+            hasThumbnail: Boolean(diagram.thumbnail_url || diagram.thumbnail),
+          });
+          return {
+            title: diagram.title || descriptor.title || `Diagramme #${descriptor.id}`,
+            thumbnail: diagram.thumbnail_url || diagram.thumbnail || null,
+          };
+        })
+        .catch((error) => {
+          logWarn("Echec du chargement du contexte preview", {
+            diagramId: key,
+            error,
+          });
+          return { error: error || new Error("preview_load_failed") };
+        });
+    }
     previewCache.set(key, promise);
     return promise;
   }
@@ -906,31 +1164,31 @@
     }
     ensureStyle();
     const rows = collectRows(target);
-    const diagramIds = rows.map((row) => getDiagramId(row)).filter(Boolean);
+    const descriptors = rows.map((row) => getDiagramDescriptor(row)).filter(Boolean);
     logDebug("Préparation de l'affichage des miniatures", {
       targetId: target.id || null,
       rows: rows.length,
-      diagramIds,
+      diagramIds: descriptors.map((descriptor) => descriptor.key),
     });
-    if (!rows.length || !diagramIds.length) {
+    if (!rows.length || !descriptors.length) {
       logWarn("Aucune ligne éligible pour affichage des miniatures", {
         targetId: target.id || null,
       });
     }
     const tasks = [];
     rows.forEach((row) => {
-      const diagramId = getDiagramId(row);
-      if (!diagramId) {
+      const descriptor = getDiagramDescriptor(row);
+      if (!descriptor) {
         logWarn("Ligne ignorée car aucun diagramme détecté", {
           targetId: target.id || null,
         });
         return;
       }
-      const previewRow = ensurePreviewRow(row, diagramId);
-      renderLoading(previewRow, diagramId);
+      const previewRow = ensurePreviewRow(row, descriptor.key);
+      renderLoading(previewRow, descriptor);
       tasks.push(
-        fetchPreview(diagramId).then((payload) => {
-          renderPreview(previewRow, diagramId, payload);
+        fetchPreview(descriptor).then((payload) => {
+          renderPreview(previewRow, descriptor, payload);
         })
       );
     });

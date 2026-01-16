@@ -2,8 +2,8 @@
 {% if cell %}
   {% diagram_links cell as drawio %}
   {% if drawio %}
-    <div style="display:flex; flex-wrap:wrap; gap:0.5rem; align-items:center;">
-      <span class="chip blue lighten-5 blue-text text-darken-4" style="margin:0;">
+    <div class="u-flex u-flex-wrap u-gap-0-5 u-items-center">
+      <span class="chip blue lighten-5 blue-text text-darken-4 u-m-0">
         {{ drawio.title|default:"Diagramme" }} (#{{ drawio.pk }})
       </span>
       <button type="button"
@@ -36,6 +36,30 @@
   {% else %}
     <span class="chip red lighten-5 red-text text-darken-2">ID de diagramme invalide</span>
   {% endif %}
+{% elif row and row|get_item:"schema_systeme" == "likec4" %}
+  {% with schema_reference=row|get_item:"schema_reference" %}
+    <div class="u-flex u-flex-wrap u-gap-0-5 u-items-center">
+      <span class="chip teal lighten-5 teal-text text-darken-3">Diagramme LikeC4</span>
+      {% if schema_reference %}
+        {% likec4_png_url schema_reference as likec4_png_url %}
+        <button type="button"
+                class="btn-flat waves-effect cinta-btn-secondary dat-drawio-view-button dat-drawio-action-button dat-viewer-trigger"
+                data-likec4-preview-url="{{ likec4_png_url }}"
+                data-likec4-title="Diagramme LikeC4">
+          <i class="material-icons left" aria-hidden="true">visibility</i>Voir
+        </button>
+        {% if part.can_edit %}
+          {% url "diagrams:likec4_export" as likec4_export_url %}
+          <button type="button"
+                  class="btn-flat waves-effect cinta-btn-secondary dat-drawio-export-button dat-drawio-action-button"
+                  data-export-url="{{ likec4_export_url }}?file={{ schema_reference|urlencode }}"
+                  data-diagram-title="Diagramme LikeC4">
+            <i class="material-icons left" aria-hidden="true">file_download</i>Exporter
+          </button>
+        {% endif %}
+      {% endif %}
+    </div>
+  {% endwith %}
 {% else %}
   <span class="chip grey lighten-3">Aucun diagramme</span>
 {% endif %}

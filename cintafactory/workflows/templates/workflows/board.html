@@ -44,89 +44,12 @@
     </div>
   {% endif %} {% endcomment %}
   
-<style>  
-.mdc-layout-grid__cell {
-  min-width: 0;
-}
-img {
-  max-width: 100%;
-  height: auto;
-}
-.vf-dashboard {
-  display: flex;
-  gap: 1.5rem;
-  width: 100%;
-  overflow-x: auto;
-  padding-bottom: 1rem;
-}
-.vf-dashboard .column {
-  flex: 0 0 calc(50% - 0.75rem);
-  max-width: calc(50% - 0.75rem);
-  min-width: 420px;
-  display: flex;
-  flex-direction: column;
-}
-.vf-dashboard .column-content {
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  overflow: visible;
-  padding-right: 0;
-}
-.vf-dashboard .column-action {
-  flex-shrink: 0;
-  margin-top: 1rem;
-}
-
-.scroll-box {
-  width: 100%;
-  height: 90vh;
-  overflow-y: auto; 
-  overflow-x: hidden; 
-  scrollbar-width: thin; 
-}
-
-.workflow-card {
-  width: 100%;
-  margin: 0;
-}
-
-.workflow-card__body {
-  display: flex;
-  flex-direction: column;
-  gap: 0.65rem;
-}
-
-.workflow-card__actions {
-  margin-top: 0.75rem;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.workflow-card__actions form {
-  margin: 0;
-}
-
-@media (max-width: 1024px) {
-  .vf-dashboard .column {
-    flex: 0 0 100%;
-    max-width: 100%;
-    min-width: 0;
-  }
-}
-</style>
-
-
 {% comment %} {% include "components/_loading_spinner.html" %} {% endcomment %}
 
 
-<div class="mdc-layout-grid vf-page__grid" 
-     style="position: relative; margin-top: 0; max-width: 100%;">
+<div class="mdc-layout-grid vf-page__grid wf-board">
   <div class="mdc-layout-grid__inner vf-page__grid-inner">
-    <div class="mdc-layout-grid__cell mdc-layout-grid__cell--span-12" style="min-width: 0;">
+    <div class="mdc-layout-grid__cell mdc-layout-grid__cell--span-12">
       <div class="vf-dashboard">
           {% if columns %}
             {% for column in columns %}
@@ -157,11 +80,11 @@ img {
                       <div class="workflow-card__body">
                         <div>
                           {{ dat }}
-                          <h2 class="mdc-typography mdc-typography--headline6" style="margin:0;">
+                          <h2 class="mdc-typography mdc-typography--headline6 workflow-card__title">
                             {{ dat.reference|default:dat.pk }}
                           </h2>
                           {% if dat.title %}
-                            <h3 class="mdc-typography mdc-typography--subtitle2" style="margin:0;color: rgba(0,0,0,.54);">
+                            <h3 class="mdc-typography mdc-typography--subtitle2 workflow-card__subtitle">
                               {{ dat.title }}
                             </h3>
                           {% endif %}
@@ -190,14 +113,14 @@ img {
                           {% endif %}
                         </div> {% endcomment %}
                         {% if dat.description %}
-                          <p class="flow-text" style="margin:0;color: rgba(0,0,0,.54);">
+                          <p class="flow-text workflow-card__description">
                             {{ dat.description|truncatewords:24 }}
                           </p>
                         {% endif %}
-                        <div class="vf-dashboard__card-detail" style="display:flex; flex-direction:column; gap:0.35rem;">
-                          <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
-                            <label style="margin:0;">Application</label>
-                            <span class="chip" style="margin:0; background:#f1f8e9; color:#33691e; font-weight:600;">
+                        <div class="vf-dashboard__card-detail workflow-card__detail">
+                          <div class="workflow-card__detail-row">
+                            <label class="workflow-card__label">Application</label>
+                            <span class="chip workflow-card__chip workflow-card__chip--app">
                               {% if dat.application %} 
                                 {{ dat.application.name|default:dat.application.code }}
                               {% else %}
@@ -235,20 +158,20 @@ img {
                         {% endif %} {% endcomment %}
                         <a href="{% url 'dat:my_detail' dat.pk %}"
                            class="btn waves-effect waves-light cinta-btn-primary"
-                           target="_blank" rel="noopener noreferrer">
+                           target="" rel="noopener noreferrer">
                           Voir le DAT
                         </a>
                       </div>
                     </div>
-                  {% empty %}
+                    {% empty %}
                     <div class="card cinta-card workflow-card workflow-card--empty">
-                      <p style="margin:0;color: rgba(0,0,0,.54);">
+                      <p class="workflow-card__empty-text">
                         Aucun dossier à cette étape.
                       </p>
                     </div>
                   {% endfor %}
                 </div>
-                <div class="column-action" style="padding:10px 5px 0;">
+                <div class="column-action">
                   {% comment %} {% with write=column.write_permissions read=column.read_permissions %}
                     {% if write %}
                       <div class="vf-dashboard__card-detail">
