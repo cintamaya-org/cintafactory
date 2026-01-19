@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from email.utils import parsedate_to_datetime
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
@@ -8,6 +9,7 @@ from urllib.request import Request, urlopen
 from django.conf import settings
 from django.core.files.base import File
 from django.core.files.storage import Storage
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +96,25 @@ class SeaweedFSStorage(Storage):
                 return int(length)
             except (TypeError, ValueError):
                 return 0
+
+    def get_modified_time(self, name: str):
+        url = self._build_url(self.base_url, name)
+        request = Request(url, method="HEAD")
+        try:
+            with urlopen(request, timeout=self.timeout) as response:
+                header = response.headers.get("Last-Modified")
+        except HTTPError as exc:
+            if exc.code == 404:
+                raise FileNotFoundError(name) from exc
+            raise
+        if not header:
+            raise NotImplementedError("SeaweedFS response did not include Last-Modified.")
+        parsed = parsedate_to_datetime(header)
+        if not parsed:
+            raise NotImplementedError("SeaweedFS Last-Modified header could not be parsed.")
+        if timezone.is_naive(parsed):
+            parsed = timezone.make_aware(parsed, timezone.utc)
+        return parsed
 
     def url(self, name: str) -> str:
         return self._build_url(self.public_url, name)

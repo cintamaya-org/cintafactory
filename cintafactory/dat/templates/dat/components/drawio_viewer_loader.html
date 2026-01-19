@@ -894,6 +894,14 @@
         border-radius: 6px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.06);
       }
+      .dat-drawio-inline-preview__image-wrapper + .dat-drawio-inline-preview__image-wrapper {
+        margin-top: 0.65rem;
+      }
+      .dat-drawio-inline-preview__image-label {
+        margin: 0 0 0.35rem 0;
+        font-size: 0.82rem;
+        color: #607d8b;
+      }
       .dat-drawio-inline-preview__error {
         color: #c62828;
         margin: 0;
@@ -949,15 +957,17 @@
     const likec4Holder = row.querySelector("[data-likec4-preview-url]");
     if (likec4Holder) {
       const url = likec4Holder.getAttribute("data-likec4-preview-url") || likec4Holder.dataset.likec4PreviewUrl;
+      const viewsUrl = likec4Holder.getAttribute("data-likec4-views-url") || likec4Holder.dataset.likec4ViewsUrl;
       if (url) {
         const title =
           likec4Holder.getAttribute("data-likec4-title") ||
           likec4Holder.dataset.likec4Title ||
           "Diagramme LikeC4";
         return {
-          key: `likec4:${url}`,
+          key: `likec4:${viewsUrl || url}`,
           type: "likec4",
           url,
+          viewsUrl: viewsUrl || null,
           title,
         };
       }
@@ -1044,6 +1054,28 @@
       error.className = "dat-drawio-inline-preview__error";
       error.textContent = "Impossible de charger l'aperçu du diagramme.";
       body.appendChild(error);
+    } else if (payload && Array.isArray(payload.images) && payload.images.length) {
+      payload.images.forEach((image) => {
+        if (!image || !image.src) {
+          return;
+        }
+        const wrapper = document.createElement("div");
+        wrapper.className = "dat-drawio-inline-preview__image-wrapper";
+        if (image.label) {
+          const label = document.createElement("p");
+          label.className = "dat-drawio-inline-preview__image-label";
+          label.textContent = image.label;
+          wrapper.appendChild(label);
+        }
+        const img = document.createElement("img");
+        img.className = "dat-drawio-inline-preview__image";
+        img.alt = payload.title || (descriptor && descriptor.title) || `Diagramme #${diagramId}`;
+        const helper = window.CintaDrawioPreview;
+        const url = image.src;
+        img.src = helper && typeof helper.withCacheBuster === "function" ? helper.withCacheBuster(url) : url;
+        wrapper.appendChild(img);
+        body.appendChild(wrapper);
+      });
     } else if (payload && payload.thumbnail) {
       logDebug("Miniature récupérée", {
         diagramId,
@@ -1108,6 +1140,20 @@
     return rows;
   }
 
+  function likec4LabelFromUrl(url, index) {
+    if (!url) {
+      return `Vue ${index + 1}`;
+    }
+    const marker = "/views/";
+    const pos = url.indexOf(marker);
+    if (pos !== -1) {
+      return url.slice(pos + marker.length);
+    }
+    const parts = url.split("/");
+    const last = parts[parts.length - 1] || "";
+    return last || `Vue ${index + 1}`;
+  }
+
   function fetchPreview(descriptor) {
     if (!descriptor) {
       return Promise.resolve({ error: new Error("missing_descriptor") });
@@ -1120,10 +1166,47 @@
     let promise = null;
     if (descriptor.type === "likec4") {
       logDebug("Chargement de la miniature LikeC4", { diagramId: key });
-      promise = Promise.resolve({
-        title: descriptor.title || "Diagramme LikeC4",
-        thumbnail: descriptor.url || null,
-      });
+      if (descriptor.viewsUrl) {
+        promise = fetch(descriptor.viewsUrl, {
+          method: "GET",
+          credentials: "same-origin",
+          headers: { Accept: "application/json" },
+        })
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error(`HTTP ${response.status}`);
+            }
+            return response.json();
+          })
+          .then((data) => {
+            const paths = Array.isArray(data && data.paths) ? data.paths : [];
+            const images = paths.map((path, index) => ({
+              src: path,
+              label: likec4LabelFromUrl(path, index),
+            }));
+            const fallback = data && data.thumbnail_url ? data.thumbnail_url : descriptor.url || null;
+            return {
+              title: descriptor.title || "Diagramme LikeC4",
+              images,
+              thumbnail: images.length ? null : fallback,
+            };
+          })
+          .catch((error) => {
+            logWarn("Echec du chargement des vues LikeC4", {
+              diagramId: key,
+              error,
+            });
+            return {
+              title: descriptor.title || "Diagramme LikeC4",
+              thumbnail: descriptor.url || null,
+            };
+          });
+      } else {
+        promise = Promise.resolve({
+          title: descriptor.title || "Diagramme LikeC4",
+          thumbnail: descriptor.url || null,
+        });
+      }
     } else {
       logDebug("Chargement du contexte viewer pour miniature", { diagramId: key });
       promise = fetch(`/diagrams/${descriptor.id}/viewer-context/`, {
@@ -1139,13 +1222,19 @@
         })
         .then((data) => {
           const diagram = data && data.diagram ? data.diagram : {};
+          const imageUrls = Array.isArray(diagram.image_urls) ? diagram.image_urls : [];
+          const images = imageUrls.map((url, index) => ({
+            src: url,
+            label: `Page ${index + 1}`,
+          }));
           logDebug("Contexte preview chargé", {
             diagramId: key,
             hasThumbnail: Boolean(diagram.thumbnail_url || diagram.thumbnail),
           });
           return {
             title: diagram.title || descriptor.title || `Diagramme #${descriptor.id}`,
-            thumbnail: diagram.thumbnail_url || diagram.thumbnail || null,
+            images,
+            thumbnail: images.length ? null : diagram.thumbnail_url || diagram.thumbnail || null,
           };
         })
         .catch((error) => {

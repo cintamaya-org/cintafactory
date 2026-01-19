@@ -5,6 +5,7 @@ import copy
 import json
 import logging
 import mimetypes
+import time
 from typing import Any, Dict, Iterable, List, Sequence
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -184,8 +185,10 @@ class DATExportModelBuilder:
             is_repeater = part.data_type == DATPartEntryType.REPEATER
             table_columns = self._extract_repeater_columns(part, value) if is_repeater else []
             display_value = part.render_value(value)
+            diagram_previews = []
             if is_repeater:
                 display_value = self._attach_repeater_diagram_previews(part, display_value)
+                diagram_previews = self._collect_diagram_previews(display_value)
             payload = {
                 "id": part.pk,
                 "key": part.key,
@@ -201,6 +204,7 @@ class DATExportModelBuilder:
                 "has_value": has_value,
                 "is_repeater": is_repeater,
                 "table_columns": table_columns,
+                "diagram_previews": diagram_previews,
             }
             if self.include_empty_parts or has_value:
                 parts.append(payload)
@@ -320,6 +324,17 @@ class DATExportModelBuilder:
                     diagram_payload = previews[diagram_id]
                     row[f"{column_key}_diagram"] = diagram_payload
                     row.setdefault("drawio_diagram", diagram_payload)
+                    title_key = column.get("drawio_name_key") or column.get("drawioNameKey")
+                    title = row.get(title_key) if title_key else None
+                    column_label = column.get("label") or column_key
+                    description = row.get("description") if isinstance(row.get("description"), str) else None
+                    self._append_diagram_preview(
+                        row,
+                        diagram_payload,
+                        title=title,
+                        description=description,
+                        column_label=column_label,
+                    )
         return rows
 
     def _attach_likec4_previews(self, part: DATPart, rows):
@@ -340,7 +355,17 @@ class DATExportModelBuilder:
                 continue
             reference = self._normalize_likec4_path(row.get(reference_key))
             if reference and reference in previews:
-                row["likec4_diagram"] = previews[reference]
+                diagram_payload = previews[reference]
+                row["likec4_diagram"] = diagram_payload
+                title = row.get("nom_schema") or row.get(reference_key)
+                description = row.get("description") if isinstance(row.get("description"), str) else None
+                self._append_diagram_preview(
+                    row,
+                    diagram_payload,
+                    title=title,
+                    description=description,
+                    column_label="LikeC4",
+                )
         return rows
 
     def _get_likec4_keys(self, part: DATPart) -> tuple[str, str]:
@@ -387,6 +412,7 @@ class DATExportModelBuilder:
         previews: Dict[str, Dict[str, Any]] = {}
         if self.refresh_likec4_exports:
             self._refresh_likec4_exports(references)
+            self._wait_for_likec4_exports(references)
         storage = SeaweedFSStorage()
         metas = LikeC4Diagram.objects.filter(storage_path__in=list(references))
         meta_map = {meta.storage_path: meta for meta in metas}
@@ -412,6 +438,80 @@ class DATExportModelBuilder:
         timeout = int(getattr(settings, "LIKEC4_EXPORT_TIMEOUT", 60))
         for reference in references:
             self._request_likec4_export(reference, export_url=export_url, timeout=timeout)
+
+    def _wait_for_likec4_exports(self, references: Iterable[str]) -> None:
+        references = [ref for ref in references if ref]
+        if not references:
+            return
+        if not getattr(settings, "LIKEC4_EXPORT_ENABLED", False):
+            return
+        export_url = getattr(settings, "LIKEC4_EXPORT_URL", "").strip()
+        if not export_url:
+            return
+        timeout = int(getattr(settings, "LIKEC4_EXPORT_TIMEOUT", 60))
+        if timeout <= 0:
+            return
+        deadline = time.monotonic() + timeout
+        interval = 2 if timeout >= 2 else 1
+        remaining = set(references)
+        storage = SeaweedFSStorage()
+        logger.info("PDF export LikeC4: waiting for %s export(s) to complete.", len(remaining))
+        while remaining and time.monotonic() < deadline:
+            metas = LikeC4Diagram.objects.filter(storage_path__in=list(remaining)).only(
+                "storage_path",
+                "png_path",
+                "png_paths",
+            )
+            meta_map = {meta.storage_path: meta for meta in metas}
+            for reference in list(remaining):
+                meta = meta_map.get(reference)
+                if self._is_likec4_ready(storage, reference, meta):
+                    remaining.remove(reference)
+            if remaining:
+                time.sleep(interval)
+        if remaining:
+            logger.warning(
+                "PDF export LikeC4: timeout waiting for %s export(s): %s",
+                len(remaining),
+                ", ".join(sorted(remaining)),
+            )
+        else:
+            logger.info("PDF export LikeC4: all exports ready.")
+
+    def _is_likec4_ready(
+        self,
+        storage: SeaweedFSStorage,
+        storage_path: str,
+        meta: LikeC4Diagram | None,
+    ) -> bool:
+        if not meta:
+            return False
+        paths: list[str] = []
+        if meta.png_path:
+            paths.append(meta.png_path)
+        if isinstance(meta.png_paths, list):
+            for entry in meta.png_paths:
+                if isinstance(entry, str) and entry:
+                    paths.append(entry)
+        if not paths:
+            return False
+        seen = set()
+        for path in paths:
+            if path in seen:
+                continue
+            seen.add(path)
+            try:
+                if not storage.exists(path):
+                    return False
+            except Exception as exc:  # pragma: no cover - best effort
+                logger.warning(
+                    "PDF export LikeC4: unable to check PNG availability for %s (%s): %s",
+                    storage_path,
+                    path,
+                    exc,
+                )
+                return False
+        return True
 
     def _request_likec4_export(self, storage_path: str, *, export_url: str, timeout: int) -> None:
         source = self.likec4_export_source or "dat_pdf"
@@ -499,6 +599,49 @@ class DATExportModelBuilder:
             "png_paths": png_paths,
             "images": images,
         }
+
+    def _append_diagram_preview(
+        self,
+        row: Dict[str, Any],
+        diagram_payload: Dict[str, Any],
+        *,
+        title: str | None = None,
+        description: str | None = None,
+        column_label: str | None = None,
+    ) -> None:
+        if not isinstance(row, dict) or not diagram_payload:
+            return
+        previews = row.setdefault("diagram_previews", [])
+        if not isinstance(previews, list):
+            previews = []
+            row["diagram_previews"] = previews
+        resolved_title = str(title).strip() if title else ""
+        if not resolved_title:
+            resolved_title = diagram_payload.get("title") or column_label or "Schéma"
+        resolved_description = str(description).strip() if description else ""
+        previews.append(
+            {
+                "title": resolved_title,
+                "description": resolved_description,
+                "column_label": column_label or "",
+                "diagram": diagram_payload,
+            }
+        )
+
+    def _collect_diagram_previews(self, rows) -> List[Dict[str, Any]]:
+        previews: list[Dict[str, Any]] = []
+        if not isinstance(rows, list):
+            return previews
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            row_previews = row.get("diagram_previews")
+            if not isinstance(row_previews, list):
+                continue
+            for preview in row_previews:
+                if isinstance(preview, dict) and preview.get("diagram"):
+                    previews.append(preview)
+        return previews
 
     def _seaweed_png_data_uri(self, storage: SeaweedFSStorage, path: str) -> str | None:
         if not path:

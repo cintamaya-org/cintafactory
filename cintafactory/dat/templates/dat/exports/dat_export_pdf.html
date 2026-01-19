@@ -286,41 +286,37 @@
                 {% elif not part.display_value %}
                   <p class="muted">Valeur non renseignée.</p>
                 {% endif %}
-                {% if part.key == "schemas" and part.display_value %}
+                {% if part.diagram_previews %}
                   <div class="schema-previews">
-                    {% for row in part.display_value %}
-                      {% with preview=row|get_item:"likec4_diagram"|default:row|get_item:"drawio_diagram" schema_name=row|get_item:"nom_schema" schema_desc=row|get_item:"description" %}
-                        {% if preview %}
-                          <div class="diagram-preview">
-                            <div class="diagram-meta">
-                              <strong>{{ schema_name|default:preview.title|default:"Schéma" }}</strong>
-                              {% if schema_desc %}
-                                <span>{{ schema_desc }}</span>
-                              {% endif %}
-                            </div>
-                            {% if preview.images %}
-                              <div class="diagram-views">
-                                {% for image in preview.images %}
-                                  <div class="diagram-view">
-                                    {% if image.label %}
-                                      <div class="diagram-view-label">{{ image.label }}</div>
-                                    {% endif %}
-                                    <img src="{{ image.src }}" alt="Schéma {{ preview.title|default:schema_name|default:'Schéma' }}">
-                                  </div>
-                                {% endfor %}
-                              </div>
-                            {% elif preview.data_uri %}
-                              <img src="{{ preview.data_uri }}" alt="Schéma {{ preview.title|default:schema_name|default:'Schéma' }}">
-                            {% elif preview.thumbnail_url %}
-                              <img src="{{ preview.thumbnail_url }}" alt="Schéma {{ preview.title|default:schema_name|default:'Schéma' }}">
-                            {% else %}
-                              <p class="muted" style="margin:6px 0 0;">Miniature indisponible.</p>
+                    {% for preview in part.diagram_previews %}
+                      {% with diagram=preview.diagram %}
+                        <div class="diagram-preview">
+                          <div class="diagram-meta">
+                            <strong>{{ preview.title|default:"Schéma" }}</strong>
+                            {% if preview.description %}
+                              <span>{{ preview.description }}</span>
                             {% endif %}
                           </div>
-                        {% endif %}
+                          {% if diagram.images %}
+                            <div class="diagram-views">
+                              {% for image in diagram.images %}
+                                <div class="diagram-view">
+                                  {% if image.label %}
+                                    <div class="diagram-view-label">{{ image.label }}</div>
+                                  {% endif %}
+                                  <img src="{{ image.src }}" alt="Schéma {{ preview.title|default:'Schéma' }}">
+                                </div>
+                              {% endfor %}
+                            </div>
+                          {% elif diagram.data_uri %}
+                            <img src="{{ diagram.data_uri }}" alt="Schéma {{ preview.title|default:'Schéma' }}">
+                          {% elif diagram.thumbnail_url %}
+                            <img src="{{ diagram.thumbnail_url }}" alt="Schéma {{ preview.title|default:'Schéma' }}">
+                          {% else %}
+                            <p class="muted" style="margin:6px 0 0;">Miniature indisponible.</p>
+                          {% endif %}
+                        </div>
                       {% endwith %}
-                    {% empty %}
-                      <p class="muted">Aucun schéma disponible.</p>
                     {% endfor %}
                   </div>
                 {% endif %}
