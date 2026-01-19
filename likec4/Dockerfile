@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/playwright:v1.57.0-noble
+FROM mcr.microsoft.com/playwright:v1.56.1-noble
 
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
@@ -26,6 +26,11 @@ RUN set -eux; \
     fi; \
     rm -rf /root/.npm
 
+WORKDIR /opt/likec4-worker
+COPY worker/package.json ./
+RUN npm install --omit=dev
+COPY worker ./
+
 WORKDIR /data
 
-EXPOSE 4173 5173 24678
+EXPOSE 4173 5173 24678 9000

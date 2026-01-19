@@ -205,12 +205,41 @@
     const wrapper = document.createElement("div");
     wrapper.id = "dat-viewerjs-container";
     wrapper.style.display = "none";
-    const image = document.createElement("img");
-    image.alt = "Diagramme Draw.io";
-    wrapper.appendChild(image);
     document.body.appendChild(wrapper);
-    runtime.container = { wrapper, image };
+    runtime.container = { wrapper };
     return runtime.container;
+  }
+
+  function normalizeViewerImages(payload, fallbackTitle) {
+    if (!Array.isArray(payload)) {
+      return [];
+    }
+    const list = [];
+    payload.forEach((entry) => {
+      if (typeof entry === "string") {
+        list.push({ url: entry, title: fallbackTitle || "" });
+        return;
+      }
+      if (entry && typeof entry.url === "string") {
+        list.push({ url: entry.url, title: entry.title || fallbackTitle || "" });
+      }
+    });
+    return list;
+  }
+
+  function renderViewerImages(images) {
+    const { wrapper } = ensureViewerContainer();
+    wrapper.innerHTML = "";
+    images.forEach((entry) => {
+      const image = document.createElement("img");
+      const resolvedTitle = entry.title || "Diagramme";
+      image.src = cacheBust(entry.url);
+      image.alt = resolvedTitle;
+      image.dataset.title = resolvedTitle;
+      image.dataset.thumbnailUrl = image.src;
+      wrapper.appendChild(image);
+    });
+    return wrapper;
   }
 
   function cacheBust(url) {
@@ -244,44 +273,15 @@
         return response.json();
       })
       .then((data) => {
-        const thumbnailUrl = cacheBust(data.diagram?.thumbnail_url);
-        if (!thumbnailUrl) {
+        const thumbnailUrl = data.diagram?.thumbnail_url;
+        const imageUrls = Array.isArray(data.diagram?.image_urls) ? data.diagram.image_urls : [];
+        const images = imageUrls.length ? imageUrls : (thumbnailUrl ? [thumbnailUrl] : []);
+        if (!images.length) {
           alert("Aucun aperçu n'est disponible pour ce diagramme.");
           return;
         }
         const title = data.diagram?.title || `Diagramme #${diagramId}`;
-        const { wrapper, image } = ensureViewerContainer();
-        image.src = thumbnailUrl;
-        image.alt = title;
-        image.dataset.title = title;
-        image.dataset.thumbnailUrl = thumbnailUrl;
-
-        if (!runtime.viewer) {
-          runtime.viewer = new window.Viewer(wrapper, {
-            navbar: false,
-            tooltip: false,
-            toolbar: {
-              zoomIn: 4,
-              zoomOut: 4,
-              oneToOne: 4,
-              reset: 4,
-              prev: 0,
-              play: 0,
-              next: 0,
-              rotateLeft: 4,
-              rotateRight: 4,
-              flipHorizontal: 4,
-              flipVertical: 4,
-            },
-            title: () => image.dataset.title || "",
-          });
-          ensureViewerAccessibilityHooks(wrapper);
-          setViewerAccessibility(false);
-        } else {
-          runtime.viewer.update();
-        }
-        runtime.viewer.view(0);
-        handleViewerShown();
+        openImages(images, title);
       })
       .catch((error) => {
         console.error("Impossible d'afficher le diagramme:", error);
@@ -289,38 +289,32 @@
       });
   }
 
-  function openImage(url, title) {
-    if (!url) {
+  function openImages(urls, title) {
+    const normalized = normalizeViewerImages(urls, title);
+    if (!normalized.length) {
       return;
     }
     loadViewerResources()
       .then(() => {
-        const imageUrl = cacheBust(url);
-        const resolvedTitle = title || "Diagramme";
-        const { wrapper, image } = ensureViewerContainer();
-        image.src = imageUrl;
-        image.alt = resolvedTitle;
-        image.dataset.title = resolvedTitle;
-        image.dataset.thumbnailUrl = imageUrl;
-
+        const wrapper = renderViewerImages(normalized);
         if (!runtime.viewer) {
           runtime.viewer = new window.Viewer(wrapper, {
-            navbar: false,
+            navbar: normalized.length > 1,
             tooltip: false,
             toolbar: {
               zoomIn: 4,
               zoomOut: 4,
               oneToOne: 4,
               reset: 4,
-              prev: 0,
-              play: 0,
-              next: 0,
+              prev: normalized.length > 1 ? 4 : 0,
+              play: normalized.length > 1 ? 4 : 0,
+              next: normalized.length > 1 ? 4 : 0,
               rotateLeft: 4,
               rotateRight: 4,
               flipHorizontal: 4,
               flipVertical: 4,
             },
-            title: () => image.dataset.title || "",
+            title: (image) => image.dataset.title || "",
           });
           ensureViewerAccessibilityHooks(wrapper);
           setViewerAccessibility(false);
@@ -336,9 +330,17 @@
       });
   }
 
+  function openImage(url, title) {
+    if (!url) {
+      return;
+    }
+    openImages([url], title);
+  }
+
   window.CintaDatViewer = {
     open: openViewer,
     openImage: openImage,
+    openImages: openImages,
   };
 })();
 

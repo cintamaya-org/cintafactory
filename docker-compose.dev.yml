@@ -16,6 +16,9 @@ services:
       SEAWEEDFS_PUBLIC_URL: ${SEAWEEDFS_PUBLIC_URL:-http://seaweedfs:8888}
       SEAWEEDFS_BASE_DIR: ${SEAWEEDFS_BASE_DIR:-media}
       SEAWEEDFS_TIMEOUT: ${SEAWEEDFS_TIMEOUT:-30}
+      LIKEC4_EXPORT_URL: ${LIKEC4_EXPORT_URL:-http://likec4-exporter:9000/export}
+      LIKEC4_EXPORT_DELETE_OLD: ${LIKEC4_EXPORT_DELETE_OLD:-1}
+      LIKEC4_EXPORT_ENABLED: ${LIKEC4_EXPORT_ENABLED:-1}
       CLAMAV_HOST: ${CLAMAV_HOST:-clamav}
       CLAMAV_PORT: ${CLAMAV_PORT:-3310}
       CLAMAV_TIMEOUT: ${CLAMAV_TIMEOUT:-30}
@@ -90,6 +93,34 @@ services:
     volumes:
       - ./likec4:/data
 
+  likec4-exporter:
+    image: likec4-cli
+    container_name: test_factory_likec4_exporter
+    build:
+      context: ./likec4
+      dockerfile: Dockerfile
+      args:
+        GRAPHVIZ_VERSION: ${LIKEC4_GRAPHVIZ_VERSION:-}
+        PLAYWRIGHT_VER: ${LIKEC4_PLAYWRIGHT_VER:-}
+        LIKEC4_VER: ${LIKEC4_VER:-}
+    command: ["node", "/opt/likec4-worker/exporter.js"]
+    environment:
+      LIKEC4_EXPORT_PORT: ${LIKEC4_EXPORT_PORT:-9000}
+      LIKEC4_EXPORT_FORMAT: ${LIKEC4_EXPORT_FORMAT:-png}
+      LIKEC4_EXPORT_VIEW: ${LIKEC4_EXPORT_VIEW:-}
+      LIKEC4_EXPORT_MAX_RETRIES: ${LIKEC4_EXPORT_MAX_RETRIES:-3}
+      LIKEC4_EXPORT_DELETE_OLD: ${LIKEC4_EXPORT_DELETE_OLD:-1}
+      LIKEC4_EXPORT_LOCAL_DIR: ${LIKEC4_EXPORT_LOCAL_DIR:-/var/likec4-exports}
+      SEAWEEDFS_FILER_URL: ${SEAWEEDFS_FILER_URL:-http://seaweedfs:8888}
+      SEAWEEDFS_BASE_DIR: ${SEAWEEDFS_BASE_DIR:-media}
+      LIKEC4_METADATA_URL: http://web:8000/diagrams/likec4/metadata/
+      LIKEC4_METADATA_TOKEN: ${LIKEC4_METADATA_TOKEN:-}
+    volumes:
+      - likec4_exports_dev:/var/likec4-exports
+    depends_on:
+      - seaweedfs
+      - web
+
   clamav:
     image: clamav/clamav:latest
     container_name: test_factory_clamav
@@ -112,4 +143,5 @@ services:
 volumes:
   pgdata_dev:
   seaweedfs_data:
+  likec4_exports_dev:
   clamav_scan:

@@ -10,7 +10,7 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 
 from cintafactory.seaweedfs_storage import SeaweedFSStorage
-from diagrams.models import LikeC4File
+from diagrams.models import LikeC4Diagram
 
 
 class Command(BaseCommand):
@@ -93,7 +93,7 @@ class Command(BaseCommand):
             else:
                 skipped += 1
 
-            LikeC4File.objects.update_or_create(
+            LikeC4Diagram.objects.update_or_create(
                 storage_path=relative_path,
                 defaults={
                     "content_type": content_type,

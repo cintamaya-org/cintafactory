@@ -108,6 +108,43 @@ def _extract_mxgraph_models(xml_payload: str) -> List[str]:
     return models
 
 
+def extract_drawio_pages(xml_payload: str) -> List[Dict[str, str]]:
+    if not xml_payload or not isinstance(xml_payload, str):
+        return []
+    content = xml_payload.strip()
+    if not content:
+        return []
+    try:
+        root = ElementTree.fromstring(content)
+    except ElementTree.ParseError:
+        return []
+    tag = _strip_namespace(root.tag)
+    if tag == "mxGraphModel":
+        return [{"index": 0, "name": "Page 1", "xml": content}]
+    if tag != "mxfile":
+        return []
+    pages: List[Dict[str, str]] = []
+    index = 0
+    for diagram in root.iter():
+        if _strip_namespace(diagram.tag) != "diagram":
+            continue
+        name = diagram.get("name") or diagram.get("label") or f"Page {index + 1}"
+        raw_payload = (diagram.text or "").strip()
+        page_xml = ""
+        if raw_payload:
+            page_xml = _clean_model_xml(raw_payload) or _inflate_drawio_payload(raw_payload) or ""
+        if not page_xml:
+            for child in diagram:
+                if _strip_namespace(child.tag) != "mxGraphModel":
+                    continue
+                page_xml = ElementTree.tostring(child, encoding="unicode")
+                break
+        if page_xml:
+            pages.append({"index": index, "name": name, "xml": page_xml})
+        index += 1
+    return pages
+
+
 def _iter_drawio_objects(model_xml: str) -> Iterable[Dict[str, str]]:
     if not model_xml:
         return []

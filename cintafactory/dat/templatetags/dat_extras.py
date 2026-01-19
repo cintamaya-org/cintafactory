@@ -9,7 +9,7 @@ from django.conf import settings
 from django.urls import NoReverseMatch, reverse
 
 from cintafactory.seaweedfs_storage import SeaweedFSStorage
-from diagrams.models import Diagram, likec4_png_path_for
+from diagrams.models import DrawIODiagram, likec4_png_path_for
 
 register = template.Library()
 
@@ -144,7 +144,7 @@ def diagram_links(diagram_id):
         return None
     if pk < 1:
         return None
-    diagram = Diagram.objects.filter(pk=pk).only("pk", "title").first()
+    diagram = DrawIODiagram.objects.filter(pk=pk).only("pk", "title").first()
     if diagram is None:
         return None
     try:

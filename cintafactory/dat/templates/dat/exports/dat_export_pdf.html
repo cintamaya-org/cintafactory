@@ -113,6 +113,20 @@
   page-break-inside: avoid;
   break-inside: avoid;
 }
+.diagram-views {
+  margin-top: 6px;
+}
+.diagram-view {
+  margin-bottom: 8px;
+}
+.diagram-view:last-child {
+  margin-bottom: 0;
+}
+.diagram-view-label {
+  font-size: 10px;
+  color: #607d8b;
+  margin: 0 0 4px;
+}
 .diagram-preview img {
   width: 100%;
   max-width: 100%;
@@ -275,7 +289,7 @@
                 {% if part.key == "schemas" and part.display_value %}
                   <div class="schema-previews">
                     {% for row in part.display_value %}
-                      {% with preview=row.drawio_diagram schema_name=row|get_item:"nom_schema" schema_desc=row|get_item:"description" %}
+                      {% with preview=row|get_item:"likec4_diagram"|default:row|get_item:"drawio_diagram" schema_name=row|get_item:"nom_schema" schema_desc=row|get_item:"description" %}
                         {% if preview %}
                           <div class="diagram-preview">
                             <div class="diagram-meta">
@@ -284,7 +298,18 @@
                                 <span>{{ schema_desc }}</span>
                               {% endif %}
                             </div>
-                            {% if preview.data_uri %}
+                            {% if preview.images %}
+                              <div class="diagram-views">
+                                {% for image in preview.images %}
+                                  <div class="diagram-view">
+                                    {% if image.label %}
+                                      <div class="diagram-view-label">{{ image.label }}</div>
+                                    {% endif %}
+                                    <img src="{{ image.src }}" alt="Schéma {{ preview.title|default:schema_name|default:'Schéma' }}">
+                                  </div>
+                                {% endfor %}
+                              </div>
+                            {% elif preview.data_uri %}
                               <img src="{{ preview.data_uri }}" alt="Schéma {{ preview.title|default:schema_name|default:'Schéma' }}">
                             {% elif preview.thumbnail_url %}
                               <img src="{{ preview.thumbnail_url }}" alt="Schéma {{ preview.title|default:schema_name|default:'Schéma' }}">

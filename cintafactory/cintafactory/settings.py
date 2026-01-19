@@ -214,6 +214,10 @@ SEAWEEDFS_PUBLIC_URL_PP = os.getenv("SEAWEEDFS_PUBLIC_URL_PP", "http://localhost
 SEAWEEDFS_BASE_DIR = os.getenv("SEAWEEDFS_BASE_DIR", "media").strip("/")
 SEAWEEDFS_TIMEOUT = int(os.getenv("SEAWEEDFS_TIMEOUT", "30"))
 LIKEC4_METADATA_TOKEN = os.getenv("LIKEC4_METADATA_TOKEN", "")
+LIKEC4_EXPORT_URL = os.getenv("LIKEC4_EXPORT_URL", "")
+LIKEC4_EXPORT_TIMEOUT = int(os.getenv("LIKEC4_EXPORT_TIMEOUT", "60"))
+LIKEC4_EXPORT_DELETE_OLD = os.getenv("LIKEC4_EXPORT_DELETE_OLD", "1").lower() in {"1", "true", "yes", "on"}
+LIKEC4_EXPORT_ENABLED = os.getenv("LIKEC4_EXPORT_ENABLED", "1").lower() in {"1", "true", "yes", "on"}
 
 CLAMAV_HOST = os.getenv("CLAMAV_HOST", "clamav")
 CLAMAV_PORT = int(os.getenv("CLAMAV_PORT", "3310"))
@@ -285,16 +289,6 @@ OAUTH_PROVIDERS = {
         "userinfo_url": "https://auth.CINTAMAYA.com/userinfo",
         "scopes": ("openid", "email", "profile"),
         "extra_authorize_params": {},
-    },
-    "riot": {
-        "label": "Riot Games",
-        "client_id": os.getenv("RIOT_OAUTH_CLIENT_ID", ""),
-        "client_secret": os.getenv("RIOT_OAUTH_CLIENT_SECRET", ""),
-        "authorize_url": "https://auth.riotgames.com/authorize",
-        "token_url": "https://auth.riotgames.com/token",
-        "userinfo_url": "https://auth.riotgames.com/userinfo",
-        "scopes": ("openid", "email", "profile"),
-        "extra_authorize_params": {},
     }
 }
 
@@ -313,6 +307,7 @@ DRAWIO_CLIBS = tuple(
     if item.strip()
 )
 DRAWIO_EXPORT_URL = "http://drawio-export:8000/export"
+DRAWIO_EXPORT_DELETE_OLD = os.getenv("DRAWIO_EXPORT_DELETE_OLD", "1").lower() in {"1", "true", "yes", "on"}
 
 def _origin_from_url(url: str) -> str:
     parts = urlsplit(url)

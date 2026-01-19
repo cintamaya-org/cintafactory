@@ -9,7 +9,7 @@ from django.urls import reverse
 
 from cintafactory.logging_utils import bind_request_context, clear_request_context
 
-from diagrams.models import Diagram
+from diagrams.models import DrawIODiagram
 from users.models import BusinessDirection, BusinessGroup, Role, TechnicalDirection
 
 from .constants import (
@@ -906,7 +906,7 @@ class CreateSchemaDiagramViewTest(TestCase):
         self.assertFalse(payload.get("ok"))
         self.assertEqual(payload.get("error"), "invalid_title")
         self.assertIn("caract", payload.get("message", "").lower())
-        self.assertEqual(Diagram.objects.count(), 0)
+        self.assertEqual(DrawIODiagram.objects.count(), 0)
 
     def test_creates_diagram_with_normalized_title(self):
         self.client.force_login(self.user)
@@ -921,7 +921,7 @@ class CreateSchemaDiagramViewTest(TestCase):
         self.assertTrue(payload.get("ok"))
         diagram_payload = payload.get("diagram") or {}
         self.assertEqual(diagram_payload.get("title"), "Nouveau diagramme critique")
-        diagram = Diagram.objects.get(pk=diagram_payload.get("id"))
+        diagram = DrawIODiagram.objects.get(pk=diagram_payload.get("id"))
         self.assertEqual(diagram.owner, self.user)
         self.assertEqual(diagram.title, "Nouveau diagramme critique")
 
@@ -937,7 +937,7 @@ class CreateSchemaDiagramViewTest(TestCase):
         payload = response.json()
         diagram_payload = payload.get("diagram") or {}
         self.assertIn("DAT-DIAG-1", diagram_payload.get("title", ""))
-        diagram = Diagram.objects.get(pk=diagram_payload.get("id"))
+        diagram = DrawIODiagram.objects.get(pk=diagram_payload.get("id"))
         self.assertTrue(diagram.title.startswith("DAT-DIAG-1"))
 
 

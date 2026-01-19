@@ -14,6 +14,7 @@
      {% if widget.attrs.data_drawio_import_template %}data-drawio-import-template="{{ widget.attrs.data_drawio_import_template }}"{% endif %}
      {% if widget.attrs.data_drawio_export_template %}data-drawio-export-template="{{ widget.attrs.data_drawio_export_template }}"{% endif %}
      {% if widget.attrs.data_likec4_export_template %}data-likec4-export-template="{{ widget.attrs.data_likec4_export_template }}"{% endif %}
+     {% if widget.attrs.data_likec4_views_template %}data-likec4-views-template="{{ widget.attrs.data_likec4_views_template }}"{% endif %}
      {% if widget.attrs.data_likec4_import_url %}data-likec4-import-url="{{ widget.attrs.data_likec4_import_url }}"{% endif %}
      {% if widget.attrs.data_likec4_png_public_prefix %}data-likec4-png-public-prefix="{{ widget.attrs.data_likec4_png_public_prefix }}"{% endif %}>
   <input type="hidden" name="{{ widget.name }}" id="{{ widget.attrs.id }}" value="{{ widget.value_json|escape }}">
@@ -177,14 +178,14 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
       if (!folder) {
         return "";
       }
-      return `${normalizedPrefix}/${encodeURIComponent(folder)}/thumb.png`;
+      return `${normalizedPrefix}/${encodeURIComponent(folder)}/views/thumb.png`;
     }
     const filename = segments[segments.length - 1] || "";
     const base = filename.replace(/\.c4$/i, "");
     if (!base) {
       return "";
     }
-    return `${normalizedPrefix}/likec4/${encodeURIComponent(base)}.png`;
+    return `${normalizedPrefix}/likec4/${encodeURIComponent(base)}/views/thumb.png`;
   }
 
   function updateDrawioChip(wrapper, diagram, options) {
@@ -223,21 +224,34 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
     if (viewBtn) {
       const likec4Prefix = container ? container.getAttribute("data-likec4-png-public-prefix") : null;
       const likec4PngUrl = buildLikeC4PngUrl(likec4Prefix, referenceValue);
-      if (toolValue === "likec4" && referenceValue && likec4PngUrl) {
+      const likec4ViewsTemplate = container ? container.getAttribute("data-likec4-views-template") : null;
+      const likec4ViewsUrl = buildLikeC4Url(likec4ViewsTemplate, referenceValue);
+      if (toolValue === "likec4" && referenceValue && (likec4PngUrl || likec4ViewsUrl)) {
         viewBtn.disabled = false;
         viewBtn.classList.remove("disabled");
-        viewBtn.dataset.likec4PreviewUrl = likec4PngUrl;
+        if (likec4PngUrl) {
+          viewBtn.dataset.likec4PreviewUrl = likec4PngUrl;
+        } else {
+          delete viewBtn.dataset.likec4PreviewUrl;
+        }
+        if (likec4ViewsUrl) {
+          viewBtn.dataset.likec4ViewsUrl = likec4ViewsUrl;
+        } else {
+          delete viewBtn.dataset.likec4ViewsUrl;
+        }
         delete viewBtn.dataset.diagramId;
       } else if (identifier) {
         viewBtn.disabled = false;
         viewBtn.classList.remove("disabled");
         viewBtn.dataset.diagramId = identifier;
         delete viewBtn.dataset.likec4PreviewUrl;
+        delete viewBtn.dataset.likec4ViewsUrl;
       } else {
         viewBtn.disabled = true;
         viewBtn.classList.add("disabled");
         delete viewBtn.dataset.diagramId;
         delete viewBtn.dataset.likec4PreviewUrl;
+        delete viewBtn.dataset.likec4ViewsUrl;
       }
     }
 
@@ -540,9 +554,10 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
       updateDrawioChip(element, { id: baseValue, title: null }, { container });
 
       viewBtn.addEventListener("click", () => {
+        const likec4ViewsUrl = viewBtn.dataset.likec4ViewsUrl;
         const likec4PreviewUrl = viewBtn.dataset.likec4PreviewUrl;
-        if (likec4PreviewUrl) {
-          openLikeC4Preview(likec4PreviewUrl);
+        if (likec4ViewsUrl || likec4PreviewUrl) {
+          openLikeC4Preview({ viewsUrl: likec4ViewsUrl, previewUrl: likec4PreviewUrl });
           return;
         }
         const diagramId = hidden.value ? hidden.value.trim() : "";
@@ -1074,14 +1089,50 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
     }
   }
 
-  function openLikeC4Preview(url, title) {
-    if (!url) {
+  function openLikeC4Preview(payload, title) {
+    if (!payload) {
       return;
     }
-    if (window.CintaDatViewer && typeof window.CintaDatViewer.openImage === "function") {
-      window.CintaDatViewer.openImage(url, title || "Diagramme LikeC4");
-    } else {
-      window.open(url, "_blank", "noopener");
+    const previewUrl = typeof payload === "string" ? payload : payload.previewUrl;
+    const viewsUrl = typeof payload === "object" ? payload.viewsUrl : "";
+    if (viewsUrl) {
+      fetch(viewsUrl, { credentials: "same-origin", headers: { Accept: "application/json" } })
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+          return response.json();
+        })
+        .then((data) => {
+          const paths = Array.isArray(data.paths) ? data.paths : [];
+          const fallbackUrl = data.thumbnail_url || previewUrl;
+          const viewerTitle = title || "Diagramme LikeC4";
+          if (window.CintaDatViewer && typeof window.CintaDatViewer.openImages === "function" && paths.length) {
+            window.CintaDatViewer.openImages(paths, viewerTitle);
+            return;
+          }
+          if (fallbackUrl) {
+            window.CintaDatViewer && typeof window.CintaDatViewer.openImage === "function"
+              ? window.CintaDatViewer.openImage(fallbackUrl, viewerTitle)
+              : window.open(fallbackUrl, "_blank", "noopener");
+          }
+        })
+        .catch((error) => {
+          console.warn("LikeC4 preview failed:", error);
+          if (previewUrl) {
+            window.CintaDatViewer && typeof window.CintaDatViewer.openImage === "function"
+              ? window.CintaDatViewer.openImage(previewUrl, title || "Diagramme LikeC4")
+              : window.open(previewUrl, "_blank", "noopener");
+          }
+        });
+      return;
+    }
+    if (previewUrl) {
+      if (window.CintaDatViewer && typeof window.CintaDatViewer.openImage === "function") {
+        window.CintaDatViewer.openImage(previewUrl, title || "Diagramme LikeC4");
+      } else {
+        window.open(previewUrl, "_blank", "noopener");
+      }
     }
   }
 

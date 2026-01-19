@@ -20,5 +20,6 @@ urlpatterns = [
     path("likec4/metadata/", views.likec4_metadata, name="likec4_metadata"),
     path("likec4/import/", views.likec4_import, name="likec4_import"),
     path("likec4/png/", views.likec4_png, name="likec4_png"),
+    path("likec4/views/", views.likec4_views, name="likec4_views"),
     path("likec4/export/", views.likec4_export, name="likec4_export"),
 ]

@@ -9,7 +9,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
-from .models import Diagram
+from .models import DrawIODiagram
 from .validation import sanitize_diagram_title, validate_drawio_xml
 
 
@@ -48,7 +48,7 @@ class DiagramImportViewTest(TestCase):
         self._media_override = self.settings(MEDIA_ROOT=self._media_dir)
         self._media_override.enable()
         self.user = get_user_model().objects.create_user(username="importer", password="pwd")
-        self.diagram = Diagram.objects.create(title="Test diagram", owner=self.user)
+        self.diagram = DrawIODiagram.objects.create(title="Test diagram", owner=self.user)
         self.url = reverse("diagrams:import_xml", args=[self.diagram.pk])
 
     def tearDown(self) -> None:
@@ -80,7 +80,7 @@ class DiagramImportViewTest(TestCase):
         data = response.json()
         self.assertTrue(data.get("ok"))
         self.assertIn("thumbnail_url", data.get("diagram", {}))
-        self.assertTrue(data["diagram"]["thumbnail_url"].endswith("/thumb.png"))
+        self.assertTrue(data["diagram"]["thumbnail_url"].endswith("/views/thumb.png"))
         mock_regenerate.assert_called_once()
         args, _ = mock_regenerate.call_args
         self.assertEqual(args[1], xml)
@@ -96,7 +96,7 @@ class DiagramViewerContextTest(TestCase):
         self._media_override = self.settings(MEDIA_ROOT=self._media_dir)
         self._media_override.enable()
         self.user = get_user_model().objects.create_user(username="viewer", password="pwd")
-        self.diagram = Diagram.objects.create(title="Diag", owner=self.user)
+        self.diagram = DrawIODiagram.objects.create(title="Diag", owner=self.user)
         self.diagram.write_xml("<mxGraphModel/>")
         self.url = reverse("diagrams:viewer_context", args=[self.diagram.pk])
 
@@ -122,5 +122,5 @@ class DiagramViewerContextTest(TestCase):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertTrue(data["diagram"]["thumbnail_url"].endswith("/thumb.png"))
+        self.assertTrue(data["diagram"]["thumbnail_url"].endswith("/views/thumb.png"))
         mock_regenerate.assert_called_once_with(self.diagram, "<mxGraphModel/>")

@@ -25,6 +25,9 @@ services:
       SEAWEEDFS_PUBLIC_URL: ${SEAWEEDFS_PUBLIC_URL:-http://seaweedfs:8888}
       SEAWEEDFS_BASE_DIR: ${SEAWEEDFS_BASE_DIR:-media}
       SEAWEEDFS_TIMEOUT: ${SEAWEEDFS_TIMEOUT:-30}
+      LIKEC4_EXPORT_URL: ${LIKEC4_EXPORT_URL:-http://likec4-exporter:9000/export}
+      LIKEC4_EXPORT_DELETE_OLD: ${LIKEC4_EXPORT_DELETE_OLD:-1}
+      LIKEC4_EXPORT_ENABLED: ${LIKEC4_EXPORT_ENABLED:-1}
       # ClamAV
       CLAMAV_HOST: ${CLAMAV_HOST:-clamav}
       CLAMAV_PORT: ${CLAMAV_PORT:-3310}
@@ -125,6 +128,37 @@ services:
     networks:
       - swag-network
 
+  likec4-exporter:
+    image: likec4-cli
+    container_name: ${APP_NAME}_likec4_exporter
+    restart: unless-stopped
+    build:
+      context: ./likec4
+      dockerfile: Dockerfile
+      args:
+        GRAPHVIZ_VERSION: ${LIKEC4_GRAPHVIZ_VERSION:-}
+        PLAYWRIGHT_VER: ${LIKEC4_PLAYWRIGHT_VER:-}
+        LIKEC4_VER: ${LIKEC4_VER:-}
+    command: ["node", "/opt/likec4-worker/exporter.js"]
+    environment:
+      LIKEC4_EXPORT_PORT: ${LIKEC4_EXPORT_PORT:-9000}
+      LIKEC4_EXPORT_FORMAT: ${LIKEC4_EXPORT_FORMAT:-png}
+      LIKEC4_EXPORT_VIEW: ${LIKEC4_EXPORT_VIEW:-}
+      LIKEC4_EXPORT_MAX_RETRIES: ${LIKEC4_EXPORT_MAX_RETRIES:-3}
+      LIKEC4_EXPORT_DELETE_OLD: ${LIKEC4_EXPORT_DELETE_OLD:-1}
+      LIKEC4_EXPORT_LOCAL_DIR: ${LIKEC4_EXPORT_LOCAL_DIR:-/var/likec4-exports}
+      SEAWEEDFS_FILER_URL: ${SEAWEEDFS_FILER_URL:-http://seaweedfs:8888}
+      SEAWEEDFS_BASE_DIR: ${SEAWEEDFS_BASE_DIR:-media}
+      LIKEC4_METADATA_URL: http://web:${APP_PORT:-8000}/diagrams/likec4/metadata/
+      LIKEC4_METADATA_TOKEN: ${LIKEC4_METADATA_TOKEN:-}
+    volumes:
+      - likec4_exports_data:/var/likec4-exports
+    depends_on:
+      - seaweedfs
+      - web
+    networks:
+      - swag-network
+
   clamav:
     image: clamav/clamav:latest
     container_name: ${APP_NAME}_clamav
@@ -157,6 +191,8 @@ volumes:
     name: "${APP_NAME}_seaweedfs_data"
   clamav_scan:
     name: "${APP_NAME}_clamav_scan"
+  likec4_exports_data:
+    name: "${APP_NAME}_likec4_exports"
 
 networks:
   swag-network:

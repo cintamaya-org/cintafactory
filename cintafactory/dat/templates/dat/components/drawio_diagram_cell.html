@@ -42,9 +42,11 @@
       <span class="chip teal lighten-5 teal-text text-darken-3">Diagramme LikeC4</span>
       {% if schema_reference %}
         {% likec4_png_url schema_reference as likec4_png_url %}
+        {% url "diagrams:likec4_views" as likec4_views_url %}
         <button type="button"
                 class="btn-flat waves-effect cinta-btn-secondary dat-drawio-view-button dat-drawio-action-button dat-viewer-trigger"
                 data-likec4-preview-url="{{ likec4_png_url }}"
+                data-likec4-views-url="{{ likec4_views_url }}?file={{ schema_reference|urlencode }}"
                 data-likec4-title="Diagramme LikeC4">
           <i class="material-icons left" aria-hidden="true">visibility</i>Voir
         </button>

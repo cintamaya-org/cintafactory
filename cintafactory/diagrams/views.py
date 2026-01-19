@@ -29,8 +29,10 @@ from material.frontend.registry import modules as module_registry
 from types import SimpleNamespace
 
 from .forms import DiagramForm
-from .models import Diagram, LikeC4File, likec4_png_path_for
+from .models import DrawIODiagram, LikeC4Diagram, likec4_png_path_for
+from .likec4_exports import enqueue_likec4_export
 from .validation import validate_drawio_xml
+from dat.drawio_parser import extract_drawio_pages
 from cintafactory.seaweedfs_storage import SeaweedFSStorage
 
 
@@ -106,7 +108,7 @@ class DiagramListView(ModuleContextMixin, LoginRequiredMixin, ListView):
     context_object_name = "diagrams"
 
     def get_queryset(self):
-        return Diagram.objects.filter(owner=self.request.user)
+        return DrawIODiagram.objects.filter(owner=self.request.user)
 
 
 class DiagramCreateView(ModuleContextMixin, LoginRequiredMixin, CreateView):
@@ -123,10 +125,10 @@ class DiagramCreateView(ModuleContextMixin, LoginRequiredMixin, CreateView):
 
 class DiagramDetailView(ModuleContextMixin, LoginRequiredMixin, DetailView):
     template_name = "diagrams/detail.html"
-    model = Diagram
+    model = DrawIODiagram
 
     def get_queryset(self):
-        return Diagram.objects.filter(owner=self.request.user)
+        return DrawIODiagram.objects.filter(owner=self.request.user)
 
 
 def _discover_static_library_urls(request=None) -> list[str]:
@@ -243,7 +245,7 @@ def _build_embed_url(library_urls: list[str], public_url: str | None = None, req
     )
 
 
-def _current_thumbnail_url(diagram: Diagram) -> str | None:
+def _current_thumbnail_url(diagram: DrawIODiagram) -> str | None:
     field = getattr(diagram, "thumbnail", None)
     if not field or not getattr(field, "name", None):
         return None
@@ -266,7 +268,7 @@ def _current_thumbnail_url(diagram: Diagram) -> str | None:
         return None
 
 
-def _save_thumbnail_from_data_uri(diagram: Diagram, data_uri: str) -> bool:
+def _save_thumbnail_from_data_uri(diagram: DrawIODiagram, data_uri: str) -> bool:
     if not (isinstance(data_uri, str) and data_uri.startswith("data:image/png;base64,")):
         return False
     b64 = data_uri.split(",", 1)[1]
@@ -303,7 +305,7 @@ def _save_thumbnail_from_data_uri(diagram: Diagram, data_uri: str) -> bool:
     return True
 
 
-def _generate_thumbnail_data_uri_from_drawio(xml_payload: str) -> str | None:
+def _drawio_export_candidates() -> list[str]:
     candidates: list[str] = []
     configured_export = getattr(settings, "DRAWIO_EXPORT_URL", "").rstrip("/")
     if configured_export:
@@ -312,6 +314,11 @@ def _generate_thumbnail_data_uri_from_drawio(xml_payload: str) -> str | None:
     fallback_export = f"{base_url}/export" if base_url else ""
     if fallback_export and fallback_export not in candidates:
         candidates.append(fallback_export)
+    return candidates
+
+
+def _generate_thumbnail_data_uri_from_drawio(xml_payload: str) -> str | None:
+    candidates = _drawio_export_candidates()
     if not candidates:
         return None
 
@@ -340,11 +347,97 @@ def _generate_thumbnail_data_uri_from_drawio(xml_payload: str) -> str | None:
     return None
 
 
-def _regenerate_drawio_thumbnail(diagram: Diagram, xml_payload: str) -> bool:
-    data_uri = _generate_thumbnail_data_uri_from_drawio(xml_payload)
-    if not data_uri:
+def _drawio_page_filename(index: int, name: str | None) -> str:
+    if name:
+        slug = slugify(name)[:40]
+        if slug:
+            return f"page-{index + 1:02d}-{slug}.png"
+    return f"page-{index + 1:02d}.png"
+
+
+def _export_drawio_png_bytes(xml_payload: str) -> bytes | None:
+    candidates = _drawio_export_candidates()
+    if not candidates:
+        return None
+    payload = urlencode(
+        {
+            "format": "png",
+            "scale": "1",
+            "xml": xml_payload or "<mxGraphModel/>",
+            "bg": "#ffffff",
+            "base64": "1",
+        }
+    ).encode("utf-8")
+    for export_url in candidates:
+        request = Request(export_url, data=payload, headers={"Content-Type": "application/x-www-form-urlencoded"})
+        try:
+            with urlopen(request, timeout=30) as response:
+                if response.status != 200:
+                    raise ValueError(f"HTTP {response.status}")
+                payload_base64 = response.read().decode("utf-8").strip()
+        except Exception as exc:  # pragma: no cover - best-effort export fallback
+            logger.warning("Impossible de générer une image Draw.io via %s: %s", export_url, exc)
+            continue
+        if payload_base64:
+            try:
+                return base64.b64decode(payload_base64)
+            except (ValueError, TypeError):
+                return None
+    return None
+
+
+def _export_drawio_views(diagram: DrawIODiagram, xml_payload: str) -> bool:
+    pages = extract_drawio_pages(xml_payload)
+    if not pages:
         return False
-    return _save_thumbnail_from_data_uri(diagram, data_uri)
+    storage = SeaweedFSStorage()
+    views_dir = f"diagrams/{diagram.pk}/views"
+    old_paths = set(getattr(diagram, "png_paths", []) or [])
+    new_paths: list[str] = []
+    thumb_bytes = None
+    for page in pages:
+        page_xml = page.get("xml") or ""
+        if not page_xml:
+            continue
+        png_bytes = _export_drawio_png_bytes(page_xml)
+        if not png_bytes:
+            continue
+        index = int(page.get("index", 0))
+        name = page.get("name") or ""
+        filename = _drawio_page_filename(index, name)
+        path = f"{views_dir}/{filename}"
+        content = ContentFile(png_bytes)
+        content.content_type = "image/png"
+        storage.save(path, content)
+        new_paths.append(path)
+        if thumb_bytes is None:
+            thumb_bytes = png_bytes
+    if not new_paths:
+        return False
+    if thumb_bytes:
+        thumb_content = ContentFile(thumb_bytes)
+        thumb_content.content_type = "image/png"
+        diagram.thumbnail.save("thumb.png", thumb_content, save=False)
+        diagram.thumbnail_size = len(thumb_bytes)
+        diagram.thumbnail_content_type = "image/png"
+    diagram.png_paths = new_paths
+    diagram.updated_at = timezone.now()
+    diagram.save(update_fields=["thumbnail", "thumbnail_size", "thumbnail_content_type", "png_paths", "updated_at"])
+    if getattr(settings, "DRAWIO_EXPORT_DELETE_OLD", True):
+        to_delete = old_paths - set(new_paths)
+        if to_delete:
+            for path in sorted(to_delete):
+                try:
+                    storage.delete(path)
+                except Exception as exc:  # pragma: no cover - best effort cleanup
+                    logger.warning("drawio export failed to delete old png %s: %s", path, exc)
+    return True
+
+
+def _regenerate_drawio_thumbnail(diagram: DrawIODiagram, xml_payload: str) -> bool:
+    return _export_drawio_views(diagram, xml_payload) or bool(
+        _save_thumbnail_from_data_uri(diagram, _generate_thumbnail_data_uri_from_drawio(xml_payload) or "")
+    )
 
 
 class DiagramEditView(ModuleContextMixin, LoginRequiredMixin, TemplateView):
@@ -352,7 +445,7 @@ class DiagramEditView(ModuleContextMixin, LoginRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        diagram = get_object_or_404(Diagram, pk=kwargs["pk"], owner=self.request.user)
+        diagram = get_object_or_404(DrawIODiagram, pk=kwargs["pk"], owner=self.request.user)
         context["diagram"] = diagram
         context["diagram_xml"] = diagram.read_xml()
         library_urls = _collect_library_urls(self.request)
@@ -365,7 +458,7 @@ class DiagramEditView(ModuleContextMixin, LoginRequiredMixin, TemplateView):
 @login_required
 @require_POST
 def diagram_save_xml(request, pk: int):
-    diagram = get_object_or_404(Diagram, pk=pk, owner=request.user)
+    diagram = get_object_or_404(DrawIODiagram, pk=pk, owner=request.user)
     try:
         data = json.loads(request.body.decode("utf-8") or "{}")
     except json.JSONDecodeError:
@@ -376,6 +469,10 @@ def diagram_save_xml(request, pk: int):
         return JsonResponse({"ok": False, "error": "invalid xml"}, status=400)
 
     diagram.write_xml(xml)
+    try:
+        _export_drawio_views(diagram, xml)
+    except Exception as exc:  # pragma: no cover - best effort export
+        logger.warning("diagram %s: draw.io export failed: %s", diagram.pk, exc)
     return JsonResponse({"ok": True})
 
 
@@ -436,13 +533,54 @@ def likec4_metadata(request):
             }
         )
 
-    LikeC4File.objects.update_or_create(storage_path=storage_path, defaults=defaults)
+    png_paths_raw = data.get("png_paths")
+    if isinstance(png_paths_raw, list):
+        normalized_paths = []
+        seen = set()
+        for item in png_paths_raw:
+            normalized = _normalize_likec4_asset_path(item if isinstance(item, str) else None, ".png")
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            normalized_paths.append(normalized)
+        defaults["png_paths"] = normalized_paths
+
+    existing = LikeC4Diagram.objects.filter(storage_path=storage_path).only("png_path", "png_paths").first()
+    old_paths = set()
+    if existing and existing.png_path:
+        old_paths.add(existing.png_path)
+    if existing and isinstance(existing.png_paths, list):
+        for entry in existing.png_paths:
+            if isinstance(entry, str) and entry:
+                old_paths.add(entry)
+
+    LikeC4Diagram.objects.update_or_create(storage_path=storage_path, defaults=defaults)
     logger.info(
         "likec4_metadata updated: path=%s size=%s png_path=%s",
         storage_path,
         defaults.get("size"),
         defaults.get("png_path"),
     )
+    new_paths = set()
+    if png_path:
+        new_paths.add(png_path)
+    if isinstance(png_paths_raw, list):
+        normalized_paths = defaults.get("png_paths") or []
+        for entry in normalized_paths:
+            if isinstance(entry, str) and entry:
+                new_paths.add(entry)
+    if new_paths and getattr(settings, "LIKEC4_EXPORT_DELETE_OLD", True):
+        to_delete = old_paths - new_paths
+        if to_delete:
+            storage = SeaweedFSStorage()
+            for path in sorted(to_delete):
+                try:
+                    storage.delete(path)
+                except Exception as exc:  # pragma: no cover - best effort cleanup
+                    logger.warning("likec4_metadata failed to delete old png %s: %s", path, exc)
+
+    if not png_path:
+        enqueue_likec4_export(storage_path, source="metadata")
     return JsonResponse({"ok": True})
 
 
@@ -489,7 +627,7 @@ def likec4_import(request):
         return JsonResponse({"ok": False, "error": "storage_failed"}, status=502)
 
     size = int(getattr(uploaded_file, "size", 0) or 0)
-    LikeC4File.objects.update_or_create(
+    LikeC4Diagram.objects.update_or_create(
         storage_path=storage_path,
         defaults={
             "content_type": content_type,
@@ -497,6 +635,7 @@ def likec4_import(request):
             "updated_at": timezone.now(),
         },
     )
+    enqueue_likec4_export(storage_path, source="import")
     return JsonResponse(
         {
             "ok": True,
@@ -521,9 +660,9 @@ def likec4_png(request):
     storage = SeaweedFSStorage(public_url=settings.SEAWEEDFS_PUBLIC_URL_PP)
     file_meta = None
     if c4_path:
-        file_meta = LikeC4File.objects.filter(storage_path=c4_path).only("png_path", "png_content_type").first()
+        file_meta = LikeC4Diagram.objects.filter(storage_path=c4_path).only("png_path", "png_content_type").first()
     if not file_meta and png_path:
-        file_meta = LikeC4File.objects.filter(png_path=png_path).only("png_path", "png_content_type").first()
+        file_meta = LikeC4Diagram.objects.filter(png_path=png_path).only("png_path", "png_content_type").first()
     if file_meta and file_meta.png_path:
         storage_path = file_meta.png_path
     try:
@@ -539,13 +678,49 @@ def likec4_png(request):
 
 
 @login_required
+def likec4_views(request):
+    raw_path = request.GET.get("file")
+    storage_path = _normalize_likec4_path(raw_path)
+    if not storage_path:
+        return HttpResponseBadRequest("Invalid LikeC4 file path.")
+    file_meta = LikeC4Diagram.objects.filter(storage_path=storage_path).only("png_path", "png_paths").first()
+    storage = SeaweedFSStorage(public_url=settings.SEAWEEDFS_PUBLIC_URL_PP)
+    paths = []
+    thumb_url = None
+    if file_meta and file_meta.png_path:
+        thumb_url = storage.url(file_meta.png_path)
+    if file_meta and isinstance(file_meta.png_paths, list):
+        seen = set()
+        for entry in file_meta.png_paths:
+            normalized = _normalize_likec4_asset_path(entry if isinstance(entry, str) else None, ".png")
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            url = storage.url(normalized)
+            if thumb_url and url == thumb_url:
+                continue
+            paths.append(url)
+    if not paths:
+        fallback_path = likec4_png_path_for(storage_path)
+        paths = [storage.url(fallback_path)]
+    thumb_path = file_meta.png_path if file_meta and file_meta.png_path else likec4_png_path_for(storage_path)
+    return JsonResponse(
+        {
+            "ok": True,
+            "paths": paths,
+            "thumbnail_url": storage.url(thumb_path),
+        }
+    )
+
+
+@login_required
 def likec4_export(request):
     storage_path = _normalize_likec4_path(request.GET.get("file"))
     if not storage_path:
         return HttpResponseBadRequest("Invalid LikeC4 file path.")
 
     storage = SeaweedFSStorage()
-    file_meta = LikeC4File.objects.filter(storage_path=storage_path).only("content_type").first()
+    file_meta = LikeC4Diagram.objects.filter(storage_path=storage_path).only("content_type").first()
     content_type = file_meta.content_type if file_meta and file_meta.content_type else "text/plain"
     if content_type.startswith("text/") and "charset=" not in content_type:
         content_type = f"{content_type}; charset=utf-8"
@@ -564,7 +739,7 @@ def likec4_export(request):
 @login_required
 @require_POST
 def diagram_save_thumbnail(request, pk: int):
-    diagram = get_object_or_404(Diagram, pk=pk, owner=request.user)
+    diagram = get_object_or_404(DrawIODiagram, pk=pk, owner=request.user)
     try:
         data = json.loads(request.body.decode("utf-8") or "{}")
     except json.JSONDecodeError:
@@ -614,7 +789,7 @@ def drawio_proxy(request, path: str = ""):
 
 @login_required
 def diagram_embed_context(request, pk: int):
-    diagram = get_object_or_404(Diagram, pk=pk, owner=request.user)
+    diagram = get_object_or_404(DrawIODiagram, pk=pk, owner=request.user)
     library_urls = _collect_library_urls(request)
     public_url = _resolve_public_drawio_url(request)
     embed_url = _build_embed_url(library_urls, public_url, request)
@@ -635,17 +810,32 @@ def diagram_embed_context(request, pk: int):
 
 @login_required
 def diagram_viewer_context(request, pk: int):
-    diagram = get_object_or_404(Diagram, pk=pk, owner=request.user)
+    diagram = get_object_or_404(DrawIODiagram, pk=pk, owner=request.user)
     thumbnail_url = _current_thumbnail_url(diagram)
     diagram_xml = diagram.read_xml() or "<mxGraphModel/>"
     if not thumbnail_url and _regenerate_drawio_thumbnail(diagram, diagram_xml):
         thumbnail_url = _current_thumbnail_url(diagram)
+    image_urls = []
+    if isinstance(diagram.png_paths, list) and diagram.png_paths:
+        storage = SeaweedFSStorage(public_url=settings.SEAWEEDFS_PUBLIC_URL_PP)
+        seen = set()
+        for path in diagram.png_paths:
+            if not isinstance(path, str) or not path:
+                continue
+            url = storage.url(path)
+            if url in seen:
+                continue
+            seen.add(url)
+            image_urls.append(url)
+    if not image_urls and thumbnail_url:
+        image_urls = [thumbnail_url]
     payload = {
         "ok": True,
         "diagram": {
             "id": diagram.pk,
             "title": diagram.title,
             "thumbnail_url": request.build_absolute_uri(thumbnail_url) if thumbnail_url else None,
+            "image_urls": image_urls,
         },
     }
     return JsonResponse(payload)
@@ -655,7 +845,7 @@ def diagram_viewer_context(request, pk: int):
 @require_POST
 def diagram_import_xml(request, pk: int):
     logger.info("TEST")
-    diagram = get_object_or_404(Diagram, pk=pk, owner=request.user)
+    diagram = get_object_or_404(DrawIODiagram, pk=pk, owner=request.user)
     base_context = _build_import_log_context(request, diagram)
     logger.info(
         "diagram_import_xml: request received diagram_id=%s user_id=%s username=%s",
@@ -775,7 +965,7 @@ def diagram_import_xml(request, pk: int):
 
 @login_required
 def diagram_export_xml(request, pk: int):
-    diagram = get_object_or_404(Diagram, pk=pk, owner=request.user)
+    diagram = get_object_or_404(DrawIODiagram, pk=pk, owner=request.user)
     xml_payload = diagram.read_xml() or "<mxGraphModel/>"
     filename_root = slugify(diagram.title) or f"diagram-{diagram.pk}"
     response = HttpResponse(xml_payload, content_type="application/xml; charset=utf-8")

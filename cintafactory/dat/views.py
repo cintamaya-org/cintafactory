@@ -27,7 +27,7 @@ from material import Fieldset, Layout, Row
 from material.frontend.registry import modules as module_registry
 from material.frontend.views import CreateModelView, DetailModelView, ListModelView, ModelViewSet, UpdateModelView
 
-from diagrams.models import Diagram
+from diagrams.models import DrawIODiagram
 from diagrams.validation import sanitize_diagram_title
 
 from .attachments import (
@@ -2470,7 +2470,7 @@ def create_schema_diagram(request, dat_pk: int):
         except ValidationError:
             title = sanitize_diagram_title("Diagramme")
 
-    diagram = Diagram.objects.create(title=title, owner=request.user)
+    diagram = DrawIODiagram.objects.create(title=title, owner=request.user)
     response_payload = {
         "ok": True,
         "diagram": {
@@ -2570,7 +2570,7 @@ def parse_schema_diagram(request, dat_pk: int):
             status=400,
         )
 
-    diagrams = Diagram.objects.filter(pk__in=diagram_ids).only("pk", "xml_file")
+    diagrams = DrawIODiagram.objects.filter(pk__in=diagram_ids).only("pk", "xml_file")
     if not diagrams:
         return JsonResponse(
             {"ok": False, "error": "diagram_not_found", "message": "Aucun diagramme n'a été trouvé."},

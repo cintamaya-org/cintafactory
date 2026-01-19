@@ -108,6 +108,7 @@ def _attach_drawio_support(entry: DATPart, widget: RepeatableTableWidget) -> Non
     attrs["data_drawio_import_template"] = import_template
     attrs["data_drawio_export_template"] = export_template
     attrs["data_likec4_export_template"] = reverse("diagrams:likec4_export")
+    attrs["data_likec4_views_template"] = reverse("diagrams:likec4_views")
     attrs["data_likec4_import_url"] = reverse("diagrams:likec4_import")
     try:
         storage = SeaweedFSStorage(public_url=settings.SEAWEEDFS_PUBLIC_URL_PP)

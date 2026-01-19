@@ -19,18 +19,18 @@ def get_diagram_thumbnail_storage() -> SeaweedFSStorage:
 
 
 def thumbnail_upload_to(instance, filename):
-    return f"diagrams/{instance.id}/thumb.png"
+    return f"diagrams/{instance.id}/views/thumb.png"
 
 
 def likec4_png_path_for(storage_path: str) -> str:
     path = Path(storage_path)
     parts = path.parts
     if len(parts) >= 3 and parts[0] == "diagrams":
-        return f"diagrams/{parts[1]}/thumb.png"
+        return f"diagrams/{parts[1]}/views/thumb.png"
     base = path.name
     if base.lower().endswith(".c4"):
         base = base[:-3]
-    return f"diagrams/likec4/{base}.png"
+    return f"diagrams/likec4/{base}/views/thumb.png"
 
 
 def drawio_upload_to(instance, filename):
@@ -38,6 +38,30 @@ def drawio_upload_to(instance, filename):
 
 
 class Diagram(models.Model):
+    title = models.CharField(max_length=200, blank=True, default="")
+    png_paths = models.JSONField(default=list, blank=True)
+    updated_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        abstract = True
+        ordering = ["-updated_at"]
+
+    def clean(self):
+        super().clean()
+        if self.title:
+            self.title = sanitize_diagram_title(self.title)
+
+    def __str__(self) -> str:
+        if self.title:
+            return self.title
+        storage_path = getattr(self, "storage_path", "") or ""
+        if storage_path:
+            return storage_path
+        return f"Diagram #{self.pk}"
+
+
+class DrawIODiagram(Diagram):
     title = models.CharField(max_length=200)
     xml_file = models.FileField(
         upload_to=drawio_upload_to,
@@ -60,15 +84,10 @@ class Diagram(models.Model):
         on_delete=models.CASCADE,
         related_name="diagrams",
     )
-    updated_at = models.DateTimeField(default=timezone.now)
-    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        db_table = "diagrams_diagram"
         ordering = ["-updated_at"]
-
-    def clean(self):
-        super().clean()
-        self.title = sanitize_diagram_title(self.title)
 
     def read_xml(self) -> str:
         field = getattr(self, "xml_file", None)
@@ -100,11 +119,8 @@ class Diagram(models.Model):
         self.updated_at = timezone.now()
         self.save(update_fields=["xml_file", "xml_size", "xml_content_type", "updated_at"])
 
-    def __str__(self) -> str:
-        return self.title
 
-
-class LikeC4File(models.Model):
+class LikeC4Diagram(Diagram):
     storage_path = models.CharField(max_length=500, unique=True)
     content_type = models.CharField(max_length=200, blank=True)
     size = models.PositiveBigIntegerField(default=0)
@@ -112,11 +128,7 @@ class LikeC4File(models.Model):
     png_content_type = models.CharField(max_length=200, blank=True, default="image/png")
     png_size = models.PositiveBigIntegerField(default=0)
     png_updated_at = models.DateTimeField(blank=True, null=True)
-    updated_at = models.DateTimeField(default=timezone.now)
-    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        db_table = "diagrams_likec4file"
         ordering = ["-updated_at"]
-
-    def __str__(self) -> str:
-        return self.storage_path

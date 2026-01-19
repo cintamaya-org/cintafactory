@@ -18,6 +18,10 @@ def generate_dat_pdf(dat, *, base_url: str | None = None):
     print(f"[DAT PDF] generation demarree ({reference}).", flush=True)
     logger.info("Generation PDF DAT demarree (%s).", reference)
     builder = get_dat_export_model_builder()
+    if hasattr(builder, "refresh_likec4_exports"):
+        builder.refresh_likec4_exports = True
+    if hasattr(builder, "likec4_export_source"):
+        builder.likec4_export_source = f"dat_pdf:{dat.pk}"
     payload = builder.build(dat)
     sections = payload.get("sections") or []
     sub_section_count = 0
