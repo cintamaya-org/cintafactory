@@ -10,6 +10,7 @@ urlpatterns = [
 
     # Main "My DAT" list
     path("my/", views.DatList.as_view(), name="my_list"),
+    path("my/applications/", views.MyApplicationListView.as_view(), name="my_applications"),
     path("my/<int:pk>/", views.DatDetail.as_view(), name="my_detail"),
     path("my/<int:pk>/validation/decision/", views.submit_validation_decision, name="my_validation_decision"),
     path("my/<int:pk>/advance/", views.DatAdvanceStatusView.as_view(), name="my_advance"),

@@ -3,6 +3,7 @@
 {% block menu_toggle_label %}{% endblock %} {% comment %} Etiquette vide {% endcomment %}
 {% block app_menu_items %}
   <li><a href="{% url 'dat:my_list' %}"><i class='material-icons'>topic</i>Mes DAT</a></li>
+  <li><a href="{% url 'dat:my_applications' %}"><i class='material-icons'>apps</i>Mes Applications</a></li>
   {% if request.user.is_superuser or request.user.is_staff or request.user.role and request.user.role.slug == "admin" %}
     <li><a href="{% url 'dat:dashboard' %}"><i class='material-icons'>dashboard</i>Gestion des DAT (admin)</a></li>
     <li><a href="{% url 'dat:import' %}"><i class='material-icons'>publish</i>Importer un DAT</a></li>

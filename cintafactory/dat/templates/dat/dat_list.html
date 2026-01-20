@@ -18,8 +18,19 @@
         <input id="dat-search" type="search" name="q" placeholder="Rechercher par référence, titre, application..." value="{{ search_query|default_if_none:'' }}">
         <label class="active" for="dat-search">Recherche</label>
       </div>
+      <div class="dat-list__filter-field u-m-0">
+        <label for="dat-application-filter" class="active">Application</label>
+        <select id="dat-application-filter" name="application" class="browser-default">
+          <option value="">Toutes</option>
+          {% for application in application_choices %}
+            <option value="{{ application.id }}" {% if application.id|stringformat:"s" == application_filter %}selected{% endif %}>
+              {{ application.name }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
       <button type="submit" class="btn waves-effect waves-light cinta-btn-primary">Rechercher</button>
-      {% if search_query %}
+      {% if search_query or application_filter %}
         <a href="." class="btn-flat waves-effect">Réinitialiser</a>
       {% endif %}
     </form>

@@ -167,6 +167,41 @@ class ApplicationListView(ModuleAwareListView):
         return context
 
 
+class MyApplicationListView(ModuleContextMixin, LoginRequiredMixin, ListView):
+    model = Application
+    template_name = "dat/my_application_list.html"
+    context_object_name = "object_list"
+
+    def get_queryset(self):
+        user = self.request.user
+        if user is None or not getattr(user, "is_authenticated", False):
+            return Application.objects.none()
+        dat_queryset = (
+            DAT.objects.filter(
+                Q(owner=user)
+                | Q(participants__user=user)
+                | Q(participants__user__business_group__responsible=user)
+            )
+            .distinct()
+        )
+        return (
+            Application.objects.filter(pk__in=dat_queryset.values("application_id"))
+            .select_related("business_direction")
+            .order_by("name")
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        object_list = context.get("object_list")
+        if object_list is None:
+            object_list = list(self.get_queryset())
+            context["object_list"] = object_list
+        total_applications = len(object_list) if isinstance(object_list, list) else object_list.count()
+        context["total_applications"] = total_applications
+        context["can_manage_applications"] = user_can_manage_dat(self.request.user)
+        return context
+
+
 def get_required_roles_for_status(status: str) -> tuple[str, ...]:
     return DAT_STATUS_REQUIRED_ROLES.get(status, ())
 
@@ -1883,16 +1918,24 @@ class DatList(ModuleContextMixin, LoginRequiredMixin, ListView):
         cleaned_query = self.raw_search_query.strip()
         self.search_query = cleaned_query if len(cleaned_query) >= 3 else ""
         self.search_too_short = bool(cleaned_query and not self.search_query)
+        self.application_filter = self.request.GET.get("application", "").strip()
+        try:
+            self.application_filter_id = int(self.application_filter) if self.application_filter else None
+        except (TypeError, ValueError):
+            self.application_filter_id = None
         base_queryset = (
             DAT.objects.select_related("application", "application__business_direction", "business_direction", "owner")
             .order_by("-created_at")
         )
-        queryset = filter_dat_queryset_for_user(base_queryset, self.request.user)
+        self.base_queryset_for_filters = filter_dat_queryset_for_user(base_queryset, self.request.user)
+        queryset = self.base_queryset_for_filters
         if self.search_query:
             queryset = queryset.filter(
                 Q(reference__icontains=self.search_query)
                 | Q(title__icontains=self.search_query)
             )
+        if self.application_filter_id:
+            queryset = queryset.filter(application_id=self.application_filter_id)
         return queryset
 
     def get_context_data(self, **kwargs):
@@ -1904,9 +1947,23 @@ class DatList(ModuleContextMixin, LoginRequiredMixin, ListView):
         search_query = getattr(self, "search_query", "")
         context["search_query"] = getattr(self, "raw_search_query", "")
         context["search_too_short"] = getattr(self, "search_too_short", False)
+        context["application_filter"] = getattr(self, "application_filter", "")
+        base_queryset = getattr(self, "base_queryset_for_filters", None)
+        if base_queryset is None:
+            base_queryset = filter_dat_queryset_for_user(
+                DAT.objects.select_related("application").all(),
+                self.request.user,
+            )
+        context["application_choices"] = (
+            Application.objects.filter(dats__in=base_queryset)
+            .distinct()
+            .order_by("name")
+        )
         base_params = {}
         if search_query:
             base_params["q"] = search_query
+        if getattr(self, "application_filter_id", None):
+            base_params["application"] = self.application_filter_id
         context["base_querystring"] = urlencode(base_params)
         return context
 
