@@ -12,7 +12,7 @@ const PREVIEW_DIR = process.env.LIKEC4_PREVIEW_DIR || '/tmp/likec4-previews';
 const SEAWEEDFS_FILER_URL = (process.env.SEAWEEDFS_FILER_URL || '').replace(/\/+$/, '');
 const SEAWEEDFS_BASE_DIR = (process.env.SEAWEEDFS_BASE_DIR || '').replace(/^\/+|\/+$/g, '');
 const LIKEC4_METADATA_URL = process.env.LIKEC4_METADATA_URL || '';
-const LIKEC4_METADATA_TOKEN = process.env.LIKEC4_METADATA_TOKEN || '';
+const LIKEC4_METADATA_TOKEN = process.env.LIKEC4_METADATA_TOKEN || 'dev_token_idHaf';
 const PUBLIC_DIR = join(ROOT_DIR, 'ui');
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -80,18 +80,7 @@ const postMetadata = async ({ filePath, size, contentType }) => {
     return;
   }
   const headers = { 'Content-Type': 'application/json' };
-  let url = LIKEC4_METADATA_URL;
-  if (LIKEC4_METADATA_TOKEN) {
-    const tokenValue = LIKEC4_METADATA_TOKEN;
-    headers['X-LikeC4-Token'] = tokenValue;
-    try {
-      const urlObj = new URL(LIKEC4_METADATA_URL);
-      urlObj.searchParams.set('token', tokenValue);
-      url = urlObj.toString();
-    } catch {
-      // Ignore URL parsing errors and keep base URL.
-    }
-  }
+  const url = LIKEC4_METADATA_URL;
   try {
     console.log(`Posting LikeC4 metadata for ${filePath} -> ${url}`);
     const payload = {
@@ -99,6 +88,10 @@ const postMetadata = async ({ filePath, size, contentType }) => {
       size,
       content_type: contentType,
     };
+    if (LIKEC4_METADATA_TOKEN) {
+      headers['X-LikeC4-Token'] = LIKEC4_METADATA_TOKEN;
+      payload.token = LIKEC4_METADATA_TOKEN;
+    }
     const response = await fetch(url, {
       method: 'POST',
       headers,

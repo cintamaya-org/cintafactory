@@ -1,3 +1,4 @@
+import json
 import shutil
 import tempfile
 from unittest.mock import patch
@@ -124,3 +125,57 @@ class DiagramViewerContextTest(TestCase):
         data = response.json()
         self.assertTrue(data["diagram"]["thumbnail_url"].endswith("/views/thumb.png"))
         mock_regenerate.assert_called_once_with(self.diagram, "<mxGraphModel/>")
+
+
+class LikeC4MetadataAuthTest(TestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.url = reverse("diagrams:likec4_metadata")
+        self.payload = {
+            "path": "diagrams/123/likec4.c4",
+            "size": 10,
+            "content_type": "text/plain",
+        }
+
+    def test_requires_auth_or_token(self):
+        with self.settings(LIKEC4_METADATA_TOKEN="secret-token"):
+            response = self.client.post(
+                self.url,
+                data=json.dumps(self.payload),
+                content_type="application/json",
+            )
+        self.assertEqual(response.status_code, 403)
+        data = response.json()
+        self.assertFalse(data.get("ok"))
+        self.assertEqual(data.get("error"), "unauthorized")
+
+    @patch("diagrams.views.enqueue_likec4_export")
+    def test_allows_valid_token(self, mock_enqueue):
+        mock_enqueue.return_value = False
+        payload = dict(self.payload, token="secret-token")
+        with self.settings(LIKEC4_METADATA_TOKEN="secret-token"):
+            response = self.client.post(
+                self.url,
+                data=json.dumps(payload),
+                content_type="application/json",
+            )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data.get("ok"))
+        mock_enqueue.assert_called_once_with(self.payload["path"], source="metadata")
+
+    @patch("diagrams.views.enqueue_likec4_export")
+    def test_allows_authenticated_user(self, mock_enqueue):
+        mock_enqueue.return_value = False
+        user = get_user_model().objects.create_user(username="meta-auth", password="pwd")
+        self.client.force_login(user)
+        with self.settings(LIKEC4_METADATA_TOKEN="secret-token"):
+            response = self.client.post(
+                self.url,
+                data=json.dumps(self.payload),
+                content_type="application/json",
+            )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data.get("ok"))
+        mock_enqueue.assert_called_once_with(self.payload["path"], source="metadata")

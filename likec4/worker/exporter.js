@@ -11,7 +11,7 @@ const MAX_BODY_BYTES = Number.parseInt(process.env.LIKEC4_EXPORT_MAX_BODY_BYTES 
 const SEAWEEDFS_FILER_URL = (process.env.SEAWEEDFS_FILER_URL || '').replace(/\/+$/, '');
 const SEAWEEDFS_BASE_DIR = (process.env.SEAWEEDFS_BASE_DIR || '').replace(/^\/+|\/+$/g, '');
 const LIKEC4_METADATA_URL = process.env.LIKEC4_METADATA_URL || '';
-const LIKEC4_METADATA_TOKEN = process.env.LIKEC4_METADATA_TOKEN || '';
+const LIKEC4_METADATA_TOKEN = process.env.LIKEC4_METADATA_TOKEN || 'dev_token_idHaf';
 const EXPORT_ROOT = process.env.LIKEC4_EXPORT_TMP || '/tmp/likec4-export';
 const LOCAL_EXPORT_DIR = (process.env.LIKEC4_EXPORT_LOCAL_DIR || '/var/likec4-exports').replace(/\/+$/, '');
 const EXPORT_FORMAT = process.env.LIKEC4_EXPORT_FORMAT || 'png';
@@ -239,17 +239,7 @@ const postMetadata = async ({ filePath, size, contentType, pngPath, pngSize, png
     return;
   }
   const headers = { 'Content-Type': 'application/json' };
-  let url = LIKEC4_METADATA_URL;
-  if (LIKEC4_METADATA_TOKEN) {
-    headers['X-LikeC4-Token'] = LIKEC4_METADATA_TOKEN;
-    try {
-      const urlObj = new URL(LIKEC4_METADATA_URL);
-      urlObj.searchParams.set('token', LIKEC4_METADATA_TOKEN);
-      url = urlObj.toString();
-    } catch {
-      // ignore invalid URL parsing
-    }
-  }
+  const url = LIKEC4_METADATA_URL;
   const payload = {
     path: filePath,
     size,
@@ -258,6 +248,10 @@ const postMetadata = async ({ filePath, size, contentType, pngPath, pngSize, png
     png_size: pngSize,
     png_content_type: pngContentType,
   };
+  if (LIKEC4_METADATA_TOKEN) {
+    headers['X-LikeC4-Token'] = LIKEC4_METADATA_TOKEN;
+    payload.token = LIKEC4_METADATA_TOKEN;
+  }
   if (Array.isArray(pngPaths) && pngPaths.length) {
     payload.png_paths = pngPaths;
   }

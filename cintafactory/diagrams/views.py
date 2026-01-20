@@ -479,22 +479,30 @@ def diagram_save_xml(request, pk: int):
 @csrf_exempt
 @require_POST
 def likec4_metadata(request):
-    token = getattr(settings, "LIKEC4_METADATA_TOKEN", "")
-    if token:
-        provided = request.headers.get("X-LikeC4-Token", "") or request.GET.get("token", "")
-        if str(provided or "").strip() != str(token or "").strip():
-            logger.warning(
-                "likec4_metadata unauthorized: has_header=%s has_query=%s user_agent=%s",
-                bool(request.headers.get("X-LikeC4-Token", "")),
-                bool(request.GET.get("token", "")),
-                request.headers.get("User-Agent", ""),
-            )
-            return JsonResponse({"ok": False, "error": "unauthorized"}, status=403)
     try:
         data = json.loads(request.body.decode("utf-8") or "{}")
     except json.JSONDecodeError:
         logger.warning("likec4_metadata invalid payload (json decode error)")
         return JsonResponse({"ok": False, "error": "invalid payload"}, status=400)
+    if not isinstance(data, dict):
+        logger.warning("likec4_metadata invalid payload (json type)")
+        return JsonResponse({"ok": False, "error": "invalid payload"}, status=400)
+
+    token = getattr(settings, "LIKEC4_METADATA_TOKEN", "")
+    user = getattr(request, "user", None)
+    is_authenticated = bool(getattr(user, "is_authenticated", False))
+    provided = request.headers.get("X-LikeC4-Token", "") or request.GET.get("token", "") or data.get("token", "")
+    token_valid = bool(token) and str(provided or "").strip() == str(token or "").strip()
+    if not (is_authenticated or token_valid):
+        logger.warning(
+            "likec4_metadata unauthorized: auth=%s has_header=%s has_query=%s has_body=%s user_agent=%s",
+            is_authenticated,
+            bool(request.headers.get("X-LikeC4-Token", "")),
+            bool(request.GET.get("token", "")),
+            bool(data.get("token")),
+            request.headers.get("User-Agent", ""),
+        )
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=403)
     path = data.get("path")
     storage_path = _normalize_likec4_path(path if isinstance(path, str) else None)
     if not storage_path:
