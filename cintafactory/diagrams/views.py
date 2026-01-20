@@ -21,7 +21,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.text import slugify
 from django.views.decorators.clickjacking import xframe_options_exempt
-from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
 from django.views.decorators.http import require_POST, require_http_methods
 from django.views.generic import CreateView, DetailView, ListView, TemplateView
 from django.templatetags.static import static
@@ -243,6 +243,39 @@ def _build_embed_url(library_urls: list[str], public_url: str | None = None, req
             base_parts.fragment,
         )
     )
+
+
+def _normalize_asset_path(raw_path: str | None) -> str:
+    if not raw_path:
+        return ""
+    cleaned = str(raw_path).strip().lstrip("/")
+    if not cleaned:
+        return ""
+    parts = Path(cleaned).parts
+    if any(part in (".", "..") for part in parts):
+        return ""
+    return cleaned
+
+
+def _diagram_asset_url(request, diagram: DrawIODiagram, storage_path: str | None) -> str | None:
+    if not storage_path:
+        return None
+    prefix = f"diagrams/{diagram.pk}/"
+    if not storage_path.startswith(prefix):
+        return None
+    relative = storage_path[len(prefix) :]
+    asset_path = _normalize_asset_path(relative)
+    if not asset_path:
+        return None
+    url = reverse("diagrams:diagram_asset", args=[diagram.pk, asset_path])
+    return request.build_absolute_uri(url) if request else url
+
+
+def _likec4_png_url(request, storage_path: str) -> str:
+    base = reverse("diagrams:likec4_png")
+    query = urlencode({"file": storage_path})
+    url = f"{base}?{query}" if query else base
+    return request.build_absolute_uri(url) if request else url
 
 
 def _current_thumbnail_url(diagram: DrawIODiagram) -> str | None:
@@ -655,6 +688,7 @@ def likec4_import(request):
 
 
 @login_required
+@require_http_methods(["GET", "HEAD"])
 def likec4_png(request):
     raw_path = request.GET.get("file")
     png_path = _normalize_likec4_asset_path(raw_path, ".png")
@@ -665,7 +699,7 @@ def likec4_png(request):
         png_path = likec4_png_path_for(c4_path)
 
     storage_path = png_path
-    storage = SeaweedFSStorage(public_url=settings.SEAWEEDFS_PUBLIC_URL_PP)
+    storage = SeaweedFSStorage()
     file_meta = None
     if c4_path:
         file_meta = LikeC4Diagram.objects.filter(storage_path=c4_path).only("png_path", "png_content_type").first()
@@ -681,8 +715,16 @@ def likec4_png(request):
     if not exists:
         raise Http404("LikeC4 PNG not found.")
 
-    public_url = storage.url(storage_path)
-    return redirect(public_url)
+    try:
+        file_handle = storage.open(storage_path, "rb")
+    except FileNotFoundError:
+        raise Http404("LikeC4 PNG not found.")
+    content_type = "image/png"
+    if file_meta and file_meta.png_content_type:
+        content_type = file_meta.png_content_type
+    response = FileResponse(file_handle, content_type=content_type)
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 @login_required
@@ -692,11 +734,11 @@ def likec4_views(request):
     if not storage_path:
         return HttpResponseBadRequest("Invalid LikeC4 file path.")
     file_meta = LikeC4Diagram.objects.filter(storage_path=storage_path).only("png_path", "png_paths").first()
-    storage = SeaweedFSStorage(public_url=settings.SEAWEEDFS_PUBLIC_URL_PP)
     paths = []
     thumb_url = None
-    if file_meta and file_meta.png_path:
-        thumb_url = storage.url(file_meta.png_path)
+    thumb_path = file_meta.png_path if file_meta and file_meta.png_path else None
+    if thumb_path:
+        thumb_url = _likec4_png_url(request, thumb_path)
     if file_meta and isinstance(file_meta.png_paths, list):
         seen = set()
         for entry in file_meta.png_paths:
@@ -704,19 +746,19 @@ def likec4_views(request):
             if not normalized or normalized in seen:
                 continue
             seen.add(normalized)
-            url = storage.url(normalized)
+            url = _likec4_png_url(request, normalized)
             if thumb_url and url == thumb_url:
                 continue
             paths.append(url)
     if not paths:
         fallback_path = likec4_png_path_for(storage_path)
-        paths = [storage.url(fallback_path)]
-    thumb_path = file_meta.png_path if file_meta and file_meta.png_path else likec4_png_path_for(storage_path)
+        paths = [_likec4_png_url(request, fallback_path)]
+    thumb_path = thumb_path or likec4_png_path_for(storage_path)
     return JsonResponse(
         {
             "ok": True,
             "paths": paths,
-            "thumbnail_url": storage.url(thumb_path),
+            "thumbnail_url": _likec4_png_url(request, thumb_path),
         }
     )
 
@@ -745,6 +787,33 @@ def likec4_export(request):
 
 
 @login_required
+@require_http_methods(["GET", "HEAD"])
+def diagram_asset(request, pk: int, asset_path: str):
+    diagram = get_object_or_404(DrawIODiagram, pk=pk, owner=request.user)
+    normalized = _normalize_asset_path(asset_path)
+    if not normalized:
+        raise Http404("Diagram asset not found.")
+    storage_path = f"diagrams/{diagram.pk}/{normalized}"
+    allowed = set(diagram.png_paths or [])
+    thumb_name = diagram.thumbnail.name if diagram.thumbnail and diagram.thumbnail.name else ""
+    if thumb_name:
+        allowed.add(thumb_name)
+    if storage_path not in allowed:
+        raise Http404("Diagram asset not found.")
+    storage = SeaweedFSStorage()
+    try:
+        file_handle = storage.open(storage_path, "rb")
+    except FileNotFoundError:
+        raise Http404("Diagram asset not found.")
+    content_type = "image/png"
+    if thumb_name and storage_path == thumb_name:
+        content_type = diagram.thumbnail_content_type or "image/png"
+    response = FileResponse(file_handle, content_type=content_type)
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
+@login_required
 @require_POST
 def diagram_save_thumbnail(request, pk: int):
     diagram = get_object_or_404(DrawIODiagram, pk=pk, owner=request.user)
@@ -756,7 +825,8 @@ def diagram_save_thumbnail(request, pk: int):
     data_uri = data.get("data_uri")
     if not _save_thumbnail_from_data_uri(diagram, data_uri):
         return JsonResponse({"ok": False, "error": "expected PNG data URI"}, status=400)
-    return JsonResponse({"ok": True, "thumbnail_url": diagram.thumbnail.url})
+    thumbnail_url = _diagram_asset_url(request, diagram, diagram.thumbnail.name)
+    return JsonResponse({"ok": True, "thumbnail_url": thumbnail_url})
 
 
 @require_http_methods(["GET", "HEAD"])
@@ -795,6 +865,54 @@ def drawio_proxy(request, path: str = ""):
         raise Http404("draw.io unavailable")
 
 
+@xframe_options_exempt
+@ensure_csrf_cookie
+@login_required
+@require_http_methods(["GET", "HEAD", "POST"])
+def likec4_proxy(request, path: str = ""):
+    """
+    Reverse proxy for the LikeC4 editor UI/API behind authenticated Django sessions.
+    """
+    upstream_base = getattr(settings, "LIKEC4_EDITOR_URL", "").rstrip("/")
+    if not upstream_base:
+        raise Http404("LikeC4 editor unavailable.")
+    upstream = upstream_base if not path else f"{upstream_base}/{path.lstrip('/')}"
+    query = request.META.get("QUERY_STRING")
+    if query:
+        upstream = f"{upstream}?{query}"
+
+    method = "HEAD" if request.method == "HEAD" else request.method
+    headers = {}
+    content_type = request.headers.get("Content-Type")
+    if content_type:
+        headers["Content-Type"] = content_type
+    accept = request.headers.get("Accept")
+    if accept:
+        headers["Accept"] = accept
+    user_agent = request.headers.get("User-Agent")
+    if user_agent:
+        headers["User-Agent"] = user_agent
+    body = request.body if method == "POST" else None
+
+    try:
+        req = Request(upstream, data=body, headers=headers, method=method)
+        with urlopen(req, timeout=20) as resp:
+            status = getattr(resp, "status", 200)
+            payload = b"" if method == "HEAD" else resp.read()
+            response = HttpResponse(payload, status=status)
+            content_type = resp.headers.get("Content-Type")
+            if content_type:
+                response["Content-Type"] = content_type
+            for header_name in ("Cache-Control", "ETag", "Last-Modified", "Expires"):
+                header_val = resp.headers.get(header_name)
+                if header_val:
+                    response[header_name] = header_val
+            return response
+    except Exception as exc:  # pragma: no cover - network/runtime failures
+        logger.warning("likec4 proxy failed for %s: %s", upstream, exc)
+        raise Http404("LikeC4 editor unavailable.")
+
+
 @login_required
 def diagram_embed_context(request, pk: int):
     diagram = get_object_or_404(DrawIODiagram, pk=pk, owner=request.user)
@@ -823,15 +941,19 @@ def diagram_viewer_context(request, pk: int):
     diagram_xml = diagram.read_xml() or "<mxGraphModel/>"
     if not thumbnail_url and _regenerate_drawio_thumbnail(diagram, diagram_xml):
         thumbnail_url = _current_thumbnail_url(diagram)
+    thumbnail_url = (
+        _diagram_asset_url(request, diagram, diagram.thumbnail.name)
+        if thumbnail_url and diagram.thumbnail and diagram.thumbnail.name
+        else None
+    )
     image_urls = []
     if isinstance(diagram.png_paths, list) and diagram.png_paths:
-        storage = SeaweedFSStorage(public_url=settings.SEAWEEDFS_PUBLIC_URL_PP)
         seen = set()
         for path in diagram.png_paths:
             if not isinstance(path, str) or not path:
                 continue
-            url = storage.url(path)
-            if url in seen:
+            url = _diagram_asset_url(request, diagram, path)
+            if not url or url in seen:
                 continue
             seen.add(url)
             image_urls.append(url)
@@ -842,7 +964,7 @@ def diagram_viewer_context(request, pk: int):
         "diagram": {
             "id": diagram.pk,
             "title": diagram.title,
-            "thumbnail_url": request.build_absolute_uri(thumbnail_url) if thumbnail_url else None,
+            "thumbnail_url": thumbnail_url,
             "image_urls": image_urls,
         },
     }
@@ -948,9 +1070,9 @@ def diagram_import_xml(request, pk: int):
         log_context["user_id"],
         regenerated,
     )
-    thumbnail_url = _current_thumbnail_url(diagram) if regenerated else None
-    if thumbnail_url:
-        thumbnail_url = request.build_absolute_uri(thumbnail_url)
+    thumbnail_url = None
+    if regenerated and _current_thumbnail_url(diagram):
+        thumbnail_url = _diagram_asset_url(request, diagram, diagram.thumbnail.name)
 
     logger.info(
         "diagram_import_xml: success diagram_id=%s user_id=%s filename=%s thumbnail=%s",

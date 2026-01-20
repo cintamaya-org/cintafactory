@@ -3,13 +3,12 @@ from __future__ import annotations
 import random
 from pathlib import Path
 from typing import List, Tuple
+from urllib.parse import urlencode
 
 from django import template
-from django.conf import settings
-from django.urls import NoReverseMatch, reverse
 
-from cintafactory.seaweedfs_storage import SeaweedFSStorage
-from diagrams.models import DrawIODiagram, likec4_png_path_for
+from django.urls import NoReverseMatch, reverse
+from diagrams.models import DrawIODiagram
 
 register = template.Library()
 
@@ -178,8 +177,9 @@ def likec4_png_url(storage_path):
     if not normalized:
         return ""
     try:
-        storage = SeaweedFSStorage(public_url=settings.SEAWEEDFS_PUBLIC_URL_PP)
-        return storage.url(likec4_png_path_for(normalized))
+        base = reverse("diagrams:likec4_png")
+        query = urlencode({"file": normalized})
+        return f"{base}?{query}" if query else base
     except Exception:
         return ""
 

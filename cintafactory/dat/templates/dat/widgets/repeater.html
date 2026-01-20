@@ -45,10 +45,10 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
     likec4ListenerAttached: false,
     likec4Context: null,
   };
-  const LIKEC4_EMBED_URL = "http://localhost:4173/";
+  const LIKEC4_EMBED_URL = "{% url 'diagrams:likec4_proxy_root' %}";
   const LIKEC4_ORIGIN = (() => {
     try {
-      return new URL(LIKEC4_EMBED_URL).origin;
+      return new URL(LIKEC4_EMBED_URL, window.location.origin).origin;
     } catch (error) {
       return null;
     }
@@ -172,6 +172,9 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
       return "";
     }
     const normalizedPrefix = String(prefix).replace(/\/+$/, "");
+    if (normalizedPrefix.includes("/likec4/png")) {
+      return buildLikeC4Url(normalizedPrefix, filePath);
+    }
     const segments = String(filePath).replace(/^\/+/, "").split("/");
     if (segments.length >= 3 && segments[0] === "diagrams") {
       const folder = segments[1];
@@ -1205,7 +1208,7 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
       modal.title.textContent = title || "Éditeur LikeC4";
     }
     modal.iframe.addEventListener("load", hideDrawioLoader, { once: true });
-    const url = new URL(LIKEC4_EMBED_URL);
+    const url = new URL(LIKEC4_EMBED_URL, window.location.origin);
     if (filePath) {
       url.searchParams.set("file", filePath);
     }

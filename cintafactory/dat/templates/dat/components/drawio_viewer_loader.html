@@ -13,10 +13,10 @@
   };
   const EASTER_EGG_DURATION_MS = 3500;
   const EASTER_EGG_INTERVAL_MS = 90;
-  const K_SEQUENCE = ["up", "up", "down", "down", "left", "right", "left", "right", "b", "a"];
+  const K_CODE_SEQUENCE = ["up", "up", "down", "down", "left", "right", "left", "right", "b", "a"];
   let easterEggInterval = null;
-  let konamiIndex = 0;
-  let konamiActive = false;
+  let KcIndex = 0;
+  let KcActive = false;
 
   function getViewerOverlay() {
     return runtime.viewer && runtime.viewer.viewer;
@@ -41,12 +41,12 @@
 
   function handleViewerShown() {
     setViewerAccessibility(true);
-    setKonamiActive(true);
+    setKcActive(true);
   }
 
   function handleViewerHidden() {
     setViewerAccessibility(false);
-    setKonamiActive(false);
+    setKcActive(false);
     stopEasterEgg();
   }
 
@@ -75,7 +75,7 @@
     }
   }
 
-  function normalizeKonamiKey(event) {
+  function normalizeKcKey(event) {
     if (!event || typeof event.key !== "string") {
       return "";
     }
@@ -93,36 +93,36 @@
     }
   }
 
-  function handleKonamiKey(event) {
-    if (!konamiActive) {
+  function handleKcKey(event) {
+    if (!KcActive) {
       return;
     }
-    const key = normalizeKonamiKey(event);
+    const key = normalizeKcKey(event);
     if (!key) {
       return;
     }
-    const expected = K_SEQUENCE[konamiIndex];
+    const expected = K_CODE_SEQUENCE[KcIndex];
     if (key === expected) {
-      konamiIndex += 1;
-      if (konamiIndex >= K_SEQUENCE.length) {
-        konamiIndex = 0;
+      KcIndex += 1;
+      if (KcIndex >= K_CODE_SEQUENCE.length) {
+        KcIndex = 0;
         startEasterEgg();
       }
       return;
     }
-    konamiIndex = key === K_SEQUENCE[0] ? 1 : 0;
+    KcIndex = key === K_CODE_SEQUENCE[0] ? 1 : 0;
   }
 
-  function setKonamiActive(isActive) {
-    if (konamiActive === isActive) {
+  function setKcActive(isActive) {
+    if (KcActive === isActive) {
       return;
     }
-    konamiActive = isActive;
-    konamiIndex = 0;
-    if (konamiActive) {
-      document.addEventListener("keydown", handleKonamiKey);
+    KcActive = isActive;
+    KcIndex = 0;
+    if (KcActive) {
+      document.addEventListener("keydown", handleKcKey);
     } else {
-      document.removeEventListener("keydown", handleKonamiKey);
+      document.removeEventListener("keydown", handleKcKey);
     }
   }
 

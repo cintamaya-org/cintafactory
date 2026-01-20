@@ -24,7 +24,7 @@
         </div>
         <div class="card-image diagram-detail__image">
           {% if diagram.thumbnail %}
-          <img src="{{ diagram.thumbnail.url }}" alt="{{ diagram.title }}" class="diagram-detail__img" data-diagram-preview-id="{{ diagram.pk }}">
+          <img src="{% url 'diagrams:diagram_asset' diagram.pk 'views/thumb.png' %}" alt="{{ diagram.title }}" class="diagram-detail__img" data-diagram-preview-id="{{ diagram.pk }}">
           {% else %}
           <div class="diagram-detail__placeholder">
             <i class="material-icons diagram-detail__placeholder-icon">insert_drive_file</i>

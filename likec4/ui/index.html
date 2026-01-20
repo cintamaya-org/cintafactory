@@ -141,7 +141,7 @@
 <body>
   <header>
     <div class="title">
-      <img src="/Cintamaya_Logo.png" alt="Cintamaya logo" style="height:28px; width:auto; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.35));" />
+      <img src="Cintamaya_Logo.png" alt="Cintamaya logo" style="height:28px; width:auto; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.35));" />
       Cintamaya - LikeC4 Editor
       <span>Code + Diagram</span>
     </div>
@@ -225,10 +225,24 @@
       return fallback ? fallback[1] : null;
     };
 
+    const getCookie = (name) => {
+      const prefix = `${name}=`;
+      const cookies = document.cookie ? document.cookie.split(';') : [];
+      for (const raw of cookies) {
+        const trimmed = raw.trim();
+        if (trimmed.startsWith(prefix)) {
+          return decodeURIComponent(trimmed.slice(prefix.length));
+        }
+      }
+      return '';
+    };
+
+    const getCsrfToken = () => getCookie('csrftoken');
+
     const downloadFlowMatrix = async () => {
       setStatus('Génération du tableau de flux...');
       try {
-        const res = await fetch(`/flow-matrix${getFileQuery()}`);
+        const res = await fetch(`flow-matrix${getFileQuery()}`);
         if (!res.ok) throw new Error('Export flux échoué');
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
@@ -247,7 +261,7 @@
     };
 
     const loadContent = async (editor) => {
-      const res = await fetch(`/c4${getFileQuery()}`);
+      const res = await fetch(`c4${getFileQuery()}`);
       const data = await res.json();
       editor.setValue(data.content || '');
       if (data.preview_file) {
@@ -279,9 +293,14 @@
 
     const saveContent = async (editor) => {
       setStatus('Saving...');
-      const res = await fetch(`/save${getFileQuery()}`, {
+      const headers = { 'Content-Type': 'application/json' };
+      const csrfToken = getCsrfToken();
+      if (csrfToken) {
+        headers['X-CSRFToken'] = csrfToken;
+      }
+      const res = await fetch(`save${getFileQuery()}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ content: editor.getValue() }),
       });
       if (!res.ok) throw new Error('Save failed');

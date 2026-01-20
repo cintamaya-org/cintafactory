@@ -28,7 +28,7 @@
       <div class="card hoverable diagram-card">
         <div class="diagram-card__thumb">
           {% if d.thumbnail %}
-          <img src="{{ d.thumbnail.url }}" alt="{{ d.title }}" data-diagram-preview-id="{{ d.pk }}">
+          <img src="{% url 'diagrams:diagram_asset' d.pk 'views/thumb.png' %}" alt="{{ d.title }}" data-diagram-preview-id="{{ d.pk }}">
           {% else %}
           <div class="diagram-card__placeholder">
             <i class="material-icons">insert_drive_file</i>
