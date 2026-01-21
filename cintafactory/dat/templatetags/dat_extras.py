@@ -9,6 +9,7 @@ from django import template
 
 from django.urls import NoReverseMatch, reverse
 from diagrams.models import DrawIODiagram
+from dat.sections import SECTION_BLUEPRINT_MAP
 
 register = template.Library()
 
@@ -121,6 +122,19 @@ def section_part_icon(section_slug, part_slug):
         return None
     icon = SECTION_PART_ICON_MAP.get(str(section_slug), {}).get(str(part_slug))
     return _normalise_icon_config(icon)
+
+
+@register.filter
+def section_part_tooltip(section_slug, part_slug):
+    if not section_slug or not part_slug:
+        return ""
+    section = SECTION_BLUEPRINT_MAP.get(str(section_slug))
+    if not section:
+        return ""
+    for part in section.get("parts", ()):
+        if part.get("slug") == str(part_slug):
+            return part.get("tooltip") or ""
+    return ""
 
 
 @register.simple_tag

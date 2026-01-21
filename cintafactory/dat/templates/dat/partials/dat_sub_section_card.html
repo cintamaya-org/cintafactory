@@ -9,6 +9,17 @@
           <span class="{{ part_icon.variant }} dat-section-part-icon" aria-hidden="true">{{ part_icon.name }}</span>
         {% endif %}
         {{ part.section_part.title }}
+        {% with tooltip_text=container_section.metadata.slug|section_part_tooltip:part.section_part.slug %}
+          {% if tooltip_text %}
+            <span
+              class="workflow-card__tooltip-trigger wf-tooltip-trigger"
+              data-tooltip="{{ tooltip_text|striptags }}"
+              aria-label="Details"
+            >
+              ?
+            </span>
+          {% endif %}
+        {% endwith %}
       </h6>
       {% endwith %}
       {% if part.section_part.description %}

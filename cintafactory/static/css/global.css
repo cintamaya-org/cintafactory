@@ -1417,6 +1417,32 @@ dmc-sidenav .sidenav.sidenav-fixed > li.sidenav-footer img {
     margin: 0;
 }
 
+.workflow-card__tooltip-trigger {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #e3f2fd;
+    color: #0d47a1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 700;
+    cursor: help;
+    flex: 0 0 auto;
+}
+
+.column-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.column-title__text {
+    display: inline-flex;
+    align-items: center;
+}
+
 .workflow-card__subtitle {
     margin: 0;
     color: rgba(0, 0, 0, 0.54);

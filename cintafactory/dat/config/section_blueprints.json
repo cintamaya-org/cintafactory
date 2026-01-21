@@ -528,6 +528,7 @@
       {
         "slug": "presentation-generale",
         "title": "Présentation Générale",
+        "tooltip": "Exemple1",
         "entries": [
           {
             "key": "presentation_generale",
@@ -542,6 +543,7 @@
       {
         "slug": "hebergement-environnements",
         "title": "Hébergement & Environnements",
+        "tooltip": "ontes, ligula vel sodales quisque ut viverra morbi risus. Porttitor placerat quisque diam bibendum erat taciti aenean nostra nascetur torquent, hendrerit sociosqu eget cum velit vitae dictumst et imperdiet. Sociis gravida molestie nec curae vehicula dui eget platea congue, aenean cursus blandit mi tempus morbi dignissim. Ultricies faucibus laoreet imperdiet iaculis proin euismod cursus commodo, hendrerit tristique ante posuere leo pretium vestibulum nec luctus, maecen",
         "entries": [
           {
             "key": "hebergements",

@@ -1,5 +1,5 @@
 {% extends "material/frontend/views/detail.html" %}
-{% load dat_extras %}
+{% load dat_extras static %}
 
 {% block extrahead %}
 {{ block.super }}
@@ -7,6 +7,7 @@
   rel="stylesheet"
   href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24..48,400..700,0..1,-50..200"
 />
+<script src="{% static 'js/tooltip_utils.js' %}" defer></script>
 {% endblock %}
 
 {% block left-panel %}
@@ -377,6 +378,35 @@
     </a>
   </div>
 </div>
+<div id="wf-tooltip" class="wf-tooltip" hidden>
+  <div class="wf-tooltip__spinner">
+    {% include "components/_loading_spinner.html" %}
+  </div>
+  <span class="wf-tooltip__text" hidden></span>
+</div>
+<script>
+  (function () {
+    function init() {
+      if (window.CintaTooltip && window.CintaTooltip.initWorkflowTooltip) {
+        window.CintaTooltip.initWorkflowTooltip({
+          nodeSelector: ".wf-tooltip-trigger",
+          chipSelector: ".wf-tooltip-trigger",
+          textBuilder: function (target) {
+            return target.getAttribute("data-tooltip") || "Information";
+          },
+          instantText: true
+        });
+      }
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+    document.addEventListener("turbolinks:load", init);
+  })();
+</script>
 <script>
   (function () {
     function initFallback(modalElement) {

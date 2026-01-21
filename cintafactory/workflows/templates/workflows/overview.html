@@ -1,6 +1,11 @@
 {% extends "material/frontend/base_module.html" %}
 {% load static %}
 
+{% block extrahead %}
+  {{ block.super }}
+  <script src="{% static 'js/tooltip_utils.js' %}" defer></script>
+{% endblock %}
+
 {% block content %}
 <div class="wf-overview">
   <div class="wf-hero">
@@ -138,127 +143,18 @@
 
 <script>
   (function () {
-    var tooltip = document.getElementById("wf-tooltip");
-    if (!tooltip) {
-      return;
-    }
-    var spinner = tooltip.querySelector(".wf-tooltip__spinner");
-    var textNode = tooltip.querySelector(".wf-tooltip__text");
-    var showTimer = null;
-    var activeTarget = null;
-    var insideTrigger = false;
-
-    function getPoint(evt) {
-      if (!evt) {
-        return { x: 0, y: 0 };
-      }
-      if (evt.touches && evt.touches.length) {
-        return { x: evt.touches[0].clientX, y: evt.touches[0].clientY };
-      }
-      return { x: evt.clientX, y: evt.clientY };
-    }
-
-    function setPosition(point) {
-      if (!tooltip || tooltip.hidden) {
-        return;
-      }
-      var offsetX = 24;
-      var offsetY = 24;
-      tooltip.style.left = point.x + offsetX + "px";
-      tooltip.style.top = point.y - offsetY + "px";
-    }
-
-    function hideTooltip(target) {
-      if (insideTrigger && target === activeTarget) {
-        return;
-      }
-      activeTarget = null;
-      tooltip.classList.remove("wf-tooltip--visible");
-      tooltip.classList.remove("wf-tooltip--text");
-      tooltip.hidden = true;
-      spinner.hidden = false;
-      textNode.hidden = true;
-      textNode.textContent = "";
-      if (showTimer) {
-        clearTimeout(showTimer);
-        showTimer = null;
+    function init() {
+      if (window.CintaTooltip && window.CintaTooltip.initWorkflowTooltip) {
+        window.CintaTooltip.initWorkflowTooltip();
       }
     }
 
-    function showTooltip(target, point) {
-      activeTarget = target;
-      spinner.hidden = false;
-      textNode.hidden = true;
-      tooltip.classList.remove("wf-tooltip--text");
-      tooltip.hidden = false;
-      requestAnimationFrame(function () {
-        tooltip.classList.add("wf-tooltip--visible");
-      });
-      setPosition(point);
-      if (showTimer) {
-        clearTimeout(showTimer);
-      }
-      showTimer = setTimeout(function () {
-        if (activeTarget !== target) {
-          return;
-        }
-        spinner.hidden = true;
-        var tip = target.getAttribute("data-tooltip") || "Information";
-        textNode.textContent = "Exmaple action blablalldfsodsjfdd\nexemple user : bill bille \n12-10-2001\n\ntra laoreet justo gravida himenaeos tortor. Eleifend senectus platea dictumst luctus massa magnis tristique cras taciti maecenas, magna felis metus dis augue facilisis bibendum elementum morbi. Semper risus condimentum porttitor netus pharetra congue nam, metus natoque maecenas tortor sapien praesent, turpis consequat\n\n" + tip;
-        textNode.hidden = false;
-        tooltip.classList.add("wf-tooltip--text");
-      }, 2000);
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
     }
-
-    function attachHover(element, owner) {
-      if (!element || !owner) {
-        return;
-      }
-      element.addEventListener("mouseenter", function (evt) {
-        insideTrigger = true;
-        showTooltip(owner, getPoint(evt));
-      });
-      element.addEventListener("mousemove", function (evt) {
-        setPosition(getPoint(evt));
-      });
-      element.addEventListener("mouseleave", function () {
-        insideTrigger = false;
-        hideTooltip(owner);
-      });
-      element.addEventListener("touchstart", function (evt) {
-        insideTrigger = true;
-        showTooltip(owner, getPoint(evt));
-      });
-      element.addEventListener("touchmove", function (evt) {
-        setPosition(getPoint(evt));
-      });
-      element.addEventListener("touchend", function () {
-        insideTrigger = false;
-        hideTooltip(owner);
-      });
-      element.addEventListener("touchcancel", function () {
-        insideTrigger = false;
-        hideTooltip(owner);
-      });
-    }
-
-    document.querySelectorAll(".wf-node").forEach(function (node) {
-      var reference = node.querySelector(".wf-dot") || node.querySelector(".wf-node__badge") || node;
-      attachHover(node, reference);
-    });
-
-    document.querySelectorAll(".wf-chip").forEach(function (chip) {
-      attachHover(chip, chip);
-    });
-
-
-    tooltip.addEventListener("mouseenter", function () {
-      insideTrigger = true;
-    });
-    tooltip.addEventListener("mouseleave", function () {
-      insideTrigger = false;
-      hideTooltip(activeTarget);
-    });
+    document.addEventListener("turbolinks:load", init);
   })();
 </script>
 {% endblock %}

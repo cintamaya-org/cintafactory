@@ -1,10 +1,12 @@
 {% extends "material/frontend/base_module.html" %}
+{% load static %}
 
 {% comment %} {% block title %}{{ workflow.name }}{% endblock %} {% endcomment %}
 
 {% block extrahead %}
   {{ block.super }}
   {% include "viewflow/includes/viewflow_css.html" %}
+  <script src="{% static 'js/tooltip_utils.js' %}" defer></script>
 {% endblock %}
 
 {% block js %}
@@ -55,7 +57,16 @@
             {% for column in columns %}
               <div class="column scroll-box cinta-card cinta-card--pane">
                 <span class="column-title">
-                  {{ column.title }}
+                  <span class="column-title__text">{{ column.title }}</span>
+                  {% if column.description %}
+                    <span
+                      class="workflow-card__tooltip-trigger wf-tooltip-trigger"
+                      data-tooltip="{{ column.description|striptags }}"
+                      aria-label="Details"
+                    >
+                      ?
+                    </span>
+                  {% endif %}
                   <span class="badge">{{ column.items|length }}</span>
                 </span>
                 <div class="column-content">
@@ -206,4 +217,35 @@
       </div>
     </div>
   </div>
+
+  <div id="wf-tooltip" class="wf-tooltip" hidden>
+    <div class="wf-tooltip__spinner">
+      {% include "components/_loading_spinner.html" %}
+    </div>
+    <span class="wf-tooltip__text" hidden></span>
+  </div>
+
+  <script>
+    (function () {
+      function init() {
+        if (window.CintaTooltip && window.CintaTooltip.initWorkflowTooltip) {
+          window.CintaTooltip.initWorkflowTooltip({
+            nodeSelector: ".wf-tooltip-trigger",
+            chipSelector: ".wf-tooltip-trigger",
+            textBuilder: function (target) {
+              return target.getAttribute("data-tooltip") || "Information";
+            },
+            instantText: true
+          });
+        }
+      }
+
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", init);
+      } else {
+        init();
+      }
+      document.addEventListener("turbolinks:load", init);
+    })();
+  </script>
 {% endblock %}
