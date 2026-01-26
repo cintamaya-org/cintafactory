@@ -22,17 +22,31 @@ git clone https://github.com/your-org/cintafactory.git
 cd cintafactory
 ```
 
+### Install uv
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
 ### Create and activate a virtual environment
 
 ```bash
-python -m venv .venv
+uv venv .venv
 source .venv/bin/activate
 ```
 
 ### Install dependencies
 
 ```bash
-pip install -r requirements.txt
+uv sync --frozen
+```
+
+Dependencies are managed via `pyproject.toml` and `uv.lock`.
+
+If you add or update dependencies, run:
+
+```bash
+uv lock
 ```
 
 ### Apply migrations

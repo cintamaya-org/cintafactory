@@ -1,7 +1,8 @@
 services:
   web:
     build:
-      context: ./cintafactory
+      context: .
+      dockerfile: cintafactory/dockerfile
     container_name: test_factory_dev_web
     environment:
       DJANGO_SETTINGS_MODULE: cintafactory.settings

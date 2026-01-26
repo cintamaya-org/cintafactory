@@ -1,5 +1,6 @@
 import hashlib
 import json
+import uuid
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
@@ -18,6 +19,7 @@ class DATStatus(models.TextChoices):
 
 
 class Application(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     code = models.SlugField(max_length=64, unique=True, verbose_name="Code")
     name = models.CharField(max_length=200, verbose_name="Nom")
     description = models.TextField(blank=True, verbose_name="Description")
@@ -58,6 +60,7 @@ class Application(models.Model):
 
 
 class DAT(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     reference = models.CharField(max_length=64, unique=True)
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
@@ -123,6 +126,7 @@ class DAT(models.Model):
 
 
 class DATParticipant(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     dat = models.ForeignKey(
         DAT,
         on_delete=models.CASCADE,
@@ -174,6 +178,7 @@ class DATHistoryAction(models.TextChoices):
 
 
 class DATHistory(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     dat = models.ForeignKey(
         DAT,
         on_delete=models.CASCADE,
@@ -251,6 +256,7 @@ class DATReserveHistoryAction(models.TextChoices):
 
 
 class DATReserveHistory(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     dat = models.ForeignKey(
         DAT,
         on_delete=models.CASCADE,
@@ -299,6 +305,7 @@ class DATReserveHistory(models.Model):
 
 
 class DATSection(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     dat = models.ForeignKey(
         DAT,
         on_delete=models.CASCADE,
@@ -374,6 +381,7 @@ class DATSection(models.Model):
 
 
 class DATSectionMetadata(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     title = models.CharField(max_length=200, verbose_name="Titre")
     slug = models.SlugField(max_length=100, verbose_name="Identifiant")
     description = models.TextField(blank=True, verbose_name="Description")
@@ -388,6 +396,7 @@ class DATSectionMetadata(models.Model):
 
 
 class DATSubSection(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     section = models.ForeignKey(
         DATSection,
         on_delete=models.CASCADE,
@@ -453,6 +462,7 @@ class DATSubSection(models.Model):
 
 
 class DATSectionAttachment(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     section = models.ForeignKey(
         DATSection,
         on_delete=models.CASCADE,
@@ -509,6 +519,7 @@ class DATPartEntryType(models.TextChoices):
 
 
 class DATPart(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     sub_section = models.ForeignKey(
         DATSubSection,
         on_delete=models.CASCADE,
@@ -699,6 +710,7 @@ class DATPart(models.Model):
 
 
 class DATPartEntry(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     payload = models.ForeignKey(
         "DATPartPayload",
         on_delete=models.PROTECT,
@@ -746,6 +758,7 @@ class DATPartEntry(models.Model):
 
 
 class DATPartPayload(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     hash = models.CharField(max_length=64, unique=True, db_index=True)
     data = models.JSONField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)

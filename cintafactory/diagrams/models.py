@@ -1,4 +1,5 @@
 from pathlib import Path
+import uuid
 
 from django.conf import settings
 from django.core.files.base import ContentFile
@@ -38,6 +39,7 @@ def drawio_upload_to(instance, filename):
 
 
 class Diagram(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     title = models.CharField(max_length=200, blank=True, default="")
     png_paths = models.JSONField(default=list, blank=True, null=True)
     updated_at = models.DateTimeField(default=timezone.now)

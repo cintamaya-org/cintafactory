@@ -32,7 +32,7 @@ To ship a local library, copy the XML file into the Django static directory (e.g
 
 ##  Rebuild When Dependencies Change (rare)
 
-If you modify `requirements.txt` or the `Dockerfile`, rebuild your image once:
+If you modify `pyproject.toml`, run `uv lock` to update the lockfile, then rebuild your image:
 
 ```bash
 docker compose -f docker-compose.dev.yml up -d --build

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import uuid
+
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
@@ -8,6 +10,8 @@ from django.utils.translation import gettext_lazy as _
 
 class Workflow(models.Model):
     """Declarative workflow definition bound to a concrete Django model."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
     code = models.SlugField(max_length=64, unique=True)
     name = models.CharField(max_length=128)
@@ -33,6 +37,8 @@ class Workflow(models.Model):
 
 class WorkflowStep(models.Model):
     """Single workflow column/state displayed on the Kanban board."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
     workflow = models.ForeignKey(
         Workflow,
@@ -79,6 +85,8 @@ class WorkflowStep(models.Model):
 
 class WorkflowStepPermission(models.Model):
     """Role/user assignments for workflow steps."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
     PERMISSION_READ = "read"
     PERMISSION_WRITE = "write"
@@ -159,6 +167,8 @@ class NotificationLevel(models.TextChoices):
 class NotificationType(models.Model):
     """Reusable notification payload shared across user notifications."""
 
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
     LEVEL_INFO = NotificationLevel.INFO
     LEVEL_SUCCESS = NotificationLevel.SUCCESS
     LEVEL_WARNING = NotificationLevel.WARNING
@@ -183,6 +193,8 @@ class NotificationType(models.Model):
 class NotificationMessage(models.Model):
     """Stores deduplicated notification message payloads."""
 
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
     content = models.TextField(blank=True, default="", unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -201,6 +213,8 @@ class NotificationMessage(models.Model):
 
 class UserNotification(models.Model):
     """Notification explicitly targeted to a single user."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
     LEVEL_INFO = NotificationLevel.INFO
     LEVEL_SUCCESS = NotificationLevel.SUCCESS
@@ -299,6 +313,8 @@ class UserNotification(models.Model):
 
 class HistoryNotificationSeen(models.Model):
     """Track which workflow history entries have been seen by a user."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,

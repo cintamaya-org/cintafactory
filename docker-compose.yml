@@ -1,7 +1,8 @@
 services:
   web:
     build:
-      context: ./cintafactory
+      context: .
+      dockerfile: cintafactory/dockerfile
     container_name: ${APP_NAME}_web
     restart: unless-stopped
     environment:

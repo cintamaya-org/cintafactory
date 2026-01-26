@@ -1,3 +1,5 @@
+import uuid
+
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractUser
@@ -33,6 +35,7 @@ def _get_default_role_for_group(group=None):
 
 
 class TechnicalDirection(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=100, unique=True)
     slug = models.SlugField(max_length=100, unique=True)
 
@@ -81,6 +84,7 @@ class TechnicalDirection(models.Model):
 
 
 class BusinessDirection(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=100, unique=True)
     slug = models.SlugField(max_length=100, unique=True)
 
@@ -93,6 +97,7 @@ class BusinessDirection(models.Model):
 
 
 class BusinessGroup(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=100, unique=True)
     direction = models.ForeignKey(
         TechnicalDirection,
@@ -142,6 +147,7 @@ class BusinessGroup(models.Model):
 
 
 class Role(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=50, unique=True)
     slug = models.SlugField(max_length=50, unique=True)
     technical_direction = models.ForeignKey(
@@ -165,6 +171,7 @@ class Role(models.Model):
         return self.name
 
 class User(AbstractUser):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     profile_picture = models.ImageField(
         upload_to=build_profile_picture_storage_name,
         storage=get_profile_picture_storage(),
@@ -288,6 +295,7 @@ class User(AbstractUser):
 
 
 class OAuthAccount(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
