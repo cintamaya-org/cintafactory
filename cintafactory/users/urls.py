@@ -24,7 +24,6 @@ urlpatterns = [
     # Groups — list and CRUD
     path("manage/groups/", views.BusinessGroupList.as_view(), name="group_list"),
     path("manage/groups/<int:pk>/", views.BusinessGroupDetail.as_view(), name="group_detail"),
-    path("manage/groups/crud/", RedirectView.as_view(url="/users/manage/groups/", permanent=False)),
     path("manage/groups/crud/", include(views.BusinessGroupViewSet().urls)),
 
     # Technical directions

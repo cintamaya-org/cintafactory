@@ -301,7 +301,7 @@ class OAuthAccount(models.Model):
     token_expires_at = models.DateTimeField(null=True, blank=True)
     token_type = models.CharField(max_length=40, blank=True)
     scope = models.TextField(blank=True)
-    raw_profile = models.JSONField(default=dict, blank=True)
+    raw_profile = models.JSONField(default=dict, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
