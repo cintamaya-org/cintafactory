@@ -5,7 +5,13 @@
      data-module-menu-prefix="{{ module_obj.index_url|default:'' }}">
   <div class="module-menu__header">
     <a href="{{ module_obj.index_url }}" class="module-menu__link" data-turbolinks="false">
-      <span class="module-menu__icon">{{ module_obj.icon|safe }}</span>
+      {% with icon_name=module_obj.icon|default:''|striptags %}
+      <span class="module-menu__icon">
+        {% if icon_name %}
+          <i class="material-icons" aria-hidden="true">{{ icon_name }}</i>
+        {% endif %}
+      </span>
+      {% endwith %}
       <span class="module-menu__title">{{ module_obj.verbose_name }}</span>
     </a>
   </div>

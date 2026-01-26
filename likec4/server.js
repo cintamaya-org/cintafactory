@@ -1,9 +1,9 @@
 // Minimal Node server to edit a C4 file and view the LikeC4 diagram side by side.
 const { createServer } = require('http');
-const { access, mkdir, writeFile } = require('fs').promises;
+const { access, mkdir, writeFile, readdir, unlink } = require('fs').promises;
 const { createReadStream } = require('fs');
 const { createHash } = require('crypto');
-const { extname, join, basename, dirname, posix } = require('path');
+const { extname, join, basename, dirname, posix, resolve, sep } = require('path');
 
 const PORT = process.env.LIKEC4_EDITOR_PORT || 4173;
 const ROOT_DIR = __dirname; // always resolve relative to where server.js lives
@@ -13,6 +13,7 @@ const SEAWEEDFS_FILER_URL = (process.env.SEAWEEDFS_FILER_URL || '').replace(/\/+
 const SEAWEEDFS_BASE_DIR = (process.env.SEAWEEDFS_BASE_DIR || '').replace(/^\/+|\/+$/g, '');
 const LIKEC4_METADATA_URL = process.env.LIKEC4_METADATA_URL || '';
 const LIKEC4_METADATA_TOKEN = process.env.LIKEC4_METADATA_TOKEN || 'dev_token_idHaf';
+const LIKEC4_API_TOKEN = (process.env.LIKEC4_API_TOKEN || 'dev_likec4_api_token_change_me').trim();
 const PUBLIC_DIR = join(ROOT_DIR, 'ui');
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -117,15 +118,55 @@ const getFileParam = (req) => {
   }
 };
 
+const getAuthToken = (req) => {
+  const header = req.headers.authorization || '';
+  if (header.toLowerCase().startsWith('bearer ')) {
+    return header.slice(7).trim();
+  }
+  const tokenHeader = req.headers['x-likec4-token'];
+  if (tokenHeader) {
+    return String(tokenHeader).trim();
+  }
+  try {
+    const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    return url.searchParams.get('token') || '';
+  } catch {
+    return '';
+  }
+};
+
+const requireApiAuth = (req, res) => {
+  if (!LIKEC4_API_TOKEN) {
+    send(res, 500, 'Server not configured');
+    return false;
+  }
+  const provided = getAuthToken(req);
+  if (!provided || provided !== LIKEC4_API_TOKEN) {
+    send(res, 401, 'Unauthorized');
+    return false;
+  }
+  return true;
+};
+
 const normalizeStoragePath = (raw) => {
   if (!raw) {
     return DEFAULT_STORAGE_PATH;
   }
-  const cleaned = String(raw).trim().replace(/^\/+/, '');
+  const cleaned = String(raw)
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/^\/+/, '');
   if (!cleaned) {
     return DEFAULT_STORAGE_PATH;
   }
-  const normalized = posix.normalize(cleaned);
+  if (cleaned.includes(':')) {
+    return DEFAULT_STORAGE_PATH;
+  }
+  const rawParts = cleaned.split('/').filter(Boolean);
+  if (!rawParts.length || rawParts.some(part => part === '.' || part === '..')) {
+    return DEFAULT_STORAGE_PATH;
+  }
+  const normalized = posix.normalize(rawParts.join('/'));
   const parts = normalized.split('/').filter(Boolean);
   if (!parts.length || parts.some(part => part === '.' || part === '..')) {
     return DEFAULT_STORAGE_PATH;
@@ -134,6 +175,27 @@ const normalizeStoragePath = (raw) => {
     return DEFAULT_STORAGE_PATH;
   }
   return parts.join('/');
+};
+
+const safePublicPath = (rawPath) => {
+  const cleaned = String(rawPath || '')
+    .replace(/\\/g, '/')
+    .replace(/^\/+/, '');
+  if (!cleaned) return '';
+  const segments = cleaned.split('/').filter(Boolean);
+  if (!segments.length || segments.some(segment => segment === '.' || segment === '..')) {
+    return '';
+  }
+  const normalized = posix.normalize(segments.join('/'));
+  if (!normalized || normalized === '.' || normalized.startsWith('..') || normalized.includes('/..') || normalized.includes(':')) {
+    return '';
+  }
+  const resolvedBase = resolve(PUBLIC_DIR);
+  const resolvedTarget = resolve(PUBLIC_DIR, normalized);
+  if (resolvedTarget === resolvedBase || !resolvedTarget.startsWith(`${resolvedBase}${sep}`)) {
+    return '';
+  }
+  return resolvedTarget;
 };
 
 const slugifySegment = (value) =>
@@ -174,21 +236,43 @@ const readLikeC4Content = async (requestedPath, canonicalPath) => {
 };
 
 const previewNameFor = (storagePath) => {
-  const hash = createHash('sha1').update(storagePath || DEFAULT_STORAGE_PATH, 'utf8').digest('hex');
+  const hash = createHash('sha256').update(storagePath || DEFAULT_STORAGE_PATH, 'utf8').digest('hex');
   return `${hash}.c4`;
 };
 
 const previewPathFor = (storagePath) => join(PREVIEW_DIR, previewNameFor(storagePath));
 
+const prunePreviewFiles = async (keepFileName) => {
+  if (!keepFileName) return;
+  try {
+    const entries = await readdir(PREVIEW_DIR, { withFileTypes: true });
+    const removals = entries.filter((entry) =>
+      entry.isFile() && entry.name.endsWith('.c4') && entry.name !== keepFileName,
+    );
+    if (!removals.length) return;
+    await Promise.all(removals.map((entry) =>
+      unlink(join(PREVIEW_DIR, entry.name)).catch((err) => {
+        console.warn(`Cannot remove preview file ${entry.name}: ${err.message}`);
+      }),
+    ));
+  } catch (err) {
+    if (err && err.code !== 'ENOENT') {
+      console.warn(`Cannot prune preview files: ${err.message}`);
+    }
+  }
+};
+
 const syncPreviewFile = async (content, filePath) => {
-  const target = previewPathFor(filePath);
+  const previewName = previewNameFor(filePath);
+  const target = join(PREVIEW_DIR, previewName);
   try {
     await mkdir(dirname(target), { recursive: true });
     await writeFile(target, content ?? '', 'utf8');
   } catch (err) {
     console.warn(`Cannot update preview file ${target}: ${err.message}`);
   }
-  return previewNameFor(filePath);
+  await prunePreviewFiles(previewName);
+  return previewName;
 };
 
 
@@ -449,6 +533,7 @@ const server = createServer(async (req, res) => {
 
   // API: save new contents
   if (req.method === 'POST' && url === '/save') {
+    if (!requireApiAuth(req, res)) return;
     const { requested, canonical } = resolveStoragePaths(req);
     const storagePath = canonical || requested;
     if (requested !== storagePath) {
@@ -495,25 +580,30 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  // Static UI assets (serve from /ui, fallback to repo root for shared assets like the logo)
-  const requestPath = decodeURIComponent(url).replace(/^\//, '').replace(/\.\.+/g, '');
-  const candidates = [
-    url === '/' ? join(PUBLIC_DIR, 'index.html') : join(PUBLIC_DIR, requestPath),
-    join(ROOT_DIR, requestPath),
-  ];
-  for (const filePath of candidates) {
-    try {
-      await access(filePath);
-      const ext = extname(filePath).toLowerCase();
-      res.writeHead(200, {
-        'Content-Type': MIME[ext] || 'application/octet-stream',
-        'Cache-Control': 'no-cache',
-      });
-      createReadStream(filePath).pipe(res);
-      return;
-    } catch {
-      // Try next candidate.
-    }
+  // Static UI assets (serve only from /ui)
+  let decodedPath = '';
+  try {
+    decodedPath = decodeURIComponent(url);
+  } catch {
+    decodedPath = url;
+  }
+  const requestPath = decodedPath.replace(/^\//, '');
+  const filePath = url === '/' ? join(PUBLIC_DIR, 'index.html') : safePublicPath(requestPath);
+  if (!filePath) {
+    send(res, 404, 'Not Found');
+    return;
+  }
+  try {
+    await access(filePath);
+    const ext = extname(filePath).toLowerCase();
+    res.writeHead(200, {
+      'Content-Type': MIME[ext] || 'application/octet-stream',
+      'Cache-Control': 'no-cache',
+    });
+    createReadStream(filePath).pipe(res);
+    return;
+  } catch {
+    // fallthrough
   }
   send(res, 404, 'Not Found');
 });

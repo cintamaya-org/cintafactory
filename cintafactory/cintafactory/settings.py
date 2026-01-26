@@ -214,6 +214,7 @@ SEAWEEDFS_PUBLIC_URL_PP = os.getenv("SEAWEEDFS_PUBLIC_URL_PP", "http://localhost
 SEAWEEDFS_BASE_DIR = os.getenv("SEAWEEDFS_BASE_DIR", "media").strip("/")
 SEAWEEDFS_TIMEOUT = int(os.getenv("SEAWEEDFS_TIMEOUT", "30"))
 LIKEC4_METADATA_TOKEN = os.getenv("LIKEC4_METADATA_TOKEN", "").strip() or "dev_token_idHaf"
+LIKEC4_API_TOKEN = os.getenv("LIKEC4_API_TOKEN", "dev_likec4_api_token_change_me").strip()
 LIKEC4_EDITOR_URL = os.getenv("LIKEC4_EDITOR_URL", "http://likec4:4173").rstrip("/")
 LIKEC4_EXPORT_URL = os.getenv("LIKEC4_EXPORT_URL", "")
 LIKEC4_EXPORT_TIMEOUT = int(os.getenv("LIKEC4_EXPORT_TIMEOUT", "60"))

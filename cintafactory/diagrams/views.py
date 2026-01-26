@@ -892,6 +892,9 @@ def likec4_proxy(request, path: str = ""):
     user_agent = request.headers.get("User-Agent")
     if user_agent:
         headers["User-Agent"] = user_agent
+    api_token = getattr(settings, "LIKEC4_API_TOKEN", "")
+    if api_token:
+        headers["X-LikeC4-Token"] = api_token
     body = request.body if method == "POST" else None
 
     try:

@@ -1,7 +1,7 @@
 const http = require('http');
 const { mkdir, readFile, readdir, rm, writeFile } = require('fs').promises;
 const { createHash } = require('crypto');
-const { dirname, join, posix, relative, sep } = require('path');
+const { dirname, join, posix, relative, resolve, sep } = require('path');
 const { spawn } = require('child_process');
 const { URL } = require('url');
 
@@ -12,6 +12,7 @@ const SEAWEEDFS_FILER_URL = (process.env.SEAWEEDFS_FILER_URL || '').replace(/\/+
 const SEAWEEDFS_BASE_DIR = (process.env.SEAWEEDFS_BASE_DIR || '').replace(/^\/+|\/+$/g, '');
 const LIKEC4_METADATA_URL = process.env.LIKEC4_METADATA_URL || '';
 const LIKEC4_METADATA_TOKEN = process.env.LIKEC4_METADATA_TOKEN || 'dev_token_idHaf';
+const LIKEC4_API_TOKEN = (process.env.LIKEC4_API_TOKEN || 'dev_likec4_api_token_change_me').trim();
 const EXPORT_ROOT = process.env.LIKEC4_EXPORT_TMP || '/tmp/likec4-export';
 const LOCAL_EXPORT_DIR = (process.env.LIKEC4_EXPORT_LOCAL_DIR || '/var/likec4-exports').replace(/\/+$/, '');
 const EXPORT_FORMAT = process.env.LIKEC4_EXPORT_FORMAT || 'png';
@@ -33,6 +34,28 @@ const parseBool = (value, defaultValue = true) => {
 
 const DELETE_OLD_EXPORTS = parseBool(process.env.LIKEC4_EXPORT_DELETE_OLD, true);
 
+const sanitizeStoragePath = (input) => {
+  const raw = String(input ?? '').trim();
+  if (!raw) return '';
+  const unified = raw.replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '');
+  if (!unified) return '';
+  const segments = unified.split('/');
+  if (segments.some(segment => !segment || segment === '.' || segment === '..')) {
+    return '';
+  }
+  const normalized = posix.normalize(unified);
+  if (!normalized || normalized === '.') return '';
+  return normalized;
+};
+
+const requireCleanStoragePath = (input, label = 'storage_path') => {
+  const cleaned = sanitizeStoragePath(input);
+  if (!cleaned) {
+    throw new Error(`Invalid ${label}`);
+  }
+  return cleaned;
+};
+
 const encodeSeaweedPath = (path) => {
   const clean = String(path || '').replace(/^\/+/, '');
   const full = SEAWEEDFS_BASE_DIR ? `${SEAWEEDFS_BASE_DIR}/${clean}` : clean;
@@ -46,7 +69,8 @@ const buildSeaweedUrl = (path) => {
   if (!SEAWEEDFS_FILER_URL) {
     throw new Error('SEAWEEDFS_FILER_URL not configured');
   }
-  return `${SEAWEEDFS_FILER_URL}/${encodeSeaweedPath(path)}`;
+  const cleaned = requireCleanStoragePath(path, 'SeaweedFS path');
+  return `${SEAWEEDFS_FILER_URL}/${encodeSeaweedPath(cleaned)}`;
 };
 
 const readFromSeaweed = async (path) => {
@@ -92,7 +116,7 @@ const writeToSeaweed = async (path, buffer, contentType) => {
 };
 
 const likec4PngPathFor = (storagePath) => {
-  const cleaned = String(storagePath || '').replace(/^\/+/, '');
+  const cleaned = requireCleanStoragePath(storagePath);
   const parts = cleaned.split('/').filter(Boolean);
   if (parts.length >= 3 && parts[0] === 'diagrams') {
     return `diagrams/${parts[1]}/views/thumb.png`;
@@ -103,7 +127,7 @@ const likec4PngPathFor = (storagePath) => {
 };
 
 const likec4ViewsDirFor = (storagePath) => {
-  const cleaned = String(storagePath || '').replace(/^\/+/, '');
+  const cleaned = requireCleanStoragePath(storagePath);
   const parts = cleaned.split('/').filter(Boolean);
   if (parts.length >= 3 && parts[0] === 'diagrams') {
     return `diagrams/${parts[1]}/views`;
@@ -114,13 +138,24 @@ const likec4ViewsDirFor = (storagePath) => {
 };
 
 const safeLocalJoin = (baseDir, relativePath) => {
-  const cleaned = String(relativePath || '').replace(/^\/+/, '');
+  const cleaned = String(relativePath || '')
+    .replace(/\\/g, '/')
+    .replace(/^\/+/, '');
   if (!cleaned) return '';
-  const normalized = posix.normalize(cleaned);
-  if (!normalized || normalized.startsWith('..') || normalized.includes('/..')) {
+  const segments = cleaned.split('/').filter(Boolean);
+  if (!segments.length || segments.some(segment => segment === '.' || segment === '..')) {
     return '';
   }
-  return join(baseDir, normalized);
+  const normalized = posix.normalize(segments.join('/'));
+  if (!normalized || normalized === '.' || normalized.startsWith('..') || normalized.includes('/..') || normalized.includes(':')) {
+    return '';
+  }
+  const resolvedBase = resolve(baseDir);
+  const resolvedTarget = resolve(baseDir, normalized);
+  if (resolvedTarget === resolvedBase || !resolvedTarget.startsWith(`${resolvedBase}${sep}`)) {
+    return '';
+  }
+  return resolvedTarget;
 };
 
 const normalizeRelativePath = (baseDir, filePath) => {
@@ -267,16 +302,13 @@ const postMetadata = async ({ filePath, size, contentType, pngPath, pngSize, png
 };
 
 const processJob = async (payload) => {
-  const storagePath = String(payload.storage_path || '').trim();
-  if (!storagePath) {
-    throw new Error('Missing storage_path');
-  }
+  const storagePath = requireCleanStoragePath(payload.storage_path);
   console.log(`Export start: ${storagePath}`);
   console.log('LikeC4 export: reading source from SeaweedFS');
   const content = await readFromSeaweed(storagePath);
   console.log('LikeC4 export: reading metadata from SeaweedFS');
   const { size, contentType } = await headFromSeaweed(storagePath);
-  const jobId = createHash('sha1').update(`${storagePath}-${Date.now()}`).digest('hex').slice(0, 12);
+  const jobId = createHash('sha256').update(`${storagePath}-${Date.now()}`).digest('hex').slice(0, 12);
   const workDir = join(EXPORT_ROOT, jobId);
   const inputPath = join(workDir, 'diagram.c4');
   console.log(`LikeC4 export: creating work dir ${workDir}`);
@@ -423,6 +455,31 @@ const readJsonBody = async (req) => {
   }
 };
 
+const getAuthToken = (req) => {
+  const header = req.headers.authorization || '';
+  if (header.toLowerCase().startsWith('bearer ')) {
+    return header.slice(7).trim();
+  }
+  const tokenHeader = req.headers['x-likec4-token'];
+  if (tokenHeader) {
+    return String(tokenHeader).trim();
+  }
+  return '';
+};
+
+const requireApiAuth = (req, res) => {
+  if (!LIKEC4_API_TOKEN) {
+    sendJson(res, 500, { ok: false, error: 'Server not configured' });
+    return false;
+  }
+  const provided = getAuthToken(req);
+  if (!provided || provided !== LIKEC4_API_TOKEN) {
+    sendJson(res, 401, { ok: false, error: 'Unauthorized' });
+    return false;
+  }
+  return true;
+};
+
 const sendJson = (res, status, payload) => {
   const body = JSON.stringify(payload);
   res.writeHead(status, {
@@ -467,6 +524,9 @@ const start = async () => {
       res.end();
       return;
     }
+    if (!requireApiAuth(req, res)) {
+      return;
+    }
     let payload = null;
     try {
       payload = await readJsonBody(req);
@@ -475,9 +535,9 @@ const start = async () => {
       sendJson(res, status, { ok: false, error: err.message });
       return;
     }
-    const storagePath = String(payload?.storage_path || '').trim();
+    const storagePath = sanitizeStoragePath(payload?.storage_path);
     if (!storagePath) {
-      sendJson(res, 400, { ok: false, error: 'Missing storage_path' });
+      sendJson(res, 400, { ok: false, error: 'Invalid storage_path' });
       return;
     }
     try {

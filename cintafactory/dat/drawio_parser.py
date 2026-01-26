@@ -6,10 +6,13 @@ import logging
 import zlib
 from typing import Dict, Iterable, List, Tuple
 from urllib.parse import unquote
-from xml.etree import ElementTree
+from defusedxml import ElementTree as DefusedElementTree
 
 
 logger = logging.getLogger(__name__)
+
+MAX_XML_CHARS = 8_000_000
+MAX_INFLATED_BYTES = 8_000_000
 
 BRIQUE_COLUMNS = ("brique_id", "nom", "description")
 FLUX_COLUMNS = (
@@ -36,12 +39,17 @@ def _clean_model_xml(payload: str) -> str | None:
     candidate = payload.strip()
     if not candidate:
         return None
+    if len(candidate) > MAX_XML_CHARS:
+        logger.debug("drawio parser: payload exceeds max size (%s chars)", len(candidate))
+        return None
     for transform in (lambda value: value, html.unescape, unquote):
         try:
             transformed = transform(candidate)
         except Exception:
             continue
         if not transformed:
+            continue
+        if len(transformed) > MAX_XML_CHARS:
             continue
         if transformed.lstrip().startswith("<mxGraphModel"):
             return transformed.strip()
@@ -60,8 +68,11 @@ def _inflate_drawio_payload(encoded: str) -> str | None:
         return None
     for wbits in (-15, zlib.MAX_WBITS):
         try:
-            inflated = zlib.decompress(raw, wbits)
+            decompressor = zlib.decompressobj(wbits)
+            inflated = decompressor.decompress(raw, MAX_INFLATED_BYTES + 1)
         except Exception:
+            continue
+        if len(inflated) > MAX_INFLATED_BYTES or not decompressor.eof:
             continue
         try:
             decoded = inflated.decode("utf-8", errors="ignore")
@@ -81,9 +92,12 @@ def _extract_mxgraph_models(xml_payload: str) -> List[str]:
     content = xml_payload.strip()
     if not content:
         return []
+    if len(content) > MAX_XML_CHARS:
+        logger.debug("drawio parser: xml payload exceeds max size (%s chars)", len(content))
+        return []
     try:
-        root = ElementTree.fromstring(content)
-    except ElementTree.ParseError:
+        root = DefusedElementTree.fromstring(content)
+    except DefusedElementTree.ParseError:
         return []
     tag = _strip_namespace(root.tag)
     if tag == "mxGraphModel":
@@ -103,7 +117,7 @@ def _extract_mxgraph_models(xml_payload: str) -> List[str]:
         for child in diagram:
             if _strip_namespace(child.tag) != "mxGraphModel":
                 continue
-            models.append(ElementTree.tostring(child, encoding="unicode"))
+            models.append(DefusedElementTree.tostring(child, encoding="unicode"))
             break
     return models
 
@@ -114,9 +128,12 @@ def extract_drawio_pages(xml_payload: str) -> List[Dict[str, str]]:
     content = xml_payload.strip()
     if not content:
         return []
+    if len(content) > MAX_XML_CHARS:
+        logger.debug("drawio parser: xml payload exceeds max size (%s chars)", len(content))
+        return []
     try:
-        root = ElementTree.fromstring(content)
-    except ElementTree.ParseError:
+        root = DefusedElementTree.fromstring(content)
+    except DefusedElementTree.ParseError:
         return []
     tag = _strip_namespace(root.tag)
     if tag == "mxGraphModel":
@@ -137,7 +154,7 @@ def extract_drawio_pages(xml_payload: str) -> List[Dict[str, str]]:
             for child in diagram:
                 if _strip_namespace(child.tag) != "mxGraphModel":
                     continue
-                page_xml = ElementTree.tostring(child, encoding="unicode")
+                page_xml = DefusedElementTree.tostring(child, encoding="unicode")
                 break
         if page_xml:
             pages.append({"index": index, "name": name, "xml": page_xml})
@@ -148,9 +165,12 @@ def extract_drawio_pages(xml_payload: str) -> List[Dict[str, str]]:
 def _iter_drawio_objects(model_xml: str) -> Iterable[Dict[str, str]]:
     if not model_xml:
         return []
+    if len(model_xml) > MAX_XML_CHARS:
+        logger.debug("drawio parser: model xml exceeds max size (%s chars)", len(model_xml))
+        return []
     try:
-        root = ElementTree.fromstring(model_xml)
-    except ElementTree.ParseError as exc:
+        root = DefusedElementTree.fromstring(model_xml)
+    except DefusedElementTree.ParseError as exc:
         logger.debug("drawio parser: invalid xml: %s", exc)
         return []
     objects: List[Dict[str, str]] = []

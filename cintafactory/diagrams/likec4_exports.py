@@ -26,6 +26,9 @@ def enqueue_likec4_export(storage_path: str, *, source: str | None = None) -> bo
     }
     body = json.dumps(payload).encode("utf-8")
     headers = {"Content-Type": "application/json"}
+    api_token = getattr(settings, "LIKEC4_API_TOKEN", "")
+    if api_token:
+        headers["X-LikeC4-Token"] = api_token
     timeout = int(getattr(settings, "LIKEC4_EXPORT_TIMEOUT", 60))
     try:
         request = Request(export_url, data=body, headers=headers, method="POST")

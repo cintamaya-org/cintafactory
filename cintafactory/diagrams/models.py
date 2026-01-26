@@ -39,7 +39,7 @@ def drawio_upload_to(instance, filename):
 
 class Diagram(models.Model):
     title = models.CharField(max_length=200, blank=True, default="")
-    png_paths = models.JSONField(default=list, blank=True)
+    png_paths = models.JSONField(default=list, blank=True, null=True)
     updated_at = models.DateTimeField(default=timezone.now)
     created_at = models.DateTimeField(auto_now_add=True)
 

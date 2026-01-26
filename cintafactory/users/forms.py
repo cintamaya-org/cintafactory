@@ -1,4 +1,6 @@
 from django import forms
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import UploadedFile
 
 from .models import BusinessDirection, BusinessGroup, TechnicalDirection, Role, User
@@ -129,6 +131,15 @@ class UserForm(forms.ModelForm):
                 self.add_error("password2", "Veuillez confirmer le mot de passe.")
             if password1 and password2 and password1 != password2:
                 self.add_error("password2", "Les mots de passe ne correspondent pas.")
+            if password1 and password2 and password1 == password2:
+                user_for_validation = self.instance
+                for field in ("username", "email", "first_name", "last_name"):
+                    if field in cleaned_data:
+                        setattr(user_for_validation, field, cleaned_data.get(field))
+                try:
+                    validate_password(password1, user=user_for_validation)
+                except ValidationError as exc:
+                    self.add_error("password1", exc)
 
         return cleaned_data
 

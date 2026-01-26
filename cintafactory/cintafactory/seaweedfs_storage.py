@@ -61,8 +61,8 @@ class SeaweedFSStorage(Storage):
             with urlopen(request, timeout=self.timeout) as response:
                 response.read()
         except (HTTPError, URLError) as exc:
-            logger.exception("SeaweedFS upload failed for %s", name)
-            raise exc
+            logger.warning("SeaweedFS upload failed for %s", name)
+            raise
         return name
 
     def delete(self, name: str) -> None:

@@ -41,6 +41,7 @@ services:
       GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
       GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
       LIKEC4_METADATA_TOKEN: ${LIKEC4_METADATA_TOKEN:-}
+      LIKEC4_API_TOKEN: ${LIKEC4_API_TOKEN:-dev_likec4_api_token_change_me}
     depends_on:
       db:
         condition: service_healthy
@@ -119,10 +120,7 @@ services:
       SEAWEEDFS_BASE_DIR: ${SEAWEEDFS_BASE_DIR:-media}
       LIKEC4_METADATA_URL: http://web:${APP_PORT:-8000}/diagrams/likec4/metadata/
       LIKEC4_METADATA_TOKEN: ${LIKEC4_METADATA_TOKEN:-}
-    ports:
-      - "${LIKEC4_DEV_HOST_PORT:-5173}:5173"
-      - "${LIKEC4_HMR_HOST_PORT:-24678}:24678"
-      - "${LIKEC4_EDITOR_HOST_PORT:-4173}:4173"
+      LIKEC4_API_TOKEN: ${LIKEC4_API_TOKEN:-dev_likec4_api_token_change_me}
     volumes:
       - ./likec4:/data
     networks:
@@ -151,6 +149,7 @@ services:
       SEAWEEDFS_BASE_DIR: ${SEAWEEDFS_BASE_DIR:-media}
       LIKEC4_METADATA_URL: http://web:${APP_PORT:-8000}/diagrams/likec4/metadata/
       LIKEC4_METADATA_TOKEN: ${LIKEC4_METADATA_TOKEN:-}
+      LIKEC4_API_TOKEN: ${LIKEC4_API_TOKEN:-dev_likec4_api_token_change_me}
     volumes:
       - likec4_exports_data:/var/likec4-exports
     depends_on:
