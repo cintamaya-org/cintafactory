@@ -11,14 +11,11 @@ urlpatterns = [
     # Roles — list (ListView) and CRUD (ModelViewSet)
     path("manage/roles/", views.RoleList.as_view(), name="role_list"),
     path("manage/roles/<uuid:pk>/", views.RoleDetail.as_view(), name="role_detail"),
-    # redirect ONLY the empty base of the viewset to the list page
-    path("manage/roles/crud/", RedirectView.as_view(url="/users/manage/roles/", permanent=False)),
     path("manage/roles/crud/", include(views.RoleViewSet().urls)),
 
     # Users — list (ListView) and CRUD (ModelViewSet)
     path("manage/users/", views.UserList.as_view(), name="user_list"),
     path("manage/users/<uuid:pk>/", views.UserDetail.as_view(), name="user_detail"),
-    path("manage/users/crud/", RedirectView.as_view(url="/users/manage/users/", permanent=False)),
     path("manage/users/crud/", include(views.UserViewSet().urls)),
 
     # Groups — list and CRUD
@@ -28,7 +25,6 @@ urlpatterns = [
 
     # Technical directions
     path("manage/technical-directions/", views.TechnicalDirectionList.as_view(), name="technical_direction_list"),
-    path("manage/technical-directions/crud/", RedirectView.as_view(url="/users/manage/technical-directions/", permanent=False)),
     path("manage/technical-directions/crud/", include(views.TechnicalDirectionViewSet().urls)),
 
     # Business Directions

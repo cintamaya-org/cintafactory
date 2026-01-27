@@ -1,9 +1,14 @@
 import json
 import logging
+import re
 from collections import OrderedDict
+from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import urlencode
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
 
+from django.conf import settings
 from django.apps import apps as django_apps
 from django.contrib import messages
 from django.contrib.auth import get_user_model
@@ -43,7 +48,7 @@ from .constants import (
     DAT_REQUIRED_PARTICIPANT_ROLE_SLUGS,
     DAT_STATUS_REQUIRED_ROLES,
 )
-from .drawio_parser import dedupe_architecture_rows, parse_architecture_diagram
+from .drawio_parser import BRIQUE_COLUMNS, FLUX_COLUMNS, dedupe_architecture_rows, parse_architecture_diagram
 from .exporters import get_dat_export_model_builder
 from .forms import DATForm, DATImportForm, DATSubSectionForm
 from .importers import DATImportError, DATImportService
@@ -2557,6 +2562,220 @@ def _normalize_diagram_ids(raw_ids) -> list[int]:
     return cleaned
 
 
+LIKEC4_PROTOCOLS = {
+    "amqp",
+    "ftp",
+    "grpc",
+    "http",
+    "https",
+    "imap",
+    "jdbc",
+    "ldap",
+    "ldaps",
+    "mqtt",
+    "nfs",
+    "odbc",
+    "pop3",
+    "sftp",
+    "smb",
+    "smtp",
+    "ssh",
+    "tcp",
+    "udp",
+}
+
+
+def _normalize_likec4_path(raw_path) -> str:
+    if not raw_path:
+        return ""
+    cleaned = str(raw_path).strip().lstrip("/")
+    if not cleaned or not cleaned.lower().endswith(".c4"):
+        return ""
+    parts = Path(cleaned).parts
+    if any(part in (".", "..") for part in parts):
+        return ""
+    return cleaned
+
+
+def _normalize_likec4_paths(raw_paths) -> list[str]:
+    if not isinstance(raw_paths, (list, tuple)):
+        return []
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for raw in raw_paths:
+        normalized = _normalize_likec4_path(raw)
+        if not normalized:
+            continue
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        cleaned.append(normalized)
+    return cleaned
+
+
+def _extract_schema_likec4_paths(sub_section: DATSubSection) -> list[str]:
+    if sub_section is None:
+        return []
+    part = sub_section.parts.filter(key="schemas").first()
+    if part is None:
+        return []
+    rows = part.value or []
+    if not isinstance(rows, list):
+        return []
+    paths = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        tool = (row.get("schema_systeme") or "").strip().lower()
+        if tool != "likec4":
+            continue
+        paths.append(row.get("schema_reference"))
+    return _normalize_likec4_paths(paths)
+
+
+def _guess_likec4_protocol(label: str) -> tuple[str, str]:
+    if not label:
+        return "", ""
+    cleaned = re.sub(r"\s+", " ", str(label).strip())
+    if not cleaned:
+        return "", ""
+    tokens = [token for token in re.split(r"[\s/,:;()\[\]-]+", cleaned) if token]
+    protocol = ""
+    port = ""
+    for idx, token in enumerate(tokens):
+        lower = token.lower()
+        if lower in LIKEC4_PROTOCOLS:
+            protocol = lower
+            if idx + 1 < len(tokens) and str(tokens[idx + 1]).isdigit():
+                port = str(tokens[idx + 1])
+            break
+    return protocol, port
+
+
+def _fetch_likec4_flow_matrix(storage_path: str) -> dict | None:
+    if not storage_path:
+        return None
+    base_url = getattr(settings, "LIKEC4_EDITOR_URL", "").strip()
+    if not base_url:
+        return None
+    try:
+        query = urlencode({"file": storage_path})
+    except Exception:
+        query = ""
+    url = f"{base_url.rstrip('/')}/flow-matrix"
+    if query:
+        url = f"{url}?{query}"
+    headers = {}
+    api_token = getattr(settings, "LIKEC4_API_TOKEN", "").strip()
+    if api_token:
+        headers["X-LikeC4-Token"] = api_token
+    try:
+        request = Request(url, headers=headers)
+        with urlopen(request, timeout=10) as response:
+            status = getattr(response, "status", 200)
+            if status < 200 or status >= 300:
+                logger.warning("LikeC4 flow-matrix failed for %s: status=%s", storage_path, status)
+                return None
+            payload = json.loads(response.read().decode("utf-8", errors="ignore") or "{}")
+            return payload if isinstance(payload, dict) else None
+    except HTTPError as exc:
+        body = ""
+        try:
+            body = exc.read().decode("utf-8", errors="ignore")
+        except Exception:
+            body = ""
+        logger.warning(
+            "LikeC4 flow-matrix failed for %s: status=%s body=%s",
+            storage_path,
+            exc.code,
+            body[:200],
+        )
+        return None
+    except Exception as exc:  # pragma: no cover - best effort parsing
+        logger.warning("LikeC4 flow-matrix failed for %s: %s", storage_path, exc)
+        return None
+
+
+def _likec4_rows_from_flow_matrix(payload: dict) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    if not isinstance(payload, dict):
+        return [], []
+    flows_raw = payload.get("flows")
+    components_raw = payload.get("components")
+    flows = flows_raw if isinstance(flows_raw, list) else []
+    components = components_raw if isinstance(components_raw, list) else []
+
+    briques: list[dict[str, str]] = []
+    fluxes: list[dict[str, str]] = []
+    component_titles: dict[str, str] = {}
+    component_names: set[str] = set()
+
+    for component in components:
+        if not isinstance(component, dict):
+            continue
+        name = str(component.get("name") or "").strip()
+        title = str(component.get("title") or "").strip()
+        if not name and not title:
+            continue
+        display = title or name
+        if name:
+            component_titles[name] = display
+            component_names.add(name.lower())
+        row = {key: "" for key in BRIQUE_COLUMNS}
+        row["brique_id"] = name or display
+        row["nom"] = display
+        props = component.get("props") if isinstance(component.get("props"), dict) else {}
+        metadata = component.get("metadata") if isinstance(component.get("metadata"), dict) else {}
+        description = ""
+        for key in ("description", "commentaire", "details", "notes", "note"):
+            description = (props.get(key) or metadata.get(key) or "").strip()
+            if description:
+                break
+        row["description"] = description
+        briques.append(row)
+
+    def ensure_component_row(raw_name: str) -> None:
+        name = str(raw_name or "").strip()
+        if not name or name.lower() in component_names:
+            return
+        component_names.add(name.lower())
+        row = {key: "" for key in BRIQUE_COLUMNS}
+        row["brique_id"] = name
+        row["nom"] = name
+        row["description"] = ""
+        briques.append(row)
+
+    for flow in flows:
+        if not isinstance(flow, dict):
+            continue
+        source_raw = str(flow.get("from") or "").strip()
+        target_raw = str(flow.get("to") or "").strip()
+        if not source_raw or not target_raw:
+            continue
+        label = str(flow.get("label") or "").strip()
+        protocol, port = _guess_likec4_protocol(label)
+        row = {key: "" for key in FLUX_COLUMNS}
+        row["source"] = component_titles.get(source_raw, source_raw)
+        row["cible"] = component_titles.get(target_raw, target_raw)
+        if label:
+            if protocol:
+                row["protocole"] = protocol
+                if port:
+                    row["port"] = port
+                if label.lower() != protocol:
+                    row["flux_id"] = label
+            else:
+                row["flux_id"] = label
+        if protocol == "https":
+            row["chiffrement"] = "oui"
+        elif protocol == "http":
+            row["chiffrement"] = "non"
+        fluxes.append(row)
+        ensure_component_row(source_raw)
+        ensure_component_row(target_raw)
+
+    return briques, fluxes
+
+
 def _extract_schema_diagram_ids(sub_section: DATSubSection) -> list[int]:
     if sub_section is None:
         return []
@@ -2619,16 +2838,20 @@ def parse_schema_diagram(request, dat_pk: int):
         payload = {}
 
     diagram_ids = _normalize_diagram_ids(payload.get("diagram_ids"))
-    if not diagram_ids:
+    likec4_paths = _normalize_likec4_paths(payload.get("likec4_paths"))
+    if not diagram_ids and not likec4_paths:
         diagram_ids = _extract_schema_diagram_ids(schema_sub_section)
-    if not diagram_ids:
+        likec4_paths = _extract_schema_likec4_paths(schema_sub_section)
+    if not diagram_ids and not likec4_paths:
         return JsonResponse(
             {"ok": False, "error": "missing_diagrams", "message": "Aucun diagramme à analyser."},
             status=400,
         )
 
-    diagrams = DrawIODiagram.objects.filter(pk__in=diagram_ids).only("pk", "xml_file")
-    if not diagrams:
+    diagrams = []
+    if diagram_ids:
+        diagrams = list(DrawIODiagram.objects.filter(pk__in=diagram_ids).only("pk", "xml_file"))
+    if diagram_ids and not diagrams and not likec4_paths:
         return JsonResponse(
             {"ok": False, "error": "diagram_not_found", "message": "Aucun diagramme n'a été trouvé."},
             status=404,
@@ -2636,13 +2859,24 @@ def parse_schema_diagram(request, dat_pk: int):
 
     briques_rows: list[dict[str, str]] = []
     flux_rows: list[dict[str, str]] = []
-    for diagram in diagrams:
-        diagram_xml = diagram.read_xml() or ""
-        briques, fluxes = parse_architecture_diagram(diagram_xml)
-        if briques:
-            briques_rows.extend(briques)
-        if fluxes:
-            flux_rows.extend(fluxes)
+    if diagrams:
+        for diagram in diagrams:
+            diagram_xml = diagram.read_xml() or ""
+            briques, fluxes = parse_architecture_diagram(diagram_xml)
+            if briques:
+                briques_rows.extend(briques)
+            if fluxes:
+                flux_rows.extend(fluxes)
+    if likec4_paths:
+        for path in likec4_paths:
+            likec4_payload = _fetch_likec4_flow_matrix(path)
+            if not likec4_payload:
+                continue
+            briques, fluxes = _likec4_rows_from_flow_matrix(likec4_payload)
+            if briques:
+                briques_rows.extend(briques)
+            if fluxes:
+                flux_rows.extend(fluxes)
     briques_rows, flux_rows = dedupe_architecture_rows(briques_rows, flux_rows)
 
     briques_sub_section = architecture_section.sub_sections.filter(slug="briques-techniques").first()
