@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from typing import Dict, List, Optional, Set
 
 from django import forms
@@ -97,12 +98,22 @@ def _attach_drawio_support(entry: DATPart, widget: RepeatableTableWidget) -> Non
         return
     attrs = widget.attrs or {}
     attrs["data_drawio_create_url"] = reverse("dat:schema_create_diagram", args=[dat.pk])
-    edit_template = reverse("diagrams:edit", args=[0]).replace("/0/", "/{id}/")
-    detail_template = reverse("diagrams:detail", args=[0]).replace("/0/", "/{id}/")
+    placeholder_uuid = uuid.UUID(int=0)
+    placeholder_segment = f"/{placeholder_uuid}/"
+    edit_template = reverse("diagrams:edit", kwargs={"pk": placeholder_uuid}).replace(
+        placeholder_segment, "/{id}/"
+    )
+    detail_template = reverse("diagrams:detail", kwargs={"pk": placeholder_uuid}).replace(
+        placeholder_segment, "/{id}/"
+    )
     attrs["data_drawio_edit_template"] = edit_template
     attrs["data_drawio_detail_template"] = detail_template
-    import_template = reverse("diagrams:import_xml", args=[0]).replace("/0/", "/{id}/")
-    export_template = reverse("diagrams:export_xml", args=[0]).replace("/0/", "/{id}/")
+    import_template = reverse("diagrams:import_xml", kwargs={"pk": placeholder_uuid}).replace(
+        placeholder_segment, "/{id}/"
+    )
+    export_template = reverse("diagrams:export_xml", kwargs={"pk": placeholder_uuid}).replace(
+        placeholder_segment, "/{id}/"
+    )
     attrs["data_drawio_import_template"] = import_template
     attrs["data_drawio_export_template"] = export_template
     attrs["data_likec4_export_template"] = reverse("diagrams:likec4_export")

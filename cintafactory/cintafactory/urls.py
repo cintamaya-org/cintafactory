@@ -20,6 +20,11 @@ from django.contrib import admin
 from django.contrib.auth import views as auth_views
 from django.urls import include, path
 from django.views.generic import RedirectView
+from drf_spectacular.views import (
+    SpectacularAPIView,
+    SpectacularRedocView,
+    SpectacularSwaggerView,
+)
 from material.frontend import urls as material_urls
 
 from account.views import AccountLogoutView
@@ -27,6 +32,10 @@ from users import oauth_views
 
 urlpatterns = [
     path("admin/", admin.site.urls),      # Django admin
+    path("api/schema/", SpectacularAPIView.as_view(), name="api-schema"),
+    path("api/docs/", SpectacularSwaggerView.as_view(url_name="api-schema"), name="api-docs"),
+    path("api/redoc/", SpectacularRedocView.as_view(url_name="api-schema"), name="api-redoc"),
+    path("api/", include(("cintafactory.api.urls", "api"), namespace="api")),
     path("users/", include(("users.urls", "users"), namespace="users")),
     path("configuration/", include(("configuration.urls", "configuration"), namespace="configuration")),
     path("dat/", include(("dat.urls", "dat"), namespace="dat")),

@@ -2,8 +2,10 @@
 const { createServer } = require('http');
 const { access, mkdir, writeFile, readdir, unlink } = require('fs').promises;
 const { createReadStream } = require('fs');
+const { execFile } = require('child_process');
 const { createHash } = require('crypto');
 const { extname, join, basename, dirname, posix, resolve, sep } = require('path');
+const { promisify } = require('util');
 
 const PORT = process.env.LIKEC4_EDITOR_PORT || 4173;
 const ROOT_DIR = __dirname; // always resolve relative to where server.js lives
@@ -15,6 +17,9 @@ const LIKEC4_METADATA_URL = process.env.LIKEC4_METADATA_URL || '';
 const LIKEC4_METADATA_TOKEN = process.env.LIKEC4_METADATA_TOKEN || 'dev_token_idHaf';
 const LIKEC4_API_TOKEN = (process.env.LIKEC4_API_TOKEN || 'dev_likec4_api_token_change_me').trim();
 const PUBLIC_DIR = join(ROOT_DIR, 'ui');
+const LIKEC4_BIN = (process.env.LIKEC4_BIN || 'likec4').trim() || 'likec4';
+const LIKEC4_WEBCOMPONENT_OUTPUT = process.env.LIKEC4_WEBCOMPONENT_OUTPUT || join(PUBLIC_DIR, 'likec4-webcomponent.js');
+const LIKEC4_RENDER_TIMEOUT_MS = Number.parseInt(process.env.LIKEC4_RENDER_TIMEOUT_MS || '120000', 10);
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8',
@@ -24,6 +29,8 @@ const MIME = {
   '.png': 'image/png',
   '.ico': 'image/x-icon',
 };
+
+const execFileAsync = promisify(execFile);
 
 const encodeSeaweedPath = (path) => {
   const clean = path.replace(/^\/+/, '');
@@ -275,6 +282,49 @@ const syncPreviewFile = async (content, filePath) => {
   return previewName;
 };
 
+let lastRenderHash = '';
+let lastRenderAt = 0;
+
+const fileExists = async (path) => {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const bundleUrlFor = (timestamp) => {
+  const stamp = timestamp || Date.now();
+  return `likec4-webcomponent.js?v=${stamp}`;
+};
+
+const renderLikeC4 = async (content) => {
+  const hash = createHash('sha256').update(content ?? '', 'utf8').digest('hex');
+  const hasBundle = await fileExists(LIKEC4_WEBCOMPONENT_OUTPUT);
+  if (hash && hash === lastRenderHash && hasBundle) {
+    return { ok: true, skipped: true, rendered_at: lastRenderAt, bundle_url: bundleUrlFor(lastRenderAt) };
+  }
+  try {
+    await mkdir(dirname(LIKEC4_WEBCOMPONENT_OUTPUT), { recursive: true });
+    await execFileAsync(
+      LIKEC4_BIN,
+      ['codegen', 'webcomponent', '-o', LIKEC4_WEBCOMPONENT_OUTPUT],
+      { cwd: PREVIEW_DIR, timeout: LIKEC4_RENDER_TIMEOUT_MS },
+    );
+    lastRenderHash = hash;
+    lastRenderAt = Date.now();
+    return { ok: true, rendered_at: lastRenderAt, bundle_url: bundleUrlFor(lastRenderAt) };
+  } catch (err) {
+    const message = err && err.message ? err.message : 'LikeC4 render failed';
+    console.warn(`LikeC4 render failed: ${message}`);
+    if (hasBundle) {
+      return { ok: false, error: message, bundle_url: bundleUrlFor(lastRenderAt || Date.now()) };
+    }
+    return { ok: false, error: message };
+  }
+};
+
 
 const stripComments = (text) =>
   text
@@ -424,18 +474,33 @@ const server = createServer(async (req, res) => {
     try {
       const { content, contentType, missing } = await readLikeC4Content(requested, responsePath);
       const previewFile = await syncPreviewFile(content, responsePath);
+      const renderResult = await renderLikeC4(content);
       if (missing) {
         return send(
           res,
           200,
-          JSON.stringify({ content: '', missing: true, file: responsePath, preview_file: previewFile }),
+          JSON.stringify({
+            content: '',
+            missing: true,
+            file: responsePath,
+            preview_file: previewFile,
+            bundle_url: renderResult.bundle_url || null,
+            render_error: renderResult.error || null,
+          }),
           { 'Content-Type': MIME['.json'] },
         );
       }
       return send(
         res,
         200,
-        JSON.stringify({ content, file: responsePath, content_type: contentType, preview_file: previewFile }),
+        JSON.stringify({
+          content,
+          file: responsePath,
+          content_type: contentType,
+          preview_file: previewFile,
+          bundle_url: renderResult.bundle_url || null,
+          render_error: renderResult.error || null,
+        }),
         { 'Content-Type': MIME['.json'] },
       );
     } catch (err) {
@@ -560,6 +625,7 @@ const server = createServer(async (req, res) => {
           size: writeResult.size,
           contentType: writeResult.contentType,
         });
+        const renderResult = await renderLikeC4(content);
         send(
           res,
           200,
@@ -570,6 +636,8 @@ const server = createServer(async (req, res) => {
             content_type: writeResult.contentType,
             preview_file: previewFile,
             png_path: null,
+            bundle_url: renderResult.bundle_url || null,
+            render_error: renderResult.error || null,
           }),
           { 'Content-Type': MIME['.json'] },
         );

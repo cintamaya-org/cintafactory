@@ -87,6 +87,8 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "oauth2_provider",
+    "rest_framework",
+    "drf_spectacular",
 
     # Your apps
     "diagrams.apps.DiagramsConfig",
@@ -326,6 +328,25 @@ CSP_CONNECT_SRC = ["'self'", DRAWIO_PUBLIC_ORIGIN]
 CSP_IMG_SRC = ["'self'", "data:", "blob:"]
 CSP_SCRIPT_SRC = ["'self'"]
 CSP_STYLE_SRC = ["'self'", "'unsafe-inline'"]
+
+# Django REST Framework
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework.authentication.SessionAuthentication",
+        "oauth2_provider.contrib.rest_framework.OAuth2Authentication",
+    ),
+    "DEFAULT_PERMISSION_CLASSES": (
+        "cintafactory.api.permissions.GranularModelPermissions",
+    ),
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "CintaFactory API",
+    "DESCRIPTION": "API documentation for CintaFactory.",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+}
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

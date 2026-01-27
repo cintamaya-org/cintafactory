@@ -55,8 +55,8 @@ The included `docker-compose.yml` runs two things inside one container: the Like
   docker compose up --build
   ```
 - Open `http://localhost:4173/` to edit `likec4/default.c4` in a Monaco/VS Code–style editor and see the diagram beside it.  
-  - `Save & Refresh` (or `Ctrl/Cmd + S`) writes to SeaweedFS and updates the local preview cache so the LikeC4 viewer reloads.  
-  - The iframe points to the dev server at `http://localhost:5173/` which hot-reloads when the preview `.c4` changes.
+  - `Save & Render` (or `Ctrl/Cmd + S`) writes to SeaweedFS and regenerates the official LikeC4 webcomponent bundle so the local viewer reloads.  
+  - Rendering happens client-side via the LikeC4 webcomponent bundle served by the editor server.
 
 ### Tweaks
 - Edit a different file: set `C4_FILE` before `docker compose up`, e.g. `C4_FILE=data/yourfile.c4 docker compose up`.

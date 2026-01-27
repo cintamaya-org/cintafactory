@@ -64,6 +64,26 @@
       display: flex;
       gap: 10px;
       align-items: center;
+      flex-wrap: wrap;
+    }
+    .view-picker {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--muted);
+      font-family: var(--font);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+    .view-picker select {
+      background: #252830;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-family: var(--font);
+      font-size: 12px;
     }
     button {
       background: var(--accent);
@@ -146,9 +166,13 @@
       <span>Code + Diagram</span>
     </div>
     <div class="actions">
-      <button id="saveBtn">Save &amp; Refresh ⟳</button>
+      <div class="view-picker">
+        <label for="viewSelect">View</label>
+        <select id="viewSelect"></select>
+      </div>
+      <button id="saveBtn">Save &amp; Render ⟳</button>
       <button class="secondary" id="flowBtn">Flux JSON</button>
-      <button class="secondary" id="reloadBtn">Reload Diagram</button>
+      <button class="secondary" id="reloadBtn">Reload Viewer</button>
     </div>
   </header>
 
@@ -156,7 +180,7 @@
     <section class="pane editor">
       <h2>editable file</h2>
       <div id="editor"></div>
-      <div class="status" id="status">Ctrl + S to save</div>
+      <div class="status" id="status">Ctrl + S to save &amp; render</div>
     </section>
     <section class="pane diagram">
       <h2>Diagrams</h2>
@@ -171,13 +195,17 @@
     const flowBtn = document.getElementById('flowBtn');
     const reloadBtn = document.getElementById('reloadBtn');
     const iframe = document.getElementById('diagramFrame');
+    const viewSelect = document.getElementById('viewSelect');
     const params = new URLSearchParams(window.location.search);
     const initialFileParam = params.get('file');
+    const initialViewParam = params.get('view');
     let activeFile = initialFileParam ? String(initialFileParam).trim() : '';
-    let currentPreviewFile = '';
+    let activeView = initialViewParam ? String(initialViewParam).trim() : '';
+    let currentBundleUrl = '';
 
     const getFileLabel = () => activeFile || 'likec4/default.c4';
     const getFileQuery = () => (activeFile ? `?file=${encodeURIComponent(activeFile)}` : '');
+    const getViewLabel = () => activeView || (viewSelect && viewSelect.value) || 'index';
 
     const updateFileContext = (nextFile) => {
       const normalized = nextFile ? String(nextFile).trim() : '';
@@ -191,22 +219,42 @@
       document.title = `LikeC4 - ${getFileLabel()}`;
     };
 
+    const updateViewContext = (nextView) => {
+      const normalized = nextView ? String(nextView).trim() : '';
+      if (!normalized) {
+        return;
+      }
+      activeView = normalized;
+      const url = new URL(window.location.href);
+      url.searchParams.set('view', activeView);
+      window.history.replaceState({}, '', url.toString());
+    };
+
     if (activeFile) {
       document.title = `LikeC4 - ${getFileLabel()}`;
     }
 
-    const setPreviewSrc = (previewFile, cacheBust = false) => {
-      if (previewFile) {
-        currentPreviewFile = previewFile;
+    const buildViewerUrl = (bundleUrl, viewId, cacheBust = false) => {
+      const viewerUrl = new URL('viewer.html', window.location.href);
+      if (viewId) {
+        viewerUrl.searchParams.set('view', viewId);
       }
-      const previewUrl = new URL(`${window.location.protocol}//${window.location.hostname}:5173/`);
-      if (currentPreviewFile) {
-        previewUrl.searchParams.set('file', currentPreviewFile);
+      if (bundleUrl) {
+        viewerUrl.searchParams.set('bundle', bundleUrl);
       }
       if (cacheBust) {
-        previewUrl.searchParams.set('t', Date.now());
+        viewerUrl.searchParams.set('t', Date.now());
       }
-      iframe.src = previewUrl.toString();
+      return viewerUrl.toString();
+    };
+
+    const setViewerSrc = (bundleUrl, cacheBust = false) => {
+      if (bundleUrl) {
+        currentBundleUrl = bundleUrl;
+      }
+      const viewId = getViewLabel();
+      const bundle = currentBundleUrl || 'likec4-webcomponent.js';
+      iframe.src = buildViewerUrl(bundle, viewId, cacheBust);
     };
 
     const setStatus = (text, accent = false) => {
@@ -214,7 +262,7 @@
     };
 
     const reloadDiagram = () => {
-      setPreviewSrc(currentPreviewFile, true);
+      setViewerSrc(currentBundleUrl, true);
     };
 
     const getFilenameFromDisposition = (header) => {
@@ -260,16 +308,67 @@
       }
     };
 
+    const stripComments = (text) =>
+      String(text || '')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .split('\n')
+        .map(line => line.replace(/\/\/.*$/, ''))
+        .join('\n');
+
+    const extractViews = (content) => {
+      const cleaned = stripComments(content);
+      const regex = /\bview\s+([A-Za-z_][\w-]*)\b/g;
+      const seen = new Set();
+      const views = [];
+      let match;
+      while ((match = regex.exec(cleaned)) !== null) {
+        const name = match[1];
+        if (name === 'of') continue;
+        if (!seen.has(name)) {
+          seen.add(name);
+          views.push(name);
+        }
+      }
+      if (!views.length) {
+        views.push('index');
+      }
+      views.sort((a, b) => {
+        if (a === 'index') return -1;
+        if (b === 'index') return 1;
+        return a.localeCompare(b);
+      });
+      return views;
+    };
+
+    const updateViewOptions = (content) => {
+      if (!viewSelect) return;
+      const views = extractViews(content);
+      const current = activeView || viewSelect.value;
+      viewSelect.innerHTML = '';
+      views.forEach((view) => {
+        const option = document.createElement('option');
+        option.value = view;
+        option.textContent = view;
+        viewSelect.appendChild(option);
+      });
+      const next = views.includes(current) ? current : views[0];
+      viewSelect.value = next;
+      updateViewContext(next);
+    };
+
     const loadContent = async (editor) => {
       const res = await fetch(`c4${getFileQuery()}`);
       const data = await res.json();
       editor.setValue(data.content || '');
-      if (data.preview_file) {
-        setPreviewSrc(data.preview_file, true);
-      } else {
-        setPreviewSrc(currentPreviewFile, true);
+      updateViewOptions(data.content || '');
+      if (data.bundle_url) {
+        currentBundleUrl = data.bundle_url;
       }
+      setViewerSrc(currentBundleUrl, true);
       setStatus(`Loaded ${getFileLabel()}`);
+      if (data.render_error) {
+        setStatus(`Render error: ${data.render_error}`);
+      }
     };
 
     const sendMetadataToParent = (content, response) => {
@@ -308,11 +407,14 @@
       if (responsePayload && responsePayload.file) {
         updateFileContext(responsePayload.file);
       }
-      setStatus('Saved. Refreshing diagram...', true);
-      if (responsePayload.preview_file) {
-        setPreviewSrc(responsePayload.preview_file, true);
-      } else {
-        reloadDiagram();
+      updateViewOptions(editor.getValue());
+      if (responsePayload.bundle_url) {
+        currentBundleUrl = responsePayload.bundle_url;
+      }
+      setStatus('Saved. Rendering diagram...', true);
+      setViewerSrc(currentBundleUrl, true);
+      if (responsePayload.render_error) {
+        setStatus(`Render error: ${responsePayload.render_error}`);
       }
       sendMetadataToParent(editor.getValue(), responsePayload);
     };
@@ -410,8 +512,12 @@
 
       saveBtn.addEventListener('click', () => saveContent(editor).catch(err => setStatus(err.message)));
       flowBtn.addEventListener('click', () => downloadFlowMatrix().catch(err => setStatus(err.message)));
+      viewSelect.addEventListener('change', () => {
+        updateViewContext(viewSelect.value);
+        setViewerSrc(currentBundleUrl, true);
+      });
       reloadBtn.addEventListener('click', () => {
-        setStatus('Reloading diagram...');
+        setStatus('Reloading viewer...');
         reloadDiagram();
       });
 
