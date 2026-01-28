@@ -29,6 +29,7 @@ if [ "${RUN_MIGRATIONS:-1}" = "1" ]; then
   python "$MANAGE_PY" migrate --noinput
 fi
 
+
 if [ "${COLLECT_STATIC:-1}" = "1" ]; then
   echo "Collecting static..."
   python "$MANAGE_PY" collectstatic --noinput || true
