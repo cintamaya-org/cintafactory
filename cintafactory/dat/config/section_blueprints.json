@@ -1103,14 +1103,112 @@
                 },
                 {
                   "key": "derniere_etude",
-                  "label": "Dernière étude",
+                  "label": "Date d'étude",
                   "type": "date"
                 },
                 {
                   "key": "descriptif",
                   "label": "Descriptif",
+                  "type": "textarea", 
+                  "rows": 2
+                }
+              ]
+            }
+          },
+          {
+            "key": "mesures_traitement_risques",
+            "label": "Mesures de traitement des risques",
+            "type": "repeater",
+            "config": {
+              "columns": [
+                {
+                  "key": "id",
+                  "label": "ID",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "label": "Description",
                   "type": "textarea",
                   "rows": 2
+                },
+                {
+                  "key": "impact_mesure",
+                  "label": "Impact de la mesure",
+                  "type": "text"
+                },
+                {
+                  "key": "statut",
+                  "label": "Statut",
+                  "type": "select",
+                  "choices": [
+                    {
+                      "value": "en_place",
+                      "label": "En place"
+                    },
+                    {
+                      "value": "a_mettre_en_place",
+                      "label": "À mettre en place"
+                    },
+                    {
+                      "value": "en_cours_de_mise_en_place",
+                      "label": "En cours de mise en place"
+                    }
+                  ]
+                },
+                {
+                  "key": "criticite_residuelle",
+                  "label": "Criticité résiduelle",
+                  "type": "select",
+                  "choices": [
+                    {
+                      "value": "nulle",
+                      "label": "Nulle"
+                    },
+                    {
+                      "value": "mineure",
+                      "label": "Mineure"
+                    },
+                    {
+                      "value": "majeure",
+                      "label": "Majeure"
+                    },
+                    {
+                      "value": "critique",
+                      "label": "Critique"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "key": "risques_residuels",
+            "label": "Risques résiduels",
+            "type": "repeater",
+            "config": {
+              "columns": [
+                {
+                  "key": "id",
+                  "label": "ID",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "label": "Description",
+                  "type": "textarea",
+                  "rows": 2
+                },
+                {
+                  "key": "mesure_attenuation",
+                  "label": "Mesure d'atténuation",
+                  "type": "textarea",
+                  "rows": 2
+                },
+                {
+                  "key": "action",
+                  "label": "Action",
+                  "type": "text"
                 }
               ]
             }
