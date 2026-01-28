@@ -14,6 +14,9 @@ fi
 MANAGE_PY="${APP_DIR}/manage.py"
 GUNICORN_CONF="${APP_DIR}/gunicorn.conf.py"
 
+# Assure un import Django correct (cintafactory.*) via CWD
+cd "$APP_DIR"
+
 # Attente Postgres si HOST/PORT fournis
 if [ -n "${DATABASE_HOST:-}" ] && [ -n "${DATABASE_PORT:-}" ]; then
   echo "Attente de Postgres ${DATABASE_HOST}:${DATABASE_PORT} ..."
@@ -35,6 +38,6 @@ if [ "${COLLECT_STATIC:-1}" = "1" ]; then
   python "$MANAGE_PY" collectstatic --noinput || true
 fi
 
-: "${APP_MODULE:=project.wsgi:application}"
+: "${APP_MODULE:=cintafactory.wsgi:application}"
 
 exec gunicorn "$APP_MODULE" --config "$GUNICORN_CONF"
