@@ -1015,6 +1015,7 @@
       {
         "slug": "derogations-pssi",
         "title": "Dérogation(s) à la PSSI",
+        "tooltip":"Détail et justification des dérogations à la PSSI nécessaires",
         "entries": [
           {
             "key": "derogations_pssi",
@@ -1070,6 +1071,7 @@
       {
         "slug": "risques",
         "title": "Risques",
+        "tooltip":"Détail des risques identifiés, des mesures de traitement en place ou à prévoir, et des risques résiduels",
         "entries": [
           {
             "key": "analyse_risques",
@@ -1218,6 +1220,7 @@
       {
         "slug": "plan-traitement-risques",
         "title": "Plan de Traitement des Risques",
+        "tooltip":"Détail du plan de traitement à mettre en place",
         "entries": [
           {
             "key": "plan_traitement_risques",

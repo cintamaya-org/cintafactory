@@ -1,5 +1,5 @@
 from material import Layout, Row, Fieldset
-from material.frontend.views import CreateModelView, DetailModelView, ModelViewSet, UpdateModelView
+from material.frontend.views import CreateModelView, DetailModelView, ListModelView, ModelViewSet, UpdateModelView
 from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -55,6 +55,14 @@ class ModuleAwareCreateView(ModuleContextMixin, CreateModelView):
     pass
 
 
+class ModuleAwareListView(ModuleContextMixin, ListModelView):
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        if context.get("object_list") is None:
+            context["object_list"] = self.get_queryset()
+        return context
+
+
 class ModuleAwareUpdateView(ModuleContextMixin, UpdateModelView):
     pass
 
@@ -98,6 +106,7 @@ class SuperAdminRequiredMixin(LoginRequiredMixin):
 
 
 class BaseSecuredViewSet(SuperAdminRequiredMixin, ModelViewSet):
+    list_view_class = ModuleAwareListView
     def has_view_permission(self, request, obj=None):
         return self._is_super_admin(request)
 
@@ -203,6 +212,7 @@ class UserViewSet(BaseSecuredViewSet):
         "role__technical_direction",
     )
     paginate_by = None
+    list_template_name = "users/user_crud_list.html"
     list_display = (
         "username",
         "email",

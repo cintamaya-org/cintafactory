@@ -190,6 +190,13 @@ class User(AbstractUser):
         blank=True,
     )
 
+    @property
+    def business_direction(self):
+        group = getattr(self, "business_group", None)
+        if group:
+            return group.business_direction
+        return None
+
     def is_role(self, slug: str) -> bool:
         return bool(self.role and self.role.slug == slug)
 
