@@ -6,6 +6,8 @@ from urllib.request import Request, urlopen
 from django.conf import settings
 from django.utils import timezone
 
+from cintafactory.url_safety import is_http_url
+
 logger = logging.getLogger(__name__)
 
 
@@ -17,6 +19,9 @@ def enqueue_likec4_export(storage_path: str, *, source: str | None = None) -> bo
     export_url = getattr(settings, "LIKEC4_EXPORT_URL", "").strip()
     if not export_url:
         logger.warning("LikeC4 export skipped: LIKEC4_EXPORT_URL is not configured.")
+        return False
+    if not is_http_url(export_url):
+        logger.warning("LikeC4 export skipped: LIKEC4_EXPORT_URL must be http(s).")
         return False
 
     payload = {

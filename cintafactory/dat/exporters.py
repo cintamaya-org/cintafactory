@@ -18,6 +18,7 @@ from django.utils.module_loading import import_string
 
 from diagrams.models import DrawIODiagram, LikeC4Diagram, likec4_png_path_for
 from cintafactory.seaweedfs_storage import SeaweedFSStorage
+from cintafactory.url_safety import is_http_url
 
 from .models import (
     DAT,
@@ -514,6 +515,9 @@ class DATExportModelBuilder:
         return True
 
     def _request_likec4_export(self, storage_path: str, *, export_url: str, timeout: int) -> None:
+        if not is_http_url(export_url):
+            logger.warning("PDF export LikeC4: invalid LIKEC4_EXPORT_URL (non-http scheme).")
+            return
         source = self.likec4_export_source or "dat_pdf"
         payload = {
             "storage_path": storage_path,
@@ -816,9 +820,16 @@ class DATExportModelBuilder:
         candidates: list[str] = []
         configured = getattr(settings, "DRAWIO_EXPORT_URL", "").rstrip("/")
         if configured:
-            candidates.append(configured)
+            if is_http_url(configured):
+                candidates.append(configured)
+            else:
+                logger.warning("DRAWIO_EXPORT_URL ignored: non-http(s) scheme.")
         base_url = getattr(settings, "DRAWIO_BASE_URL", "").rstrip("/")
-        fallback = f"{base_url}/export" if base_url else ""
-        if fallback and fallback not in candidates:
-            candidates.append(fallback)
+        if base_url:
+            if is_http_url(base_url):
+                fallback = f"{base_url}/export"
+                if fallback not in candidates:
+                    candidates.append(fallback)
+            else:
+                logger.warning("DRAWIO_BASE_URL ignored: non-http(s) scheme.")
         return candidates

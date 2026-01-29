@@ -12,6 +12,8 @@ from pathlib import Path
 from queue import Queue
 from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple, Union
 
+from .url_safety import is_http_url
+
 
 # ---------------------------------------------------------------------------
 # Context management
@@ -208,14 +210,15 @@ class CriticalNotificationHandler(logging.Handler):
             "logger": record.name,
             "request_id": getattr(record, "request_id", "-"),
         }
-        if not self.webhook_url:
+        webhook_url = self.webhook_url or ""
+        if not is_http_url(webhook_url):
             sys.stderr.write(json.dumps(payload) + "\n")
             return
         try:
             import urllib.request
 
             request = urllib.request.Request(
-                self.webhook_url,
+                webhook_url,
                 data=json.dumps(payload).encode("utf-8"),
                 headers={"Content-Type": "application/json"},
                 method="POST",

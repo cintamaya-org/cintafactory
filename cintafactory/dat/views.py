@@ -34,6 +34,7 @@ from material.frontend.views import CreateModelView, DetailModelView, ListModelV
 
 from diagrams.models import DrawIODiagram
 from diagrams.validation import sanitize_diagram_title
+from cintafactory.url_safety import is_http_url
 
 from .attachments import (
     build_attachment_ui_context,
@@ -2657,6 +2658,9 @@ def _fetch_likec4_flow_matrix(storage_path: str) -> dict | None:
         return None
     base_url = getattr(settings, "LIKEC4_EDITOR_URL", "").strip()
     if not base_url:
+        return None
+    if not is_http_url(base_url):
+        logger.warning("LikeC4 flow-matrix blocked: LIKEC4_EDITOR_URL must be http(s).")
         return None
     try:
         query = urlencode({"file": storage_path})

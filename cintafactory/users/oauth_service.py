@@ -16,6 +16,7 @@ from django.utils.text import slugify
 
 from .models import OAuthAccount
 from .oauth_providers import OAuthProvider
+from cintafactory.url_safety import is_http_url
 
 
 logger = logging.getLogger(__name__)
@@ -141,6 +142,9 @@ def resolve_oauth_user(
 
 def _request_json(url: str, *, headers: dict[str, str] | None = None, data: dict[str, Any] | None = None):
     timeout = getattr(settings, "OAUTH_HTTP_TIMEOUT", 10)
+    if not is_http_url(url):
+        logger.warning("OAuth URL rejected (non-http scheme): %s", url)
+        raise OAuthError("URL du fournisseur OAuth invalide.", details=url)
     req_headers = {"Accept": "application/json"}
     if headers:
         req_headers.update(headers)

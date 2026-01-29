@@ -11,6 +11,8 @@ from django.core.files.base import File
 from django.core.files.storage import Storage
 from django.utils import timezone
 
+from .url_safety import is_http_url
+
 logger = logging.getLogger(__name__)
 
 
@@ -29,8 +31,12 @@ class SeaweedFSStorage(Storage):
         self.timeout = int(timeout or getattr(settings, "SEAWEEDFS_TIMEOUT", 30))
         if not self.base_url:
             raise ValueError("SEAWEEDFS_FILER_URL must be configured to use SeaweedFS storage.")
+        if not is_http_url(self.base_url):
+            raise ValueError("SEAWEEDFS_FILER_URL must be an http(s) URL.")
         if not self.public_url:
             self.public_url = self.base_url
+        if self.public_url and not is_http_url(self.public_url):
+            raise ValueError("SEAWEEDFS_PUBLIC_URL must be an http(s) URL.")
 
     def _build_path(self, name: str) -> str:
         clean_name = name.lstrip("/")

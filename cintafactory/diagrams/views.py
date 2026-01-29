@@ -34,6 +34,7 @@ from .likec4_exports import enqueue_likec4_export
 from .validation import validate_drawio_xml
 from dat.drawio_parser import extract_drawio_pages
 from cintafactory.seaweedfs_storage import SeaweedFSStorage
+from cintafactory.url_safety import is_http_url
 
 
 DRAWIO_DEFAULT_LIBS = "general"
@@ -342,11 +343,18 @@ def _drawio_export_candidates() -> list[str]:
     candidates: list[str] = []
     configured_export = getattr(settings, "DRAWIO_EXPORT_URL", "").rstrip("/")
     if configured_export:
-        candidates.append(configured_export)
+        if is_http_url(configured_export):
+            candidates.append(configured_export)
+        else:
+            logger.warning("DRAWIO_EXPORT_URL ignored: non-http(s) scheme.")
     base_url = getattr(settings, "DRAWIO_BASE_URL", "").rstrip("/")
-    fallback_export = f"{base_url}/export" if base_url else ""
-    if fallback_export and fallback_export not in candidates:
-        candidates.append(fallback_export)
+    if base_url:
+        if is_http_url(base_url):
+            fallback_export = f"{base_url}/export"
+            if fallback_export not in candidates:
+                candidates.append(fallback_export)
+        else:
+            logger.warning("DRAWIO_BASE_URL ignored: non-http(s) scheme.")
     return candidates
 
 
@@ -836,6 +844,9 @@ def drawio_proxy(request, path: str = ""):
     Lightweight reverse proxy to expose the draw.io service over HTTPS.
     """
     upstream_base = settings.DRAWIO_BASE_URL.rstrip("/")
+    if not is_http_url(upstream_base):
+        logger.warning("draw.io proxy blocked: DRAWIO_BASE_URL must be http(s).")
+        raise Http404("draw.io unavailable")
     upstream = upstream_base if not path else f"{upstream_base}/{path.lstrip('/')}"
     query = request.META.get("QUERY_STRING")
     if query:
@@ -875,6 +886,9 @@ def likec4_proxy(request, path: str = ""):
     """
     upstream_base = getattr(settings, "LIKEC4_EDITOR_URL", "").rstrip("/")
     if not upstream_base:
+        raise Http404("LikeC4 editor unavailable.")
+    if not is_http_url(upstream_base):
+        logger.warning("LikeC4 proxy blocked: LIKEC4_EDITOR_URL must be http(s).")
         raise Http404("LikeC4 editor unavailable.")
     upstream = upstream_base if not path else f"{upstream_base}/{path.lstrip('/')}"
     query = request.META.get("QUERY_STRING")
