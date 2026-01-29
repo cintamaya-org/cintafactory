@@ -90,6 +90,8 @@ INSTALLED_APPS = [
     "rest_framework",
     "drf_spectacular",
 
+    "cintafactory.apps.CintaFactoryConfig",
+
     # Your apps
     "diagrams.apps.DiagramsConfig",
     "workflows.apps.WorkflowsConfig",
@@ -113,8 +115,15 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "cintafactory.middleware.RateLimitMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+]
+
+FILE_UPLOAD_HANDLERS = [
+    "cintafactory.upload_handlers.PerFileSizeLimitUploadHandler",
+    "django.core.files.uploadhandler.MemoryFileUploadHandler",
+    "django.core.files.uploadhandler.TemporaryFileUploadHandler",
 ]
 
 STATICFILES_STORAGE = "cintafactory.storage.WhiteNoiseStaticFilesStorage"
