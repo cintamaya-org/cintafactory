@@ -180,6 +180,7 @@ class BusinessGroupViewSet(BaseSecuredViewSet):
         Fieldset("Responsable", Row("responsible")),
     )
 
+
     def user_total(self, obj):
         return obj.member_count
 
