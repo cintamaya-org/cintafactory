@@ -1833,6 +1833,10 @@ class DATDetailView(ModuleContextMixin, DetailModelView):
         return context
 
 
+def dat_crud_detail_unavailable(request, pk):
+    raise Http404("Ce détail n'est plus disponible.")
+
+
 class DATViewSet(BaseSecuredViewSet):
     model = DAT
     queryset = None
@@ -2374,7 +2378,7 @@ class DatImportView(ModuleContextMixin, DatManagerAccessMixin, FormView):
             self.request,
             f"Le DAT « {dat.reference} - {dat.title} » a été importé avec succès.",
         )
-        detail_url = f"/dat/manage/dats/crud/{dat.pk}/detail/"
+        detail_url = reverse("dat:my_detail", args=[dat.pk])
         messages.info(
             self.request,
             format_html('Consulter le <a href="{}">DAT importé</a>.', detail_url),

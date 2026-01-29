@@ -1,5 +1,5 @@
 <tr>
-  <td><a href="/dat/manage/dats/crud/{{ obj.pk }}/detail/">{{ obj.reference }}</a></td>
+  <td><a href="{% url 'dat:my_detail' obj.pk %}">{{ obj.reference }}</a></td>
   <td>{{ obj.title }}</td>
   <td>{{ obj.application|default:"—" }}</td>
   <td>{{ obj.business_direction|default:"—" }}</td>

@@ -97,6 +97,7 @@ urlpatterns = [
 
     # CRUD
     path("manage/dats/", views.DatAdminList.as_view(), name="admin_list"),
+    path("manage/dats/crud/<uuid:pk>/detail/", views.dat_crud_detail_unavailable, name="dat_crud_detail_unavailable"),
     path("manage/dats/crud/", include(views.DATViewSet().urls)),
     path("manage/applications/options/", views.application_options, name="application_options"),
     path("manage/applications/crud/", include(views.ApplicationViewSet().urls)),

@@ -28,10 +28,14 @@ from drf_spectacular.views import (
 from material.frontend import urls as material_urls
 
 from account.views import AccountLogoutView
+from cintafactory.admin_config import load_admin_config
 from users import oauth_views
 
+_admin_cipher = load_admin_config().get("cipher_url", "khtijgdryi")
+
 urlpatterns = [
-    path("admin/", admin.site.urls),      # Django admin
+    path("", RedirectView.as_view(url="/accounts/login", permanent=False)),
+    path(f"{_admin_cipher}/admin/", admin.site.urls),      # Django admin
     path("api/schema/", SpectacularAPIView.as_view(), name="api-schema"),
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="api-schema"), name="api-docs"),
     path("api/redoc/", SpectacularRedocView.as_view(url_name="api-schema"), name="api-redoc"),

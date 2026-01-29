@@ -37,7 +37,7 @@
             {% for obj in object_list %}
               <tr>
                 <td>
-                  <a href="/dat/manage/dats/crud/{{ obj.pk }}/detail/">
+                  <a href="{% url 'dat:my_detail' obj.pk %}">
                     {{ obj.reference }}
                   </a>
                 </td>
@@ -49,7 +49,7 @@
                 <td>{{ obj.created_at|date:"d/m/Y" }} à {{ obj.created_at|time:"H\\hi" }}</td>
                 <td>{{ obj.updated_at|date:"d/m/Y" }} à {{ obj.updated_at|time:"H\\hi" }}</td>
                 <td class="u-nowrap">
-                  <a href="/dat/manage/dats/crud/{{ obj.pk }}/detail/" class="btn-flat waves-effect">Voir</a>
+                  <a href="{% url 'dat:my_detail' obj.pk %}" class="btn-flat waves-effect">Voir</a>
                   <a href="/dat/manage/dats/crud/{{ obj.pk }}/change/" class="btn-flat waves-effect">Modifier</a>
                 </td>
               </tr>
