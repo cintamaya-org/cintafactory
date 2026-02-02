@@ -38,9 +38,14 @@ def user_is_responsible_for_section(dat, section, user, *, participants=None) ->
             allowed_role_ids = set(section.allowed_roles.values_list("pk", flat=True))
         except Exception:
             allowed_role_ids = set()
-        section._allowed_role_ids_cache = allowed_role_ids
+    elif not allowed_role_ids:
+        try:
+            allowed_role_ids = set(section.allowed_roles.values_list("pk", flat=True))
+        except Exception:
+            allowed_role_ids = set()
+    section._allowed_role_ids_cache = allowed_role_ids
     if not allowed_role_ids:
-        return False
+        allowed_role_ids = None
     if participants is None:
         try:
             participants = list(
@@ -50,7 +55,7 @@ def user_is_responsible_for_section(dat, section, user, *, participants=None) ->
             participants = []
     user_id = getattr(user, "id", None)
     for participant in participants:
-        if getattr(participant, "role_id", None) not in allowed_role_ids:
+        if allowed_role_ids is not None and getattr(participant, "role_id", None) not in allowed_role_ids:
             continue
         assignee = getattr(participant, "user", None)
         group = getattr(assignee, "business_group", None) if assignee is not None else None

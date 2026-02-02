@@ -69,7 +69,12 @@ from .models import (
     DATHistoryAction,
 )
 from .pdf import generate_dat_pdf
-from .permissions import filter_dat_queryset_for_user, user_is_dat_admin, user_is_responsible_for_section
+from .permissions import (
+    filter_dat_queryset_for_user,
+    user_can_update_section_status,
+    user_is_dat_admin,
+    user_is_responsible_for_section,
+)
 from .sections import (
     SECTION_STATUS_BLOCKED_VALUE,
     SECTION_STATUS_DEFAULT,
@@ -949,7 +954,7 @@ def build_section_payload(
                 "status_locked": is_locked,
                 "can_update_status": bool(
                     section_status.get("has_status")
-                    and section.can_user_edit(user)
+                    and user_can_update_section_status(dat, section, user)
                     and dat.status not in FINAL_DAT_STATUSES
                 ),
                 "validation_allowed_sections": validation_allowed_sections,
@@ -1033,7 +1038,7 @@ def upload_section_attachment(request, dat_pk: int, section_slug: str):
     if dat.status in FINAL_DAT_STATUSES:
         raise PermissionDenied
     section = get_object_or_404(DATSection, dat=dat, metadata__slug=section_slug)
-    if not section.can_user_edit(request.user):
+    if not user_can_update_section_status(dat, section, request.user):
         raise PermissionDenied
     is_ajax = is_ajax_request(request)
     redirect_url = f"{reverse('dat:my_detail', args=[dat.pk])}?section={section.slug}#section-{section.slug}"
@@ -1201,10 +1206,11 @@ def update_section_status(request, dat_pk: int, section_slug: str):
     if dat.status in FINAL_DAT_STATUSES:
         raise PermissionDenied
     section = get_object_or_404(DATSection, dat=dat, metadata__slug=section_slug)
-    sync_dat_sections_if_needed(dat)
+    if sync_dat_sections_if_needed(dat):
+        section = get_object_or_404(DATSection, dat=dat, metadata__slug=section_slug)
     if not section_has_status(section.slug):
         raise Http404("Section sans statut.")
-    if not section.can_user_edit(request.user):
+    if not user_can_update_section_status(dat, section, request.user):
         raise PermissionDenied
     status_map, status_choices = build_section_status_map(dat)
     current_info = status_map.get(section.slug, {})
@@ -1244,8 +1250,10 @@ def update_section_status(request, dat_pk: int, section_slug: str):
     confirm_reset = request.POST.get("confirm_responsable_reset") == "1"
     current_row_for_section = existing_row_map.get(section.slug, {})
     current_responsable_value = current_row_for_section.get("statut_responsable") or default_status
-    reserve_message = str(current_row_for_section.get("reserve_message") or "").strip()
-    reserve_by_id = current_row_for_section.get("reserve_by_id")
+    target_reserve_message = str(current_row_for_section.get("reserve_message") or "").strip()
+    target_reserve_by_id = current_row_for_section.get("reserve_by_id")
+    reserve_message = target_reserve_message
+    reserve_by_id = target_reserve_by_id
     if (
         current_info.get("value") == validated_value
         and new_status != validated_value
@@ -1294,9 +1302,9 @@ def update_section_status(request, dat_pk: int, section_slug: str):
     status_part.update_value(updated_rows)
     target_label = status_choices.get(new_status, new_status)
     refresh_dat_status(dat, actor=request.user, force_in_progress=True)
-    if new_status == validated_value and reserve_message and reserve_by_id:
-        if reserve_by_id != getattr(request.user, "id", None):
-            reserve_user = get_user_model().objects.filter(pk=reserve_by_id).first()
+    if new_status == validated_value and target_reserve_message and target_reserve_by_id:
+        if target_reserve_by_id != getattr(request.user, "id", None):
+            reserve_user = get_user_model().objects.filter(pk=target_reserve_by_id).first()
             if reserve_user:
                 validator_display = format_user_display(request.user)
                 target_url = f"{reverse('dat:my_detail', args=[dat.pk])}?section={section.slug}#section-{section.slug}"
@@ -1305,7 +1313,7 @@ def update_section_status(request, dat_pk: int, section_slug: str):
                     title="Réserve à lever",
                     message=(
                         f"{validator_display} a validé la section « {section.title} ».\n\n"
-                        f"Message de réserve : {reserve_message}\n\n"
+                        f"Message de réserve : {target_reserve_message}\n\n"
                         "Vous pouvez lever la réserve si tout est conforme."
                     ),
                     level="info",
@@ -1316,7 +1324,7 @@ def update_section_status(request, dat_pk: int, section_slug: str):
                     extra_data={
                         "section_slug": section.slug,
                         "section_title": section.title,
-                        "reserve_message": reserve_message,
+                        "reserve_message": target_reserve_message,
                     },
                 )
     messages.success(request, f"Statut mis à jour : {target_label}.")
@@ -1663,12 +1671,12 @@ def clear_section_reserve(request, dat_pk: int, section_slug: str):
 
 @login_required
 @require_POST
-def submit_validation_decision(request, dat_pk: int):
+def submit_validation_decision(request, pk: int):
     base_queryset = filter_dat_queryset_for_user(
         DAT.objects.select_related("application", "owner").prefetch_related("participants__role"),
         request.user,
     )
-    dat = get_object_or_404(base_queryset, pk=dat_pk)
+    dat = get_object_or_404(base_queryset, pk=pk)
     if dat.status != DATStatus.EN_ATTENTE_DE_REVUE:
         messages.error(request, "Ce DAT n'est pas en attente de revue.")
         return redirect(reverse("dat:my_detail", args=[dat.pk]))
@@ -1791,8 +1799,12 @@ class DATUpdateView(ModuleContextMixin, UpdateModelView):
         return kwargs
 
 
-class DATDetailView(ModuleContextMixin, DetailModelView):
+class DATDetailView(LoginRequiredMixin, ModuleContextMixin, DetailModelView):
+    model = DAT
     template_name = "dat/dat_detail.html"
+
+    def has_view_permission(self, request, obj=None):
+        return bool(getattr(request.user, "is_authenticated", False))
 
     def get_queryset(self):
         base_queryset = (
@@ -1834,7 +1846,7 @@ class DATDetailView(ModuleContextMixin, DetailModelView):
 
 
 def dat_crud_detail_unavailable(request, pk):
-    raise Http404("Ce détail n'est plus disponible.")
+    return DATDetailView.as_view()(request, pk=pk)
 
 
 class DATViewSet(BaseSecuredViewSet):

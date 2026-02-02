@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import traceback
-from threading import Thread
+from threading import Thread, current_thread, main_thread
 
 from django.db import close_old_connections
 from django.urls import reverse
@@ -50,7 +50,8 @@ def schedule_dat_pdf_generation(dat: DAT, user, *, base_url: str | None = None) 
 
 
 def _run_pdf_generation(dat_id: int, base_url: str | None):
-    close_old_connections()
+    if current_thread() is not main_thread():
+        close_old_connections()
     try:
         dat = (
             DAT.objects.select_related("application", "owner")
@@ -83,7 +84,8 @@ def _run_pdf_generation(dat_id: int, base_url: str | None):
         logger.exception("Erreur lors de la génération PDF du DAT %s", dat_id)
     finally:
         _mark_export_finished(dat_id)
-        close_old_connections()
+        if current_thread() is not main_thread():
+            close_old_connections()
 
 
 def _mark_export_finished(dat_id: int):

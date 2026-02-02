@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from django.contrib.auth import get_user_model
-from django.test import Client, TestCase
+from django.test import Client, RequestFactory, TestCase
 from django.urls import reverse
 
 from dat.models import Application, DAT, DATParticipant, DATStatus, DATHistory, DATHistoryAction
 from users.models import BusinessDirection, Role, TechnicalDirection
 from .models import HistoryNotificationSeen, NotificationMessage, NotificationType, Workflow, UserNotification
+from .notifications import get_unread_notification_count, mark_all_notifications_as_seen, mark_notifications_as_seen
 from .sync import sync_workflow_definitions
 
 
@@ -98,7 +99,7 @@ class WorkflowBoardViewTests(TestCase):
         self.assertEqual(initial_column["status_codes"], [DATStatus.NOUVELLE_DEMANDE])
         self.assertEqual(len(initial_column["items"]), 1)
         self.assertContains(response, "DAT-001")
-        self.assertContains(response, "En cours")
+        self.assertContains(response, "Projets en cours")
 
         in_progress_column = columns[1]
         in_progress_statuses = set(in_progress_column["status_codes"])
@@ -323,10 +324,12 @@ def get_default_technical_direction():
 def create_role(slug: str, name: str) -> Role:
     direction = get_default_technical_direction()
     role, _ = Role.objects.get_or_create(
-        name=name,
-        defaults={"slug": slug, "technical_direction": direction},
+        slug=slug,
+        defaults={"name": name, "technical_direction": direction},
     )
     updates = {}
+    if role.name != name:
+        updates["name"] = name
     if role.slug != slug:
         updates["slug"] = slug
     if role.technical_direction_id != direction.id:
@@ -335,3 +338,65 @@ def create_role(slug: str, name: str) -> Role:
         Role.objects.filter(pk=role.pk).update(**updates)
         role.refresh_from_db()
     return role
+
+
+class NotificationHelpersTests(TestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.user = get_user_model().objects.create_user(username="notif-helper", password="pwd")
+        direction = get_default_business_direction()
+        self.application = Application.objects.create(
+            code="notif-helper-app",
+            name="Notification Helper App",
+            business_direction=direction,
+        )
+        self.dat = DAT.objects.create(
+            reference="DAT-NOTIF-HELPER",
+            title="Notifications",
+            application=self.application,
+            status=DATStatus.NOUVELLE_DEMANDE,
+            owner=self.user,
+        )
+        DATHistory.objects.filter(dat=self.dat).delete()
+        self.history = DATHistory.objects.create(
+            dat=self.dat,
+            action=DATHistoryAction.CREATED,
+            performed_by=self.user,
+            performed_by_display="Notif Helper",
+            details={},
+        )
+        self.user_notification = UserNotification.objects.create(
+            user=self.user,
+            notification_type=NotificationType.objects.create(title="Notice", level=NotificationType.LEVEL_INFO),
+            notification_message=NotificationMessage.objects.create(content="Message"),
+            dat=self.dat,
+            target_url="/dat/1/",
+        )
+
+    def _request(self):
+        request = self.factory.get("/workflows/notifications")
+        request.user = self.user
+        return request
+
+    def test_get_unread_notification_count_with_limit(self):
+        request = self._request()
+        self.assertEqual(get_unread_notification_count(request, limit=10), 2)
+        HistoryNotificationSeen.objects.create(user=self.user, history=self.history)
+        self.user_notification.viewed_at = self.user_notification.created_at
+        self.user_notification.save(update_fields=["viewed_at"])
+        self.assertEqual(get_unread_notification_count(request, limit=10), 0)
+
+    def test_mark_notifications_as_seen(self):
+        request = self._request()
+        mark_notifications_as_seen(request, [self.history.id, "bad-id"])
+        self.assertTrue(
+            HistoryNotificationSeen.objects.filter(user=self.user, history=self.history).exists()
+        )
+
+    def test_mark_all_notifications_as_seen(self):
+        mark_all_notifications_as_seen(self.user)
+        self.assertTrue(
+            HistoryNotificationSeen.objects.filter(user=self.user, history=self.history).exists()
+        )
+        self.user_notification.refresh_from_db()
+        self.assertIsNotNone(self.user_notification.viewed_at)

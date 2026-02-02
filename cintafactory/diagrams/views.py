@@ -1008,6 +1008,17 @@ def diagram_import_xml(request, pk: int):
             base_context["user_id"],
         )
         return JsonResponse({"ok": False, "error": "missing_file"}, status=400)
+    content_type = str(getattr(uploaded_file, "content_type", "") or "")
+    file_name = str(getattr(uploaded_file, "name", "") or "")
+    if content_type == "image/svg+xml" or file_name.lower().endswith(".svg"):
+        logger.warning(
+            "diagram_import_xml: invalid payload type diagram_id=%s user_id=%s filename=%s content_type=%s",
+            base_context["diagram_id"],
+            base_context["user_id"],
+            file_name,
+            content_type,
+        )
+        return JsonResponse({"ok": False, "error": "invalid_diagram"}, status=400)
     log_context = _build_import_log_context(request, diagram, uploaded_file)
     logger.info(
         "diagram_import_xml: file received diagram_id=%s user_id=%s filename=%s size=%s content_type=%s",

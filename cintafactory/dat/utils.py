@@ -32,7 +32,7 @@ def serialize_user(user) -> Dict[str, Any] | None:
     username = user.get_username() if hasattr(user, "get_username") else ""
     full_name = user.get_full_name() if hasattr(user, "get_full_name") else ""
     return {
-        "id": getattr(user, "pk", None),
+        "id": str(getattr(user, "pk", "")) if getattr(user, "pk", None) is not None else None,
         "username": username,
         "full_name": full_name or "",
         "email": getattr(user, "email", "") or "",
@@ -44,7 +44,7 @@ def serialize_role(role) -> Dict[str, Any] | None:
     if role is None:
         return None
     return {
-        "id": getattr(role, "pk", None),
+        "id": str(getattr(role, "pk", "")) if getattr(role, "pk", None) is not None else None,
         "slug": getattr(role, "slug", None),
         "name": getattr(role, "name", None),
     }

@@ -408,6 +408,12 @@ def dat_sections_need_sync(dat) -> bool:
         blueprint = SECTION_BLUEPRINT_MAP.get(section.slug)
         if not blueprint:
             continue
+        expected_title = blueprint.get("title", "")
+        expected_description = blueprint.get("description", "")
+        if section.title != expected_title:
+            return True
+        if section.description != expected_description:
+            return True
         blueprint_parts = blueprint.get("parts", ())
         if not blueprint_parts:
             continue

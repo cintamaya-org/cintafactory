@@ -65,6 +65,9 @@ Once created, you can log in to the Django admin panel:
 | View logs                               | `docker compose -f docker-compose.dev.yml logs -f`                                           |
 | Access a shell inside the web container | `docker compose -f docker-compose.dev.yml exec web bash`                                     |
 | Apply migrations manually               | `docker compose -f docker-compose.dev.yml exec web python manage.py migrate`                 |
+| Run tests and save output to file       | `docker compose -f docker-compose.dev.yml exec -T web python manage.py test \| tee "params_dev/test_output_$(date +%Y%m%d_%H%M%S).log"` |
+| Run tests with verbose output to file   | `sudo bash -lc 'docker compose -f docker-compose.dev.yml exec -T web python manage.py test -v 2 2>&1 | tee "params_dev/test_output_$(date +%Y%m%d_%H%M%S).log"'
+ |
 
 
 docker compose -f docker-compose.dev.yml exec web python manage.py migrate

@@ -9,12 +9,6 @@ from django.utils.translation import gettext_lazy as _
 CONTROL_CHARACTERS_RE = re.compile(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]")
 DISALLOWED_DIAGRAM_CHARS_RE = re.compile(r"[<>[\]{}]")
 
-# Disabled
-DRAWIO_FORBIDDEN_XML_PATTERN = re.compile(r"<!\s*(DOCTYPE|ENTITY)", re.IGNORECASE)
-DRAWIO_FORBIDDEN_TAG_PATTERN = re.compile(r"<\s*(script|iframe|object|embed)\b", re.IGNORECASE)
-ROOT_TAG_PATTERN = re.compile(r"<\s*([a-zA-Z0-9:_-]+)")
-DRAWIO_ALLOWED_ROOT_TAGS = {"mxGraphModel", "mxfile"}
-
 
 def sanitize_diagram_title(value: str | None) -> str:
     """
@@ -51,28 +45,5 @@ def validate_drawio_xml(xml_payload: str | None) -> str:
     content = xml_payload.strip()
     if not content:
         raise ValidationError(_("Le fichier diagramme est vide ou invalide."))
-
-    # if DRAWIO_FORBIDDEN_XML_PATTERN.search(content):
-    #     raise ValidationError(_("Les définitions DOCTYPE ou ENTITY sont interdites dans les diagrammes importés."))
-    # forbidden_tag = DRAWIO_FORBIDDEN_TAG_PATTERN.search(content)
-    # if forbidden_tag:
-    #     tag_name = (forbidden_tag.group(1) or "").lower()
-    #     tag_label = tag_name or "inconnue"
-    #     start = forbidden_tag.start()
-    #     end = content.find(">", start)
-    #     raw_tag = content[start : end + 1] if end != -1 else content[start : start + 120]
-    #     raw_tag = raw_tag.strip()
-    #     raise ValidationError(
-    #         _("Le fichier contient des balises non autorisées (%(tag)s)."),
-    #         code="forbidden_tag",
-    #         params={"tag": tag_label, "raw_tag": raw_tag},
-    #     )
-
-    # match = ROOT_TAG_PATTERN.search(content)
-    # if not match:
-    #     raise ValidationError(_("Impossible de déterminer le type du diagramme importé."))
-    # root_tag = match.group(1)
-    # if root_tag not in DRAWIO_ALLOWED_ROOT_TAGS:
-    #     raise ValidationError(_("Seuls les fichiers Draw.io (.drawio/.xml) sont acceptés."))
 
     return content

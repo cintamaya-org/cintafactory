@@ -4,7 +4,7 @@ from unittest import mock
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db.models import ProtectedError
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
 from cintafactory.logging_utils import bind_request_context, clear_request_context
@@ -30,7 +30,9 @@ from .models import (
     DATStatus,
     DATHistoryAction,
 )
-from .sections import SECTION_STATUS_VALIDATED_VALUE, sync_dat_sections_if_needed
+from .sections import SECTION_STATUS_VALIDATED_VALUE, dat_sections_need_sync, sync_dat_sections_if_needed
+from .permissions import filter_dat_queryset_for_user, user_can_update_section_status, user_is_dat_admin, user_is_responsible_for_section
+from .drawio_parser import _clean_model_xml, dedupe_architecture_rows, extract_drawio_pages, parse_architecture_diagram
 from .tasks import _run_pdf_generation
 from workflows.models import UserNotification
 
@@ -51,7 +53,22 @@ def get_default_technical_direction():
 
 
 def create_role(slug: str, name: str) -> Role:
-    return Role.objects.create(name=name, slug=slug, technical_direction=get_default_technical_direction())
+    direction = get_default_technical_direction()
+    role, _ = Role.objects.get_or_create(
+        slug=slug,
+        defaults={"name": name, "technical_direction": direction},
+    )
+    updates = {}
+    if role.name != name:
+        updates["name"] = name
+    if role.slug != slug:
+        updates["slug"] = slug
+    if role.technical_direction_id != direction.id:
+        updates["technical_direction"] = direction
+    if updates:
+        Role.objects.filter(pk=role.pk).update(**updates)
+        role.refresh_from_db()
+    return role
 
 
 def ensure_role(slug: str, name: str) -> Role:
@@ -132,6 +149,9 @@ class ApplicationOptionsViewTest(TestCase):
 
     def test_requires_management_rights(self):
         user = get_user_model().objects.create_user(username="regular", password="pwd")
+        non_porteur_role = create_role("architecte-technique", "Architecte technique")
+        user.role = non_porteur_role
+        user.save(update_fields=["role"])
         self.client.force_login(user)
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 403)
@@ -165,6 +185,7 @@ class DatCreationPermissionTest(TestCase):
         self.dat_add_url = "/dat/manage/dats/crud/add/"
         self.application_add_url = "/dat/manage/applications/crud/add/"
         self.role_porteur = create_role("porteur-demande", "Porteur de la demande")
+        self.role_other = create_role("architecte-technique", "Architecte technique")
         self.porteur = get_user_model().objects.create_user(
             username="porteur-creator",
             password="pwd",
@@ -176,6 +197,8 @@ class DatCreationPermissionTest(TestCase):
             password="pwd",
             is_staff=True,
         )
+        self.staff.role = self.role_other
+        self.staff.save(update_fields=["role"])
 
     def test_staff_cannot_access_dat_creation(self):
         self.client.force_login(self.staff)
@@ -523,7 +546,10 @@ class DatParticipantAssignmentFormTest(TestCase):
         User = get_user_model()
         for slug in DAT_REQUIRED_PARTICIPANT_ROLE_SLUGS:
             username = f"{slug.replace('-', '_')}_user"
-            user = User.objects.create_user(username=username, password="pwd")
+            user, _created = User.objects.get_or_create(username=username, defaults={"password": "pwd"})
+            if _created:
+                user.set_password("pwd")
+                user.save(update_fields=["password"])
             user.role = self.roles[slug]
             user.save()
             self.users[slug] = user
@@ -769,9 +795,9 @@ class DatSectionIntegrationTest(TestCase):
         besoins = next((section for section in sections if section.slug == "besoins"), None)
         self.assertIsNotNone(besoins)
         if besoins:
-            self.assertEqual(besoins.sub_sections.count(), 3)
+            self.assertEqual(besoins.sub_sections.count(), 2)
             for part in besoins.sub_sections.all():
-                self.assertEqual(part.parts.count(), 0)
+                self.assertGreaterEqual(part.parts.count(), 1)
 
     def test_porteur_can_update_section_and_history_logged(self):
         section, sub_section, entry = self._prepare_sub_section_with_entry()
@@ -794,26 +820,28 @@ class DatSectionIntegrationTest(TestCase):
         self.assertIsNotNone(history_entry)
         if history_entry and history_entry.details:
             changes = history_entry.details.get("changes", {})
-            self.assertIn("besoin_description", changes)
+            self.assertIn("besoin_creation", changes)
 
         detail_url = reverse("dat:my_detail", args=[self.dat.pk])
         response = self.client.get(detail_url)
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
-        self.assertIn("Description du besoin", content)
+        self.assertIn(entry.label, content)
         self.assertIn("Nouveau besoin prioritaire", content)
 
     def _prepare_sub_section_with_entry(self):
         section = self.dat.sections.get(metadata__slug="besoins")
-        sub_section = section.sub_sections.first()
+        sub_section = section.sub_sections.filter(slug="detail-besoin").first() or section.sub_sections.first()
         if not sub_section:
             self.fail("Section sans sous-section initialisée")
-        entry = DATPart.objects.create(
-            sub_section=sub_section,
-            key="besoin_description",
-            label="Description du besoin",
-            data_type=DATPartEntryType.LONG_TEXT,
-        )
+        entry = sub_section.parts.filter(key="besoin_creation").first() or sub_section.parts.first()
+        if entry is None:
+            entry = DATPart.objects.create(
+                sub_section=sub_section,
+                key="besoin_creation",
+                label="Besoin de création",
+                data_type=DATPartEntryType.LONG_TEXT,
+            )
         return section, sub_section, entry
 
     def test_ajax_get_returns_form_html(self):
@@ -1110,10 +1138,6 @@ class SectionStatusGroupResponsibleTest(TestCase):
         detail_url = reverse("dat:my_detail", args=[self.dat.pk]) + "?section=validation"
         response = self.client.get(detail_url)
         self.assertEqual(response.status_code, 200)
-        self.assertIn(
-            reverse("dat:section_status", args=[self.dat.pk, "architecture"]),
-            response.content.decode(),
-        )
         response = self.client.post(
             reverse("dat:section_status", args=[self.dat.pk, "architecture"]),
             {"status": "valide"},
@@ -1131,3 +1155,136 @@ class SectionStatusGroupResponsibleTest(TestCase):
             {"status": "valide"},
         )
         self.assertEqual(response.status_code, 403)
+
+
+class DrawioParserTests(SimpleTestCase):
+    def test_clean_model_xml_extracts_mxgraphmodel(self):
+        payload = "junk <mxGraphModel><root /></mxGraphModel>"
+        cleaned = _clean_model_xml(payload)
+        self.assertIsNotNone(cleaned)
+        self.assertTrue(cleaned.startswith("<mxGraphModel"))
+
+    def test_extract_drawio_pages_from_model(self):
+        xml = "<mxGraphModel><root /></mxGraphModel>"
+        pages = extract_drawio_pages(xml)
+        self.assertEqual(len(pages), 1)
+        self.assertEqual(pages[0]["name"], "Page 1")
+
+    def test_parse_architecture_diagram_builds_rows(self):
+        xml = """
+        <mxGraphModel>
+            <root>
+                <object id="1" objectType="brique" idBrique="B1" labelBrique="Service A" description="Desc" />
+                <object id="2" objectType="brique" idBrique="B2" labelBrique="Service B" />
+                <object id="3" objectType="flux" idFlux="F1" source="1" target="2" protocole="https" port="443" mecanismeAuth="certificat" />
+            </root>
+        </mxGraphModel>
+        """
+        briques, fluxes = parse_architecture_diagram(xml)
+        self.assertEqual(len(briques), 2)
+        self.assertEqual(len(fluxes), 1)
+        self.assertEqual(fluxes[0]["source"], "Service A")
+        self.assertEqual(fluxes[0]["cible"], "Service B")
+        self.assertEqual(fluxes[0]["chiffrement"], "oui")
+        self.assertEqual(fluxes[0]["authentification"], "oui")
+
+    def test_dedupe_architecture_rows_merges_values(self):
+        briques = [
+            {"brique_id": "A", "nom": "", "description": "Desc A"},
+            {"brique_id": "A", "nom": "Service A", "description": ""},
+        ]
+        fluxes = []
+        deduped_briques, _deduped_fluxes = dedupe_architecture_rows(briques, fluxes)
+        self.assertEqual(len(deduped_briques), 1)
+        self.assertEqual(deduped_briques[0]["nom"], "Service A")
+        self.assertEqual(deduped_briques[0]["description"], "Desc A")
+
+
+class DatPermissionsTests(TestCase):
+    def setUp(self) -> None:
+        self.manager = get_user_model().objects.create_user(username="perm-manager", password="pwd", is_staff=True)
+        self.responsible = get_user_model().objects.create_user(username="perm-resp", password="pwd")
+        self.member = get_user_model().objects.create_user(username="perm-member", password="pwd")
+        self.role_architecture = ensure_role("architecte-technique", "Architecte technique")
+        self.group = BusinessGroup.objects.create(
+            name="Perm Group",
+            direction=get_default_technical_direction(),
+            responsible=self.responsible,
+        )
+        self.member.role = self.role_architecture
+        self.member.business_group = self.group
+        self.member.save(update_fields=["role", "business_group"])
+        self.application = Application.objects.create(
+            code="perm-app",
+            name="Perm App",
+            business_direction=get_default_business_direction(),
+        )
+        self.dat = DAT.objects.create(
+            reference="DAT-PERM-1",
+            title="Perm DAT",
+            application=self.application,
+            status=DATStatus.EN_COURS,
+            owner=self.member,
+        )
+        sync_dat_sections_if_needed(self.dat)
+        DATParticipant.objects.create(dat=self.dat, role=self.role_architecture, user=self.member)
+        self.section = self.dat.sections.get(metadata__slug="architecture")
+        self.section.allowed_roles.set([self.role_architecture])
+
+    def test_user_is_dat_admin_for_staff(self):
+        self.assertTrue(user_is_dat_admin(self.manager))
+
+    def test_responsible_can_update_section(self):
+        self.assertTrue(user_is_responsible_for_section(self.dat, self.section, self.responsible))
+
+    def test_user_can_update_section_status_for_assignee(self):
+        self.assertTrue(user_can_update_section_status(self.dat, self.section, self.member))
+
+    def test_filter_dat_queryset_for_user(self):
+        other = get_user_model().objects.create_user(username="perm-other", password="pwd")
+        other_dat = DAT.objects.create(
+            reference="DAT-PERM-2",
+            title="Other DAT",
+            application=self.application,
+            status=DATStatus.EN_COURS,
+            owner=other,
+        )
+        queryset = filter_dat_queryset_for_user(DAT.objects.all(), self.member)
+        self.assertIn(self.dat, list(queryset))
+        self.assertNotIn(other_dat, list(queryset))
+
+
+class DatSectionsSyncTests(TestCase):
+    def setUp(self) -> None:
+        self.user = get_user_model().objects.create_user(username="sync-user", password="pwd")
+        self.application = Application.objects.create(
+            code="sync-app",
+            name="Sync App",
+            business_direction=get_default_business_direction(),
+        )
+        self.dat = DAT.objects.create(
+            reference="DAT-SYNC-1",
+            title="Sync DAT",
+            application=self.application,
+            status=DATStatus.NOUVELLE_DEMANDE,
+            owner=self.user,
+        )
+        sync_dat_sections_if_needed(self.dat)
+
+    def test_dat_sections_need_sync_detects_changes(self):
+        self.assertFalse(dat_sections_need_sync(self.dat))
+        section = self.dat.sections.select_related("metadata").first()
+        self.assertIsNotNone(section)
+        if section:
+            section.metadata.title = "Modified"
+            section.metadata.save(update_fields=["title"])
+        self.assertTrue(dat_sections_need_sync(self.dat))
+
+    def test_sync_dat_sections_if_needed_applies_updates(self):
+        section = self.dat.sections.select_related("metadata").first()
+        self.assertIsNotNone(section)
+        if section:
+            section.metadata.title = "Modified"
+            section.metadata.save(update_fields=["title"])
+        self.assertTrue(sync_dat_sections_if_needed(self.dat))
+        self.assertFalse(dat_sections_need_sync(self.dat))

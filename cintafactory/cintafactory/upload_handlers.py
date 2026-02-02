@@ -48,3 +48,7 @@ class PerFileSizeLimitUploadHandler(FileUploadHandler):
         if self.max_size_bytes and self._current_size > self.max_size_bytes:
             raise RequestDataTooBig("Uploaded file exceeds the maximum allowed size.")
         return raw_data
+
+    def file_complete(self, file_size):  # type: ignore[override]
+        # Defer file handling to the next upload handlers.
+        return None

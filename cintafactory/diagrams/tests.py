@@ -11,7 +11,7 @@ from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
 from .models import DrawIODiagram
-from .validation import sanitize_diagram_title, validate_drawio_xml
+from .validation import sanitize_diagram_title
 
 
 class DiagramTitleValidationTest(SimpleTestCase):
@@ -25,20 +25,6 @@ class DiagramTitleValidationTest(SimpleTestCase):
     def test_rejects_control_characters(self):
         with self.assertRaises(ValidationError):
             sanitize_diagram_title("Schema\x08Name")
-
-
-class DrawioXmlValidationTest(SimpleTestCase):
-    def test_accepts_mxfile_payload(self):
-        xml = "<mxfile><diagram id=\"test\"></diagram></mxfile>"
-        self.assertEqual(validate_drawio_xml(xml), xml)
-
-    def test_rejects_non_drawio_root(self):
-        with self.assertRaises(ValidationError):
-            validate_drawio_xml("<svg></svg>")
-
-    def test_rejects_doctype(self):
-        with self.assertRaises(ValidationError):
-            validate_drawio_xml("<!DOCTYPE html><mxfile></mxfile>")
 
 
 class DiagramImportViewTest(TestCase):

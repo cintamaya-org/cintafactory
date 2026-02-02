@@ -267,6 +267,16 @@ class DATForm(forms.ModelForm):
         porteur_field_name = self._participant_field_names.get(DAT_PORTEUR_ROLE_SLUG)
         if porteur_field_name and DAT_PORTEUR_ROLE_SLUG not in self._roles_without_users:
             porteur_value = cleaned_data.get(porteur_field_name)
+            if porteur_field_name in self.data:
+                raw_value = self.data.get(porteur_field_name)
+                if raw_value not in (None, ""):
+                    try:
+                        selected = self.fields[porteur_field_name].queryset.get(pk=raw_value)
+                        if porteur_value is None or getattr(porteur_value, "pk", None) != selected.pk:
+                            porteur_value = selected
+                            cleaned_data[porteur_field_name] = selected
+                    except Exception:
+                        pass
             if porteur_value is None:
                 if self.instance.pk and self.instance.owner_id:
                     cleaned_data[porteur_field_name] = self.instance.owner

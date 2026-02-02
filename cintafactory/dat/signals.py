@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, Optional, Tuple
 
 from django.contrib.auth import get_user_model
@@ -91,14 +92,21 @@ def _create_history_entry(
     details: Optional[Dict[str, Any]] = None,
 ) -> None:
     payload = details or None
-    DATHistory.objects.create(
-        dat=instance,
-        action=action,
-        performed_by=actor if actor is not None else None,
-        performed_by_id=None if actor is not None else actor_id,
-        performed_by_display=actor_display or "",
-        details=payload,
-    )
+    if payload is not None:
+        try:
+            payload = json.loads(json.dumps(payload, ensure_ascii=False, default=str))
+        except (TypeError, ValueError):
+            payload = {"value": str(payload)}
+    kwargs = {
+        "dat": instance,
+        "action": action,
+        "performed_by": actor if actor is not None else None,
+        "performed_by_display": actor_display or "",
+        "details": payload,
+    }
+    if actor is None and actor_id is not None:
+        kwargs["performed_by_id"] = actor_id
+    DATHistory.objects.create(**kwargs)
 
 
 @receiver(pre_save, sender=DAT)

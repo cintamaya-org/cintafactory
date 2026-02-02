@@ -71,6 +71,9 @@ class DATExportModelBuilder:
     def __init__(self):
         self._participant_role_map: Dict[str, Any] = {}
 
+    def _serialize_id(self, value):
+        return str(value) if value is not None else None
+
     def build(self, dat: DAT) -> Dict[str, Any]:
         sync_dat_sections_if_needed(dat)
         self._participant_role_map = self._build_participant_map(dat)
@@ -88,7 +91,7 @@ class DATExportModelBuilder:
 
     def build_dat_metadata(self, dat: DAT) -> Dict[str, Any]:
         return {
-            "id": dat.pk,
+            "id": self._serialize_id(dat.pk),
             "reference": dat.reference,
             "title": dat.title,
             "description": dat.description,
@@ -105,7 +108,7 @@ class DATExportModelBuilder:
         if application is None:
             return None
         return {
-            "id": application.pk,
+            "id": self._serialize_id(application.pk),
             "code": application.code,
             "name": application.name,
             "description": application.description,
@@ -126,7 +129,7 @@ class DATExportModelBuilder:
             role = getattr(participant, "role", None)
             participants.append(
                 {
-                    "id": participant.pk,
+                    "id": self._serialize_id(participant.pk),
                     "user": serialize_user(user),
                     "role": serialize_role(role),
                     "user_display": format_user_display(user),
@@ -155,7 +158,7 @@ class DATExportModelBuilder:
                 )
                 sub_sections.append(
                     {
-                        "id": sub_section.pk,
+                        "id": self._serialize_id(sub_section.pk),
                         "slug": sub_section.slug,
                         "title": sub_section.title,
                         "description": sub_section.description,
@@ -166,7 +169,7 @@ class DATExportModelBuilder:
                 )
             sections.append(
                 {
-                    "id": section.pk,
+                    "id": self._serialize_id(section.pk),
                     "slug": section.slug,
                     "title": section.title,
                     "description": section.description,
@@ -191,7 +194,7 @@ class DATExportModelBuilder:
                 display_value = self._attach_repeater_diagram_previews(part, display_value)
                 diagram_previews = self._collect_diagram_previews(display_value)
             payload = {
-                "id": part.pk,
+                "id": self._serialize_id(part.pk),
                 "key": part.key,
                 "label": part.label,
                 "data_type": part.data_type,
@@ -228,7 +231,7 @@ class DATExportModelBuilder:
                     "role": serialize_role(role),
                     "user": serialize_user(user),
                     "user_display": format_user_display(user),
-                    "participant_id": getattr(participant, "pk", None),
+                    "participant_id": self._serialize_id(getattr(participant, "pk", None)),
                 }
             )
         if entries:

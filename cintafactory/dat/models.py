@@ -783,15 +783,29 @@ class DATPartPayload(models.Model):
         if value is None:
             return "null"
         try:
-            return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-        except TypeError:
+            return json.dumps(
+                value,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                default=str,
+            )
+        except (TypeError, ValueError):
             return json.dumps(str(value), ensure_ascii=False)
+
+    @staticmethod
+    def _coerce_json_value(value):
+        try:
+            return json.loads(json.dumps(value, ensure_ascii=False, default=str))
+        except (TypeError, ValueError):
+            return str(value)
 
     @classmethod
     def get_or_create_for_value(cls, value):
         if value in (None, "", [], {}, ()):
             return None
-        normalized = cls._normalize_for_hash(value)
+        safe_value = cls._coerce_json_value(value)
+        normalized = cls._normalize_for_hash(safe_value)
         payload_hash = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
-        obj, _ = cls.objects.get_or_create(hash=payload_hash, defaults={"data": value})
+        obj, _ = cls.objects.get_or_create(hash=payload_hash, defaults={"data": safe_value})
         return obj
