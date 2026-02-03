@@ -8,6 +8,7 @@ from urllib.error import HTTPError
 
 from django.conf import settings
 from django.core.cache import cache
+from django.core.exceptions import RequestDataTooBig
 from django.http import HttpResponse
 from django.test import RequestFactory, SimpleTestCase, override_settings
 
@@ -18,6 +19,7 @@ from .middleware import (
     RateLimitMiddleware,
 )
 from .seaweedfs_storage import SeaweedFSStorage
+from .upload_handlers import PerFileSizeLimitUploadHandler
 
 
 class ConfigFileTests(SimpleTestCase):
@@ -95,6 +97,34 @@ class UrlSafetyTests(SimpleTestCase):
         self.assertFalse(url_safety.is_http_url(""))
         self.assertFalse(url_safety.is_http_url("ftp://example.com"))
         self.assertFalse(url_safety.is_http_url("/relative/path"))
+
+
+class UploadHandlerTests(SimpleTestCase):
+    @mock.patch("cintafactory.upload_handlers.load_upload_config")
+    def test_rejects_file_larger_than_limit_on_new_file(self, mock_load_config):
+        mock_load_config.return_value = {"max_file_size_mb": 1}
+        handler = PerFileSizeLimitUploadHandler()
+        with self.assertRaises(RequestDataTooBig):
+            handler.new_file(
+                field_name="data_file",
+                file_name="big.bin",
+                content_type="application/octet-stream",
+                content_length=2 * 1024 * 1024,
+            )
+
+    @mock.patch("cintafactory.upload_handlers.load_upload_config")
+    def test_rejects_file_larger_than_limit_on_chunk(self, mock_load_config):
+        mock_load_config.return_value = {"max_file_size_mb": 1}
+        handler = PerFileSizeLimitUploadHandler()
+        handler.new_file(
+            field_name="data_file",
+            file_name="big.bin",
+            content_type="application/octet-stream",
+            content_length=0,
+        )
+        handler.receive_data_chunk(b"x" * (600 * 1024), start=0)
+        with self.assertRaises(RequestDataTooBig):
+            handler.receive_data_chunk(b"x" * (500 * 1024), start=600 * 1024)
 
 
 class SeaweedFSStorageTests(SimpleTestCase):
@@ -225,3 +255,66 @@ class MiddlewareTests(SimpleTestCase):
             second = middleware(request)
         self.assertEqual(first.status_code, 200)
         self.assertEqual(second.status_code, 429)
+
+    @override_settings(STATIC_URL="/static/")
+    def test_rate_limit_allows_api_requests_within_limit(self):
+        cache.clear()
+
+        def get_response(request):
+            return HttpResponse("ok")
+
+        middleware = RateLimitMiddleware(get_response)
+        request = self.factory.get("/api/items", REMOTE_ADDR="10.0.0.2")
+        with mock.patch("cintafactory.middleware.load_limit_config") as load_config:
+            load_config.return_value = {
+                "is_static_exluded": True,
+                "is_admin_exluded": True,
+                "api": {"limit_per_ip_per_minute": 2},
+                "app": {"limit_per_ip_per_minute": 1, "limit_per_user_per_minute": 1},
+            }
+            first = middleware(request)
+            second = middleware(request)
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+
+    @override_settings(STATIC_URL="/static/")
+    def test_rate_limit_blocks_app_requests(self):
+        cache.clear()
+
+        def get_response(request):
+            return HttpResponse("ok")
+
+        middleware = RateLimitMiddleware(get_response)
+        request = self.factory.get("/dat/items", REMOTE_ADDR="10.0.0.3")
+        with mock.patch("cintafactory.middleware.load_limit_config") as load_config:
+            load_config.return_value = {
+                "is_static_exluded": True,
+                "is_admin_exluded": True,
+                "api": {"limit_per_ip_per_minute": 100},
+                "app": {"limit_per_ip_per_minute": 1, "limit_per_user_per_minute": 100},
+            }
+            first = middleware(request)
+            second = middleware(request)
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 429)
+
+    @override_settings(STATIC_URL="/static/")
+    def test_rate_limit_allows_app_requests_within_limit(self):
+        cache.clear()
+
+        def get_response(request):
+            return HttpResponse("ok")
+
+        middleware = RateLimitMiddleware(get_response)
+        request = self.factory.get("/dat/items", REMOTE_ADDR="10.0.0.4")
+        with mock.patch("cintafactory.middleware.load_limit_config") as load_config:
+            load_config.return_value = {
+                "is_static_exluded": True,
+                "is_admin_exluded": True,
+                "api": {"limit_per_ip_per_minute": 1},
+                "app": {"limit_per_ip_per_minute": 2, "limit_per_user_per_minute": 100},
+            }
+            first = middleware(request)
+            second = middleware(request)
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)

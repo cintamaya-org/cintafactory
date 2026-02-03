@@ -13,7 +13,6 @@ urlpatterns = [
     path("my/applications/", views.MyApplicationListView.as_view(), name="my_applications"),
     path("my/<uuid:pk>/", views.DatDetail.as_view(), name="my_detail"),
     path("my/<uuid:pk>/validation/decision/", views.submit_validation_decision, name="my_validation_decision"),
-    path("my/<uuid:pk>/advance/", views.DatAdvanceStatusView.as_view(), name="my_advance"),
     path("my/<uuid:pk>/export/json/", views.DatExportJSONView.as_view(), name="my_export_json"),
     path(
         "my/<uuid:pk>/export/pdf/trigger/",

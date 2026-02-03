@@ -156,17 +156,6 @@
                       </div>
                     </div>
                     <div class="workflow-card__actions">
-                      {% comment %} {% if dat.can_progress and dat.next_status %}
-                        <form method="post" action="{% url 'dat:my_advance' dat.pk %}">
-                          {% csrf_token %}
-                          <button type="submit" class="btn waves-effect waves-light cinta-btn-primary">
-                            Passer a l'etape suivante
-                              {% if dat.next_status_label %}
-                                <span style="margin-left:0.35rem; font-size:0.85em;">({{ dat.next_status_label }})</span>
-                              {% endif %}
-                            </button>
-                          </form>
-                        {% endif %} {% endcomment %}
                         <a href="{% url 'dat:my_detail' dat.pk %}"
                            class="btn waves-effect waves-light cinta-btn-primary"
                            target="" rel="noopener noreferrer">

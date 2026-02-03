@@ -2969,13 +2969,3 @@ def parse_schema_diagram(request, dat_pk: int):
         }
     )
 
-
-class DatAdvanceStatusView(LoginRequiredMixin, View):
-    def post(self, request, pk: int, *args, **kwargs):
-        queryset = filter_dat_queryset_for_user(
-            DAT.objects.select_related("application", "owner"),
-            request.user,
-        )
-        dat = get_object_or_404(queryset, pk=pk)
-
-        raise PermissionDenied("La progression automatique du statut est désormais désactivée.")

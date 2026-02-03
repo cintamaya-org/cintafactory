@@ -457,22 +457,6 @@ class DatVisibilityRestrictionTest(TestCase):
         )
         return role
 
-    def test_manual_advance_endpoint_is_disabled(self):
-        self._bind_participant(self.dat, DAT_PORTEUR_ROLE_SLUG, self.owner)
-        self.client.force_login(self.owner)
-        response = self.client.post(reverse("dat:my_advance", args=[self.dat.pk]))
-        self.assertEqual(response.status_code, 403)
-        self.dat.refresh_from_db()
-        self.assertEqual(self.dat.status, DATStatus.NOUVELLE_DEMANDE)
-
-    def test_unassigned_user_cannot_advance(self):
-        self._assign_role(self.other, DAT_PORTEUR_ROLE_SLUG)
-        self.client.force_login(self.other)
-        response = self.client.post(reverse("dat:my_advance", args=[self.dat.pk]))
-        self.assertEqual(response.status_code, 404)
-        self.dat.refresh_from_db()
-        self.assertEqual(self.dat.status, DATStatus.NOUVELLE_DEMANDE)
-
     def test_progress_button_is_hidden(self):
         detail_url = reverse("dat:my_detail", args=[self.dat.pk])
 
