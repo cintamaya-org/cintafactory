@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+import uuid
 from pathlib import Path
 from typing import List, Tuple
 from urllib.parse import urlencode
@@ -147,23 +148,36 @@ def section_status_icon(status_value=None):
     }
 
 
+def _extract_diagram_identifier(diagram_id):
+    if diagram_id in (None, ""):
+        return None, None
+    if isinstance(diagram_id, dict):
+        for key in ("id", "pk", "diagram_id", "diagramme_id"):
+            if key in diagram_id and diagram_id[key] not in (None, ""):
+                return diagram_id[key], diagram_id.get("title")
+        return None, diagram_id.get("title")
+    if hasattr(diagram_id, "pk"):
+        return getattr(diagram_id, "pk", None), getattr(diagram_id, "title", None)
+    return diagram_id, None
+
+
 @register.simple_tag
 def diagram_links(diagram_id):
-    if diagram_id in (None, ""):
+    raw_identifier, provided_title = _extract_diagram_identifier(diagram_id)
+    if raw_identifier in (None, ""):
         return None
     try:
-        pk = int(str(diagram_id).strip())
-    except (TypeError, ValueError):
-        return None
-    if pk < 1:
+        pk = raw_identifier if isinstance(raw_identifier, uuid.UUID) else uuid.UUID(str(raw_identifier).strip())
+    except (TypeError, ValueError, AttributeError):
         return None
     diagram = DrawIODiagram.objects.filter(pk=pk).only("pk", "title").first()
     if diagram is None:
         return None
+    title = str(provided_title).strip() if provided_title not in (None, "") else diagram.title
     try:
         return {
             "pk": diagram.pk,
-            "title": diagram.title,
+            "title": title,
             "detail_url": reverse("diagrams:detail", args=[diagram.pk]),
             "edit_url": reverse("diagrams:edit", args=[diagram.pk]),
             "import_url": reverse("diagrams:import_xml", args=[diagram.pk]),

@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import uuid
 from collections import OrderedDict
 from pathlib import Path
 from types import SimpleNamespace
@@ -2562,17 +2563,17 @@ def create_schema_diagram(request, dat_pk: int):
     return JsonResponse(response_payload, status=201)
 
 
-def _normalize_diagram_ids(raw_ids) -> list[int]:
+def _normalize_diagram_ids(raw_ids) -> list[uuid.UUID]:
     if not isinstance(raw_ids, (list, tuple)):
         return []
-    cleaned: list[int] = []
-    seen = set()
+    cleaned: list[uuid.UUID] = []
+    seen: set[uuid.UUID] = set()
     for raw in raw_ids:
         try:
-            value = int(str(raw).strip())
-        except (TypeError, ValueError):
+            value = raw if isinstance(raw, uuid.UUID) else uuid.UUID(str(raw).strip())
+        except (TypeError, ValueError, AttributeError):
             continue
-        if value < 1 or value in seen:
+        if value in seen:
             continue
         seen.add(value)
         cleaned.append(value)
@@ -2968,4 +2969,3 @@ def parse_schema_diagram(request, dat_pk: int):
             "sub_sections": sub_sections_html,
         }
     )
-

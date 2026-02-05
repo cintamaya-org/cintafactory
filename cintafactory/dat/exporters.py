@@ -6,6 +6,7 @@ import json
 import logging
 import mimetypes
 import time
+import uuid
 from typing import Any, Dict, Iterable, List, Sequence
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -323,7 +324,7 @@ class DATExportModelBuilder:
                 continue
             for column in drawio_columns:
                 column_key = column.get("key")
-                diagram_id = self._safe_positive_int(row.get(column_key))
+                diagram_id = self._normalize_diagram_id(row.get(column_key))
                 if diagram_id and diagram_id in previews:
                     diagram_payload = previews[diagram_id]
                     row[f"{column_key}_diagram"] = diagram_payload
@@ -696,31 +697,28 @@ class DATExportModelBuilder:
         return tuple(drawio_columns)
 
     def _collect_diagram_ids(self, rows, drawio_columns: Sequence[Dict[str, Any]]):
-        diagram_ids: set[int] = set()
+        diagram_ids: set[uuid.UUID] = set()
         for row in rows:
             if not isinstance(row, dict):
                 continue
             for column in drawio_columns:
                 value = row.get(column.get("key"))
-                diagram_id = self._safe_positive_int(value)
+                diagram_id = self._normalize_diagram_id(value)
                 if diagram_id:
                     diagram_ids.add(diagram_id)
         return diagram_ids
 
-    def _safe_positive_int(self, raw) -> int | None:
+    def _normalize_diagram_id(self, raw) -> uuid.UUID | None:
         if raw in (None, ""):
             return None
         try:
-            candidate = int(str(raw).strip())
-        except (TypeError, ValueError):
+            return raw if isinstance(raw, uuid.UUID) else uuid.UUID(str(raw).strip())
+        except (TypeError, ValueError, AttributeError):
             return None
-        if candidate < 1:
-            return None
-        return candidate
 
-    def _load_diagram_previews(self, diagram_ids: Iterable[int]) -> Dict[int, Dict[str, Any]]:
+    def _load_diagram_previews(self, diagram_ids: Iterable[uuid.UUID]) -> Dict[uuid.UUID, Dict[str, Any]]:
         diagrams = DrawIODiagram.objects.filter(pk__in=diagram_ids)
-        previews: Dict[int, Dict[str, Any]] = {}
+        previews: Dict[uuid.UUID, Dict[str, Any]] = {}
         for diagram in diagrams:
             previews[diagram.pk] = self._build_diagram_preview(diagram)
         return previews
