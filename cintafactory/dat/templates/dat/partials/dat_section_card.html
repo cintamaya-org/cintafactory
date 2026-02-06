@@ -73,6 +73,322 @@
 	        <p class="u-m-0 u-pre-wrap text-body">{{ container.status.reserve_message }}</p>
 	      </div>
 	    {% endif %}
+	    {% if container.section.metadata.slug == "validation" %}
+	      <div class="dat-sub-section dat-sub-section--tight dat-validation-workflow-card">
+	        <h6 class="u-mt-0 u-flex u-items-center u-gap-0-5 text-body">
+	          <i class="material-icons" aria-hidden="true">schema</i>
+	          Workflow lié
+	        </h6>
+	        <div class="u-flex u-items-center u-gap-1">
+	          <div aria-hidden="true" class="dat-validation-workflow-card__diagram" data-wf-diagram data-layout-height="{{ viewflow_workflow_template.layout.height|default:300 }}" data-layout-padding="{{ viewflow_workflow_template.layout.padding|default:36 }}">
+	            <svg class="wf-links" data-wf-links></svg>
+	            <div class="wf-node-row">
+	              {% with nodes=viewflow_workflow_template.nodes %}
+	                {% for node in nodes %}
+	                  <button class="wf-node wf-node--{{ node.variant|default:'mid' }}" type="button" aria-label="Workflow step {{ node.title|default:node.id }}" data-node-id="{{ node.id|default:forloop.counter }}" data-row="{{ node.row|default:0 }}" data-col="{{ node.col|default:forloop.counter0 }}" data-links="{% if node.links %}{{ node.links|join:',' }}{% endif %}">
+	                    <span class="wf-node__cap"></span>
+	                    <span class="wf-node__body">
+	                      <span class="wf-node__title">{{ node.title|default:node.id }}</span>
+	                      {% if node.content %}
+	                        <span class="wf-node__content">{{ node.content }}</span>
+	                      {% endif %}
+	                    </span>
+	                  </button>
+	                {% endfor %}
+	              {% endwith %}
+	            </div>
+	          </div>
+	          <div class="u-flex u-flex-col">
+	            <span class="text-body">Processus lié au DAT.</span>
+	            {% if viewflow_process and viewflow_process.process_id %}
+	              <small class="text-muted">Process ID : {{ viewflow_process.process_id }}</small>
+	            {% else %}
+	              <small class="text-muted">Process ID : en attente</small>
+	            {% endif %}
+	          </div>
+	        </div>
+	      </div>
+	      <style>
+	        .dat-validation-workflow-card__diagram {
+	          position: relative;
+	          min-width: 360px;
+	          min-height: 220px;
+	          width: min(100%, 720px);
+	        }
+	        .wf-node-row {
+	          position: relative;
+	          width: 100%;
+	          height: 100%;
+	          min-height: 220px;
+	        }
+	        .wf-links {
+	          position: absolute;
+	          left: 0;
+	          right: 0;
+	          top: 0;
+	          bottom: 0;
+	          width: 100%;
+	          height: 100%;
+	          pointer-events: none;
+	          overflow: visible;
+	          z-index: 2;
+	        }
+	        .wf-node {
+	          position: absolute;
+	          width: 26px;
+	          height: 26px;
+	          border-radius: 50%;
+	          border: 2px solid #1976d2;
+	          background: #fff;
+	          cursor: pointer;
+	          padding: 0;
+	          display: inline-flex;
+	          align-items: center;
+	          justify-content: center;
+	          transition: transform 160ms ease, box-shadow 160ms ease, width 200ms ease, height 200ms ease, border-radius 200ms ease;
+	          z-index: 3;
+	          transform: translate(-50%, -50%);
+	        }
+	        .wf-node--start {
+	          background: linear-gradient(135deg, #1976d2, #26a69a);
+	          border-color: transparent;
+	        }
+	        .wf-node--end {
+	          background: #26a69a;
+	          border-color: transparent;
+	        }
+	        .wf-node__cap,
+	        .wf-node__body {
+	          display: none;
+	        }
+	        .wf-node--expanded {
+	          width: 140px;
+	          height: 170px;
+	          border-radius: 28px;
+	          border: 1px solid #9e9e9e;
+	          background: #e0e0e0;
+	          box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+	          cursor: default;
+	        }
+	        .wf-node--expanded .wf-node__cap {
+	          display: block;
+	          position: absolute;
+	          top: 0;
+	          left: 0;
+	          right: 0;
+	          height: 48px;
+	          background: #111;
+	          border-radius: 28px 28px 22px 22px;
+	          cursor: pointer;
+	        }
+	        .wf-node--expanded .wf-node__body {
+	          display: block;
+	          position: absolute;
+	          top: 48px;
+	          left: 0;
+	          right: 0;
+	          bottom: 0;
+	          background: #e0e0e0;
+	          border-radius: 0 0 26px 26px;
+	          color: #212121;
+	          font-size: 0.8rem;
+	          line-height: 1.2;
+	          text-align: center;
+	          padding: 12px 8px;
+	        }
+	        .wf-node__title {
+	          display: inline-block;
+	          margin-top: 10px;
+	          max-width: 120px;
+	          white-space: normal;
+	          word-break: break-word;
+	        }
+	        .wf-node__content {
+	          display: block;
+	          margin-top: 8px;
+	          font-size: 0.75rem;
+	          color: #424242;
+	          white-space: normal;
+	        }
+	      </style>
+	      <script>
+	        (function () {
+	          if (window.__datWorkflowNodesBound) {
+	            return;
+	          }
+	          window.__datWorkflowNodesBound = true;
+	          document.addEventListener("click", function (event) {
+	            var cap = event.target.closest(".wf-node__cap");
+	            if (cap) {
+	              var node = cap.closest(".wf-node");
+	              if (node) {
+	                node.classList.remove("wf-node--expanded");
+	                if (typeof window.__redrawDatWorkflowLinks === "function") {
+	                  window.__redrawDatWorkflowLinks();
+	                }
+	              }
+	              return;
+	            }
+	            var node = event.target.closest(".wf-node");
+	            if (!node) {
+	              return;
+	            }
+	            node.classList.add("wf-node--expanded");
+	            if (typeof window.__redrawDatWorkflowLinks === "function") {
+	              window.__redrawDatWorkflowLinks();
+	            }
+	          });
+	        })();
+	        (function () {
+	          function positionNodes(diagram) {
+	            var row = diagram.querySelector(".wf-node-row");
+	            if (!row) {
+	              return;
+	            }
+	            var layoutHeight = parseInt(diagram.getAttribute("data-layout-height") || "300", 10);
+	            if (!Number.isFinite(layoutHeight) || layoutHeight < 180) {
+	              layoutHeight = 300;
+	            }
+	            diagram.style.height = String(layoutHeight) + "px";
+	            row.style.height = String(layoutHeight) + "px";
+	            var nodes = Array.prototype.slice.call(row.querySelectorAll(".wf-node[data-node-id]"));
+	            if (!nodes.length) {
+	              return;
+	            }
+	            var host = diagram.getBoundingClientRect();
+	            var padding = parseInt(diagram.getAttribute("data-layout-padding") || "36", 10);
+	            if (!Number.isFinite(padding) || padding < 0) {
+	              padding = 36;
+	            }
+	            var rows = [];
+	            var cols = [];
+	            nodes.forEach(function (node) {
+	              var r = parseInt(node.getAttribute("data-row") || "0", 10);
+	              var c = parseInt(node.getAttribute("data-col") || "0", 10);
+	              if (!Number.isFinite(r) || r < 0) {
+	                r = 0;
+	              }
+	              if (!Number.isFinite(c) || c < 0) {
+	                c = 0;
+	              }
+	              rows.push(r);
+	              cols.push(c);
+	              node.setAttribute("data-row", String(r));
+	              node.setAttribute("data-col", String(c));
+	            });
+	            var minRow = Math.min.apply(Math, rows);
+	            var maxRow = Math.max.apply(Math, rows);
+	            var minCol = Math.min.apply(Math, cols);
+	            var maxCol = Math.max.apply(Math, cols);
+	            var width = Math.max(1, Math.round(host.width));
+	            var height = Math.max(1, Math.round(host.height));
+	            var rowSpan = Math.max(1, maxRow - minRow);
+	            var colSpan = Math.max(1, maxCol - minCol);
+	            nodes.forEach(function (node) {
+	              var r = parseInt(node.getAttribute("data-row") || "0", 10);
+	              var c = parseInt(node.getAttribute("data-col") || "0", 10);
+	              var x = padding + ((c - minCol) / colSpan) * (width - padding * 2);
+	              var y = padding + ((r - minRow) / rowSpan) * (height - padding * 2);
+	              node.style.left = String(x) + "px";
+	              node.style.top = String(y) + "px";
+	            });
+	          }
+	          function drawLinks(diagram) {
+	            var svg = diagram.querySelector("[data-wf-links]");
+	            if (!svg) {
+	              return;
+	            }
+	            positionNodes(diagram);
+	            var nodes = Array.prototype.slice.call(diagram.querySelectorAll(".wf-node[data-node-id]"));
+	            var byId = {};
+	            nodes.forEach(function (node) {
+	              byId[node.getAttribute("data-node-id")] = node;
+	            });
+	            var host = diagram.getBoundingClientRect();
+	            var width = Math.max(1, Math.round(host.width));
+	            var height = Math.max(1, Math.round(host.height));
+	            svg.setAttribute("viewBox", "0 0 " + width + " " + height);
+	            svg.setAttribute("width", String(width));
+	            svg.setAttribute("height", String(height));
+	            while (svg.firstChild) {
+	              svg.removeChild(svg.firstChild);
+	            }
+	            var defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+	            var marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
+	            marker.setAttribute("id", "wf-arrow-" + Math.random().toString(36).slice(2));
+	            marker.setAttribute("viewBox", "0 0 10 10");
+	            marker.setAttribute("refX", "9");
+	            marker.setAttribute("refY", "5");
+	            marker.setAttribute("markerWidth", "7");
+	            marker.setAttribute("markerHeight", "7");
+	            marker.setAttribute("orient", "auto-start-reverse");
+	            var tip = document.createElementNS("http://www.w3.org/2000/svg", "path");
+	            tip.setAttribute("d", "M 0 0 L 10 5 L 0 10 z");
+	            tip.setAttribute("fill", "#90a4ae");
+	            marker.appendChild(tip);
+	            defs.appendChild(marker);
+	            svg.appendChild(defs);
+	            var markerId = marker.getAttribute("id");
+	            nodes.forEach(function (node) {
+	              var linksRaw = node.getAttribute("data-links") || "";
+	              if (!linksRaw) {
+	                return;
+	              }
+	              var from = node.getBoundingClientRect();
+	              var x1 = from.left - host.left + from.width / 2;
+	              var y1 = from.top - host.top + from.height / 2;
+	              linksRaw.split(",").map(function (x) { return x.trim(); }).filter(Boolean).forEach(function (targetId) {
+	                var target = byId[targetId];
+	                if (!target) {
+	                  return;
+	                }
+	                var to = target.getBoundingClientRect();
+	                var x2 = to.left - host.left + to.width / 2;
+	                var y2 = to.top - host.top + to.height / 2;
+	                var dx = x2 - x1;
+	                var dy = y2 - y1;
+	                var dist = Math.sqrt(dx * dx + dy * dy);
+	                if (!dist) {
+	                  return;
+	                }
+	                var startOffset = 14;
+	                var endOffset = 16;
+	                var sx = x1 + (dx / dist) * startOffset;
+	                var sy = y1 + (dy / dist) * startOffset;
+	                var ex = x2 - (dx / dist) * endOffset;
+	                var ey = y2 - (dy / dist) * endOffset;
+	                var line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+	                line.setAttribute("x1", String(sx));
+	                line.setAttribute("y1", String(sy));
+	                line.setAttribute("x2", String(ex));
+	                line.setAttribute("y2", String(ey));
+	                line.setAttribute("stroke", "#90a4ae");
+	                line.setAttribute("stroke-width", "3");
+	                line.setAttribute("opacity", "0.95");
+	                line.setAttribute("stroke-linecap", "round");
+	                line.setAttribute("marker-end", "url(#" + markerId + ")");
+	                svg.appendChild(line);
+	              });
+	            });
+	          }
+	          function redrawAll() {
+	            document.querySelectorAll("[data-wf-diagram]").forEach(drawLinks);
+	          }
+	          window.__redrawDatWorkflowLinks = redrawAll;
+	          if (!window.__datWorkflowLinksBound) {
+	            window.__datWorkflowLinksBound = true;
+	            if (document.readyState === "loading") {
+	              document.addEventListener("DOMContentLoaded", redrawAll);
+	            } else {
+	              redrawAll();
+	            }
+	            window.addEventListener("resize", redrawAll);
+	          } else {
+	            redrawAll();
+	          }
+	        })();
+	      </script>
+	    {% endif %}
 	    {% for part in container.parts %}
 	      {% include "dat/partials/dat_sub_section_card.html" with part=part container=container container_section=container.section dat=dat %}
 	    {% endfor %}

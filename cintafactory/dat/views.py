@@ -96,6 +96,7 @@ from .utils import (
     store_dat_pdf_export,
 )
 from workflows.notifications import create_user_notification
+from cintafactory.notifications.external import ExternalNotificationEvent, dispatch_external_notification
 
 
 logger = logging.getLogger(__name__)
@@ -113,6 +114,44 @@ VALIDATION_STATUS_LABELS = {
     DATStatus.VALIDER.label,
     DATStatus.REFUSE.label,
 }
+
+
+def _dispatch_section_status_notification(
+    *,
+    dat: DAT,
+    section: DATSection,
+    actor,
+    status_from: str | None,
+    status_to: str | None,
+    status_kind: str,
+    message: str = "",
+    target_url: str | None = None,
+) -> None:
+    event = ExternalNotificationEvent(
+        kind="dat_section_status",
+        title=f"Statut section mis à jour ({section.title})",
+        message=message,
+        level="info",
+        occurred_at=timezone.now(),
+        user_id=str(getattr(actor, "pk", "")) if actor is not None else None,
+        user_email=getattr(actor, "email", None),
+        user_display=format_user_display(actor),
+        dat_id=str(getattr(dat, "pk", "")),
+        dat_reference=getattr(dat, "reference", None),
+        dat_title=getattr(dat, "title", None),
+        dat_status=getattr(dat, "status", None),
+        target_url=target_url,
+        created_by_id=str(getattr(actor, "pk", "")) if actor is not None else None,
+        created_by_display=format_user_display(actor),
+        extra_data={
+            "section_slug": section.slug,
+            "section_title": section.title,
+            "status_from": status_from,
+            "status_to": status_to,
+            "status_kind": status_kind,
+        },
+    )
+    dispatch_external_notification(event)
 HISTORY_ENTRIES_PREFETCH = Prefetch(
     "history_entries",
     queryset=DATHistory.objects.select_related("performed_by").order_by("-performed_at", "-id"),
@@ -1303,6 +1342,25 @@ def update_section_status(request, dat_pk: int, section_slug: str):
     status_part.update_value(updated_rows)
     target_label = status_choices.get(new_status, new_status)
     refresh_dat_status(dat, actor=request.user, force_in_progress=True)
+    status_from_label = status_choices.get(current_info.get("value"), current_info.get("value"))
+    status_to_label = status_choices.get(new_status, new_status)
+    action_label = "Mise à jour"
+    if new_status == SECTION_STATUS_VALIDATED_VALUE:
+        action_label = "Validation"
+    elif new_status == SECTION_STATUS_BLOCKED_VALUE:
+        action_label = "Blocage"
+    elif current_info.get("value") == SECTION_STATUS_VALIDATED_VALUE and new_status != SECTION_STATUS_VALIDATED_VALUE:
+        action_label = "Dévalidation"
+    _dispatch_section_status_notification(
+        dat=dat,
+        section=section,
+        actor=request.user,
+        status_from=status_from_label,
+        status_to=status_to_label,
+        status_kind="assignee",
+        message=f"{action_label} du statut de section.",
+        target_url=redirect_url,
+    )
     if new_status == validated_value and target_reserve_message and target_reserve_by_id:
         if target_reserve_by_id != getattr(request.user, "id", None):
             reserve_user = get_user_model().objects.filter(pk=target_reserve_by_id).first()
@@ -1435,6 +1493,16 @@ def update_section_responsible_status(request, dat_pk: int, section_slug: str):
         },
     )
     refresh_dat_status(dat, actor=request.user)
+    _dispatch_section_status_notification(
+        dat=dat,
+        section=section,
+        actor=request.user,
+        status_from=status_choices.get(current_value, current_value),
+        status_to=status_choices.get(new_status, new_status),
+        status_kind="responsible",
+        message="Validation responsable mise à jour.",
+        target_url=f"{reverse('dat:my_detail', args=[dat.pk])}?section=validation#section-validation",
+    )
     target_label = status_choices.get(new_status, new_status)
     messages.success(request, f"Validation responsable mise à jour : {target_label}.")
     return redirect(redirect_url)
@@ -1534,6 +1602,16 @@ def update_section_reserve(request, dat_pk: int, section_slug: str):
         )
     status_part.update_value(updated_rows)
     refresh_dat_status(dat, actor=request.user, force_in_progress=True)
+    _dispatch_section_status_notification(
+        dat=dat,
+        section=section,
+        actor=request.user,
+        status_from=None,
+        status_to="Réserve",
+        status_kind="reserve",
+        message=f"Réserve posée : {reserve_message}",
+        target_url=f"{reverse('dat:my_detail', args=[dat.pk])}?section={section.slug}#section-{section.slug}",
+    )
     DATReserveHistory.objects.create(
         dat=dat,
         section_slug=section.slug,
@@ -1826,6 +1904,18 @@ class DATDetailView(LoginRequiredMixin, ModuleContextMixin, DetailModelView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        try:
+            from dat_viewflow.services import ensure_dat_viewflow_process
+            from dat_viewflow.config import build_dat_viewflow_template
+
+            context["viewflow_process"] = ensure_dat_viewflow_process(self.object)
+            context["viewflow_workflow_template"] = build_dat_viewflow_template(
+                self.object,
+                context["viewflow_process"],
+            )
+        except Exception:
+            context["viewflow_process"] = None
+            context["viewflow_workflow_template"] = {"layout": {"height": 300, "padding": 36}, "nodes": []}
         context["history_entries"] = get_dat_history_entries(self.object)
         context["history_actions"] = DATHistoryAction
         context["reserve_history_entries"] = get_dat_reserve_history_entries(self.object)
@@ -2010,6 +2100,18 @@ class DatDetail(ModuleContextMixin, LoginRequiredMixin, DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        try:
+            from dat_viewflow.services import ensure_dat_viewflow_process
+            from dat_viewflow.config import build_dat_viewflow_template
+
+            context["viewflow_process"] = ensure_dat_viewflow_process(self.object)
+            context["viewflow_workflow_template"] = build_dat_viewflow_template(
+                self.object,
+                context["viewflow_process"],
+            )
+        except Exception:
+            context["viewflow_process"] = None
+            context["viewflow_workflow_template"] = {"layout": {"height": 300, "padding": 36}, "nodes": []}
         context["history_entries"] = get_dat_history_entries(self.object)
         context["history_actions"] = DATHistoryAction
         context["reserve_history_entries"] = get_dat_reserve_history_entries(self.object)

@@ -97,6 +97,7 @@ INSTALLED_APPS = [
     "workflows.apps.WorkflowsConfig",
     "users.apps.UsersConfig",
     "dat.apps.DatConfig",
+    "dat_viewflow.apps.DatViewflowConfig",
     "account.apps.AccountConfig",
     "configuration.apps.ConfigurationConfig",
 
@@ -218,6 +219,10 @@ STATIC_ROOT = Path(os.getenv("DJANGO_STATIC_ROOT", BASE_DIR / "staticfiles"))
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = Path(os.getenv("DJANGO_MEDIA_ROOT", BASE_DIR / "media"))
+
+# External notification backends (webhooks, APIs, email, etc.)
+EXTERNAL_NOTIFICATION_BACKENDS: list[str | dict] = []
+EXTERNAL_NOTIFICATION_BACKEND_CONFIG: dict[str, dict] = {}
 
 SEAWEEDFS_FILER_URL = os.getenv("SEAWEEDFS_FILER_URL", "http://seaweedfs:8888").rstrip("/")
 SEAWEEDFS_PUBLIC_URL = os.getenv("SEAWEEDFS_PUBLIC_URL", SEAWEEDFS_FILER_URL).rstrip("/")
