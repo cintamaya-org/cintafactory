@@ -180,6 +180,105 @@ class ApplicationOptionsViewTest(TestCase):
         self.assertNotIn("Sans direction", option_labels)
 
 
+class TopbarSearchViewTest(TestCase):
+    def setUp(self) -> None:
+        self.url = reverse("dat:topbar_search")
+        self.staff = get_user_model().objects.create_user(
+            username="search-admin",
+            password="pwd",
+            is_staff=True,
+        )
+        direction = get_default_business_direction()
+        self.app_inventory = Application.objects.create(
+            code="inventory-core",
+            name="Inventory Platform",
+            business_direction=direction,
+        )
+        self.app_billing = Application.objects.create(
+            code="billing-suite",
+            name="Billing Platform",
+            business_direction=direction,
+        )
+        DAT.objects.create(
+            reference="DAT-INV-001",
+            title="Inventory Dat",
+            application=self.app_inventory,
+            status=DATStatus.NOUVELLE_DEMANDE,
+            owner=self.staff,
+        )
+        DAT.objects.create(
+            reference="DAT-BILL-001",
+            title="Billing Dat",
+            application=self.app_billing,
+            status=DATStatus.NOUVELLE_DEMANDE,
+            owner=self.staff,
+        )
+
+    def test_requires_authentication(self):
+        response = self.client.get(self.url, {"q": "inventory"})
+        self.assertEqual(response.status_code, 302)
+
+    def test_rejects_query_shorter_than_three_chars(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(self.url, {"q": "in"})
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["too_short"])
+        self.assertEqual(payload["results"], [])
+
+    def test_application_filter_matches_code_and_name(self):
+        self.client.force_login(self.staff)
+
+        code_response = self.client.get(
+            self.url,
+            {"q": "inventory", "applications": "1", "dats": "0"},
+        )
+        payload = code_response.json()
+        self.assertEqual(code_response.status_code, 200)
+        self.assertFalse(payload["too_short"])
+        self.assertTrue(payload["results"])
+        self.assertTrue(all(item["type"] == "application" for item in payload["results"]))
+        self.assertIn("inventory-core", payload["results"][0]["label"].lower())
+
+        name_response = self.client.get(
+            self.url,
+            {"q": "billing", "applications": "1", "dats": "0"},
+        )
+        name_payload = name_response.json()
+        labels = [item["label"] for item in name_payload["results"]]
+        self.assertTrue(any("Billing Platform" in label for label in labels))
+
+    def test_dat_filter_matches_reference(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(
+            self.url,
+            {"q": "DAT-INV", "applications": "0", "dats": "1"},
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["results"])
+        self.assertTrue(all(item["type"] == "dat" for item in payload["results"]))
+        self.assertIn("DAT-INV-001", [item["label"] for item in payload["results"]])
+
+    def test_returns_only_top_ten_results(self):
+        for index in range(12):
+            DAT.objects.create(
+                reference=f"DAT-SEARCH-{index:02d}",
+                title=f"Search Dat {index}",
+                application=self.app_inventory,
+                status=DATStatus.NOUVELLE_DEMANDE,
+                owner=self.staff,
+            )
+        self.client.force_login(self.staff)
+        response = self.client.get(
+            self.url,
+            {"q": "DAT-SEARCH-", "applications": "0", "dats": "1"},
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(len(payload["results"]), 10)
+
+
 class DatCreationPermissionTest(TestCase):
     def setUp(self) -> None:
         self.dat_add_url = "/dat/manage/dats/crud/add/"
@@ -420,6 +519,15 @@ class DatVisibilityRestrictionTest(TestCase):
         response = self.client.get(reverse("dat:my_detail", args=[self.dat.pk]))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Visibility DAT")
+
+    def test_my_detail_section_switch_keeps_page_structure_valid(self):
+        self.client.force_login(self.owner)
+        response = self.client.get(reverse("dat:my_detail", args=[self.dat.pk]), {"section": "architecture"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["selected_section_slug"], "architecture")
+        content = response.content.decode()
+        self.assertIn('class="dat-section-status-pill chip dat-section-link"', content)
+        self.assertNotIn('class="dat-section-status-pill chip dat-section-link">\n        <div', content)
 
     def test_unassigned_user_cannot_view_my_detail_page(self):
         self.client.force_login(self.other)

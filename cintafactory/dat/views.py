@@ -85,6 +85,13 @@ from .sections import (
     section_has_status,
     sync_dat_sections_if_needed,
 )
+from .search import (
+    TOPBAR_SEARCH_MAX_RESULTS,
+    TOPBAR_SEARCH_MIN_QUERY_LENGTH,
+    TopbarSearchOptions,
+    TopbarSearchService,
+    _to_bool,
+)
 from .tasks import schedule_dat_pdf_generation
 from .utils import (
     dat_pdf_export_exists,
@@ -2616,6 +2623,20 @@ def application_options(request):
         for application in applications
     ]
     return JsonResponse({"options": options})
+
+
+@login_required
+def topbar_search(request):
+    service = TopbarSearchService(request.user)
+    options = TopbarSearchOptions(
+        query=request.GET.get("q", ""),
+        include_applications=_to_bool(request.GET.get("applications"), default=True),
+        include_dats=_to_bool(request.GET.get("dats"), default=True),
+        limit=TOPBAR_SEARCH_MAX_RESULTS,
+        min_length=TOPBAR_SEARCH_MIN_QUERY_LENGTH,
+    )
+    payload = service.search(options)
+    return JsonResponse(payload)
 
 
 @login_required

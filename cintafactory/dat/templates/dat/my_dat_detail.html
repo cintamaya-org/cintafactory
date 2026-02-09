@@ -44,14 +44,13 @@
               </a>
             {% endwith %}
           {% endfor %}
-          <span class="dat-section-status-pill chip dat-section-link">
-        <div
-          data-dat-created-at="{{ dat.created_at|date:'c' }}"
-          title="Créé le {{ dat.created_at|date:'d/m/Y' }} à {{ dat.created_at|time:'H\\hi' }}"
-        >
-          <span>Créé il y a</span>
-          <span class="dat-section-age-value" data-dat-created-value>—</span>
-        </div>
+          <span
+            class="dat-section-status-pill chip dat-section-link"
+            data-dat-created-at="{{ dat.created_at|date:'c' }}"
+            title="Créé le {{ dat.created_at|date:'d/m/Y' }} à {{ dat.created_at|time:'H\\hi' }}"
+          >
+            <span>Créé il y a</span>
+            <span class="dat-section-age-value" data-dat-created-value>—</span>
           </span>
         </div>
 

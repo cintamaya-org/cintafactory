@@ -150,6 +150,7 @@ TEMPLATES = [
                 'django.template.context_processors.csrf',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                "cintafactory.context_processors.frontend_dev_logger",
                 "material.frontend.context_processors.modules",
                 "workflows.context_processors.workflow_notifications",
             ],

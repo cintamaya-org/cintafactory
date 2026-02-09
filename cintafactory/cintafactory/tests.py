@@ -12,7 +12,7 @@ from django.core.exceptions import RequestDataTooBig
 from django.http import HttpResponse
 from django.test import RequestFactory, SimpleTestCase, override_settings
 
-from . import admin_config, rate_limit, upload_limit, url_safety
+from . import admin_config, context_processors, rate_limit, upload_limit, url_safety
 from .middleware import (
     DynamicCsrfTrustedOriginsMiddleware,
     LoggingContextMiddleware,
@@ -318,3 +318,15 @@ class MiddlewareTests(SimpleTestCase):
             second = middleware(request)
         self.assertEqual(first.status_code, 200)
         self.assertEqual(second.status_code, 200)
+
+
+class FrontendDevLoggerContextProcessorTests(SimpleTestCase):
+    @override_settings(DEBUG=True)
+    def test_enabled_in_debug(self):
+        context = context_processors.frontend_dev_logger(request=None)
+        self.assertTrue(context["frontend_dev_logger_enabled"])
+
+    @override_settings(DEBUG=False)
+    def test_disabled_outside_debug(self):
+        context = context_processors.frontend_dev_logger(request=None)
+        self.assertFalse(context["frontend_dev_logger_enabled"])

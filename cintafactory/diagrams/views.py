@@ -221,7 +221,7 @@ def _build_embed_url(library_urls: list[str], public_url: str | None = None, req
     libs = settings.DRAWIO_LIBS or DRAWIO_DEFAULT_LIBS
     params = {
         "embed": "1",
-        "ui": "min",
+        "ui": "atlas",
         "spin": "0",
         "proto": "json",
         "lang": "fr",
