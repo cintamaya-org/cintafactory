@@ -9,7 +9,7 @@ services:
       DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE}
       APP_MODULE: ${APP_MODULE}
       DEBUG: ${DEBUG:-0}
-      SECRET_KEY: ${SECRET_KEY:-insecure-only-for-ci}
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY}
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-*}
       PORT: ${APP_PORT:-8000}
       RUN_MIGRATIONS: ${RUN_MIGRATIONS:-1}
@@ -42,7 +42,7 @@ services:
       GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
       GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
       LIKEC4_METADATA_TOKEN: ${LIKEC4_METADATA_TOKEN:-}
-      LIKEC4_API_TOKEN: ${LIKEC4_API_TOKEN:-dev_likec4_api_token_change_me}
+      LIKEC4_API_TOKEN: ${LIKEC4_API_TOKEN:-}
     depends_on:
       db:
         condition: service_healthy
@@ -123,7 +123,7 @@ services:
       SEAWEEDFS_BASE_DIR: ${SEAWEEDFS_BASE_DIR:-media}
       LIKEC4_METADATA_URL: http://web:${APP_PORT:-8000}/diagrams/likec4/metadata/
       LIKEC4_METADATA_TOKEN: ${LIKEC4_METADATA_TOKEN:-}
-      LIKEC4_API_TOKEN: ${LIKEC4_API_TOKEN:-dev_likec4_api_token_change_me}
+      LIKEC4_API_TOKEN: ${LIKEC4_API_TOKEN:-}
     volumes:
       - ./likec4:/data
     networks:
@@ -154,7 +154,7 @@ services:
       SEAWEEDFS_BASE_DIR: ${SEAWEEDFS_BASE_DIR:-media}
       LIKEC4_METADATA_URL: http://web:${APP_PORT:-8000}/diagrams/likec4/metadata/
       LIKEC4_METADATA_TOKEN: ${LIKEC4_METADATA_TOKEN:-}
-      LIKEC4_API_TOKEN: ${LIKEC4_API_TOKEN:-dev_likec4_api_token_change_me}
+      LIKEC4_API_TOKEN: ${LIKEC4_API_TOKEN:-}
     volumes:
       - likec4_exports_data:/var/likec4-exports
     depends_on:

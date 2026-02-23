@@ -63,6 +63,9 @@ class BaseTopbarSearchProvider:
     def search(self, query: str, limit: int) -> list[TopbarSearchResult]:
         raise NotImplementedError
 
+    def count(self, query: str) -> int:
+        raise NotImplementedError
+
 
 class ApplicationTopbarSearchProvider(BaseTopbarSearchProvider):
     key = "applications"
@@ -83,11 +86,16 @@ class ApplicationTopbarSearchProvider(BaseTopbarSearchProvider):
             .select_related("business_direction")
         )
 
+    def _matching_queryset(self, query: str) -> QuerySet[Application]:
+        return self._queryset().filter(Q(code__icontains=query) | Q(name__icontains=query))
+
+    def count(self, query: str) -> int:
+        return self._matching_queryset(query).count()
+
     def search(self, query: str, limit: int) -> list[TopbarSearchResult]:
         query_length = len(query)
         queryset = (
-            self._queryset()
-            .filter(Q(code__icontains=query) | Q(name__icontains=query))
+            self._matching_queryset(query)
             .annotate(
                 match_score=Case(
                     When(code__iexact=query, then=Value(320)),
@@ -131,11 +139,16 @@ class DATTopbarSearchProvider(BaseTopbarSearchProvider):
         base_queryset = DAT.objects.select_related("application")
         return filter_dat_queryset_for_user(base_queryset, self.user)
 
+    def _matching_queryset(self, query: str) -> QuerySet[DAT]:
+        return self._queryset().filter(reference__icontains=query)
+
+    def count(self, query: str) -> int:
+        return self._matching_queryset(query).count()
+
     def search(self, query: str, limit: int) -> list[TopbarSearchResult]:
         query_length = len(query)
         queryset = (
-            self._queryset()
-            .filter(reference__icontains=query)
+            self._matching_queryset(query)
             .annotate(
                 match_score=Case(
                     When(reference__iexact=query, then=Value(300)),
@@ -215,3 +228,54 @@ class TopbarSearchService:
             "filters": {"applications": include_applications, "dats": include_dats},
             "results": results,
         }
+
+    def search_page(self, options: TopbarSearchOptions, page: int, per_page: int) -> dict:
+        query = (options.query or "").strip()
+        include_applications = bool(options.include_applications)
+        include_dats = bool(options.include_dats)
+        min_length = max(int(options.min_length or TOPBAR_SEARCH_MIN_QUERY_LENGTH), 1)
+        page = max(int(page or 1), 1)
+        per_page = max(int(per_page or 1), 1)
+
+        payload = {
+            "query": query,
+            "min_length": min_length,
+            "page": page,
+            "per_page": per_page,
+            "too_short": False,
+            "filters": {"applications": include_applications, "dats": include_dats},
+            "total_count": 0,
+            "results": [],
+        }
+
+        if len(query) < min_length:
+            payload["too_short"] = bool(query)
+            return payload
+
+        enabled_provider_keys = set()
+        if include_applications:
+            enabled_provider_keys.add("applications")
+        if include_dats:
+            enabled_provider_keys.add("dats")
+
+        if not enabled_provider_keys:
+            return payload
+
+        end_index = page * per_page
+        candidates: list[TopbarSearchResult] = []
+        total_count = 0
+        for provider in self.providers:
+            if provider.key not in enabled_provider_keys:
+                continue
+            total_count += provider.count(query=query)
+            candidates.extend(provider.search(query=query, limit=end_index))
+
+        ranked = sorted(
+            candidates,
+            key=lambda item: (-item.score, item.length_delta, item.kind, item.label.lower()),
+        )
+        start = (page - 1) * per_page
+        stop = start + per_page
+        payload["total_count"] = total_count
+        payload["results"] = [item.to_payload() for item in ranked[start:stop]]
+        return payload

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from email.utils import parsedate_to_datetime
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
@@ -11,9 +12,22 @@ from django.core.files.base import File
 from django.core.files.storage import Storage
 from django.utils import timezone
 
-from .url_safety import is_http_url
+from ..operations.slo_baseline import emit_baseline_metric
+from ..url_safety import is_http_url
 
 logger = logging.getLogger(__name__)
+
+
+def _emit_storage_metric(operation: str, started_at: float, *, success: bool, outcome: str) -> None:
+    emit_baseline_metric(
+        "storage.seaweedfs.request",
+        duration_ms=(time.perf_counter() - started_at) * 1000.0,
+        success=success,
+        dimensions={
+            "operation": operation,
+            "outcome": outcome,
+        },
+    )
 
 
 class SeaweedFSStorage(Storage):
@@ -49,14 +63,22 @@ class SeaweedFSStorage(Storage):
         return f"{base_url}/{quote(path, safe='/')}"
 
     def _open(self, name: str, mode: str = "rb"):
+        started_at = time.perf_counter()
         url = self._build_url(self.base_url, name)
         try:
             response = urlopen(url, timeout=self.timeout)
+            _emit_storage_metric("open", started_at, success=True, outcome="ok")
         except HTTPError as exc:
+            outcome = "not_found" if exc.code == 404 else "http_error"
+            _emit_storage_metric("open", started_at, success=False, outcome=outcome)
             raise FileNotFoundError(name) from exc
+        except URLError:
+            _emit_storage_metric("open", started_at, success=False, outcome="url_error")
+            raise
         return File(response, name)
 
     def _save(self, name: str, content):
+        started_at = time.perf_counter()
         url = self._build_url(self.base_url, name)
         data = content.read()
         request = Request(url, data=data, method="PUT")
@@ -66,31 +88,47 @@ class SeaweedFSStorage(Storage):
         try:
             with urlopen(request, timeout=self.timeout) as response:
                 response.read()
+            _emit_storage_metric("save", started_at, success=True, outcome="ok")
         except (HTTPError, URLError) as exc:
             logger.warning("SeaweedFS upload failed for %s", name)
+            _emit_storage_metric("save", started_at, success=False, outcome=type(exc).__name__)
             raise
         return name
 
     def delete(self, name: str) -> None:
+        started_at = time.perf_counter()
         url = self._build_url(self.base_url, name)
         request = Request(url, method="DELETE")
         try:
             with urlopen(request, timeout=self.timeout) as response:
                 response.read()
+            _emit_storage_metric("delete", started_at, success=True, outcome="ok")
         except HTTPError as exc:
             if exc.code == 404:
+                _emit_storage_metric("delete", started_at, success=True, outcome="not_found")
                 return
+            _emit_storage_metric("delete", started_at, success=False, outcome="http_error")
+            raise
+        except URLError:
+            _emit_storage_metric("delete", started_at, success=False, outcome="url_error")
             raise
 
     def exists(self, name: str) -> bool:
+        started_at = time.perf_counter()
         url = self._build_url(self.base_url, name)
         request = Request(url, method="HEAD")
         try:
             with urlopen(request, timeout=self.timeout):
+                _emit_storage_metric("exists", started_at, success=True, outcome="ok")
                 return True
         except HTTPError as exc:
             if exc.code == 404:
+                _emit_storage_metric("exists", started_at, success=True, outcome="not_found")
                 return False
+            _emit_storage_metric("exists", started_at, success=False, outcome="http_error")
+            raise
+        except URLError:
+            _emit_storage_metric("exists", started_at, success=False, outcome="url_error")
             raise
 
     def size(self, name: str) -> int:
@@ -129,4 +167,4 @@ class SeaweedFSStorage(Storage):
         return name
 
     def deconstruct(self):
-        return ("cintafactory.seaweedfs_storage.SeaweedFSStorage", [], {})
+        return ("cintafactory.storage.seaweedfs_storage.SeaweedFSStorage", [], {})

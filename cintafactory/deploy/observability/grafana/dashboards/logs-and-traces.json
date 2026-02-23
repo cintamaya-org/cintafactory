@@ -1,0 +1,60 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "graphTooltip": 0,
+  "panels": [
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "gridPos": {"h": 12, "w": 24, "x": 0, "y": 0},
+      "id": 1,
+      "options": {"showLabels": true, "showTime": true, "wrapLogMessage": true},
+      "targets": [
+        {"expr": "{project=\"cintaarchifactory\"} |= \"ERROR\"", "refId": "A", "queryType": "range"}
+      ],
+      "title": "Error Logs (All Services)",
+      "type": "logs"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "gridPos": {"h": 10, "w": 12, "x": 0, "y": 12},
+      "id": 2,
+      "targets": [
+        {"expr": "sum by (service) (count_over_time({project=\"cintaarchifactory\"} |= \"ERROR\" [5m]))", "refId": "A", "queryType": "range"}
+      ],
+      "title": "Error Rate by Service",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "gridPos": {"h": 10, "w": 12, "x": 12, "y": 12},
+      "id": 3,
+      "options": {"showLabels": true, "showTime": true, "wrapLogMessage": true},
+      "targets": [
+        {"expr": "{project=\"cintaarchifactory\"} |~ \"request_id|job_id|trace_id\"", "refId": "A", "queryType": "range"}
+      ],
+      "title": "Correlation IDs (request/job/trace)",
+      "type": "logs"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 22},
+      "id": 4,
+      "options": {"showHeader": true},
+      "targets": [
+        {"expr": "topk(10, sum by (service) (count_over_time({project=\"cintaarchifactory\"} |= \"Exception\" [30m])))", "refId": "A", "queryType": "instant", "format": "table"}
+      ],
+      "title": "Top Exception Sources (30m)",
+      "type": "table"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["plan6", "logs", "tracing"],
+  "templating": {"list": []},
+  "time": {"from": "now-6h", "to": "now"},
+  "title": "Cinta Logs and Correlation",
+  "uid": "cinta-logs-correlation",
+  "version": 1
+}

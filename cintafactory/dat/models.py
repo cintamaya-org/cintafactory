@@ -18,6 +18,11 @@ class DATStatus(models.TextChoices):
     RESERVE = "reserve", "Reserve"
 
 
+class DATParticipantType(models.TextChoices):
+    RESPONSABLE = "responsable", "Responsable"
+    EXECUTANT = "executant", "Normal"
+
+
 class Application(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     code = models.SlugField(max_length=64, unique=True, verbose_name="Code")
@@ -144,6 +149,12 @@ class DATParticipant(models.Model):
         on_delete=models.PROTECT,
         related_name="dat_participations",
         verbose_name="Utilisateur",
+    )
+    participant_type = models.CharField(
+        max_length=20,
+        choices=DATParticipantType.choices,
+        default=DATParticipantType.RESPONSABLE,
+        verbose_name="Type d'affectation",
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -378,6 +389,106 @@ class DATSection(models.Model):
             if participant.user_id == user_id and participant.role_id == role.pk:
                 return True
         return False
+
+
+class DATSectionResponsible(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    dat = models.ForeignKey(
+        DAT,
+        on_delete=models.CASCADE,
+        related_name="section_responsibles",
+        verbose_name="DAT",
+    )
+    section = models.OneToOneField(
+        DATSection,
+        on_delete=models.CASCADE,
+        related_name="responsible_assignment",
+        verbose_name="Section",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="dat_section_responsibilities",
+        verbose_name="Responsable",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Créé le")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Mis à jour le")
+
+    class Meta:
+        db_table = "dat_section_responsible"
+        ordering = ["section__order", "section__id"]
+        verbose_name = "Responsable de section DAT"
+        verbose_name_plural = "Responsables de section DAT"
+
+    def __str__(self) -> str:
+        section_title = getattr(self.section, "title", None) or getattr(self.section, "slug", None) or "Section"
+        return f"{self.dat.reference} - {section_title} - {self.user.get_username()}"
+
+
+class DATSectionParticipant(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    dat = models.ForeignKey(
+        DAT,
+        on_delete=models.CASCADE,
+        related_name="section_participants",
+        verbose_name="DAT",
+    )
+    section = models.OneToOneField(
+        DATSection,
+        on_delete=models.CASCADE,
+        related_name="participant_assignment",
+        verbose_name="Section",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="dat_section_participations",
+        verbose_name="Participant",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Créé le")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Mis à jour le")
+
+    class Meta:
+        db_table = "dat_section_participant"
+        ordering = ["section__order", "section__id"]
+        verbose_name = "Participant de section DAT"
+        verbose_name_plural = "Participants de section DAT"
+
+    def __str__(self) -> str:
+        section_title = getattr(self.section, "title", None) or getattr(self.section, "slug", None) or "Section"
+        return f"{self.dat.reference} - {section_title} - {self.user.get_username()}"
+
+
+class DATAdmin(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    dat = models.ForeignKey(
+        DAT,
+        on_delete=models.CASCADE,
+        related_name="dat_admins",
+        verbose_name="DAT",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="managed_dats",
+        verbose_name="Administrateur DAT",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Créé le")
+
+    class Meta:
+        db_table = "dat_admin"
+        ordering = ["dat_id", "created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["dat", "user"],
+                name="dat_admin_unique_user_per_dat",
+            ),
+        ]
+        verbose_name = "Administrateur DAT"
+        verbose_name_plural = "Administrateurs DAT"
+
+    def __str__(self) -> str:
+        return f"{self.dat.reference} - {self.user.get_username()}"
 
 
 class DATSectionMetadata(models.Model):

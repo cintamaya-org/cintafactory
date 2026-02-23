@@ -10,23 +10,55 @@ from cintafactory.conf_utils import ensure_conf_dir
 
 DEFAULT_WORKFLOW_TEMPLATE: dict[str, Any] = {
     "layout": {
-        "height": 300,
-        "padding": 40,
+        "height": 720,
+        "padding": 44,
     },
     "nodes": [
         {
-            "id": "start",
-            "title": "Start",
-            "content": "DAT {{ dat.reference }}",
-            "variant": "start",
+            "id": "urbanisme",
+            "title": "Urbanisme",
+            "content": "",
+            "variant": "mid",
             "row": 0,
             "col": 0,
-            "links": ["review", "qa"],
+            "links": ["validation"],
         },
-        {"id": "review", "title": "Review", "content": "Status: {{ dat.status_label }}", "variant": "mid", "row": 0, "col": 1, "links": ["done"]},
-        {"id": "done", "title": "Done", "content": "", "variant": "end", "row": 0, "col": 2, "links": []},
-        {"id": "qa", "title": "QA", "content": "", "variant": "mid", "row": 1, "col": 0, "links": ["deploy", "done"]},
-        {"id": "deploy", "title": "Deploy", "content": "", "variant": "end", "row": 1, "col": 2, "links": ["done"]},
+        {
+            "id": "architecture-technique",
+            "title": "Architecture Technique",
+            "content": "",
+            "variant": "mid",
+            "row": 1,
+            "col": 0,
+            "links": ["validation"],
+        },
+        {
+            "id": "cybersecurite",
+            "title": "Cybersecurite",
+            "content": "",
+            "variant": "start",
+            "row": 2,
+            "col": 0,
+            "links": ["validation"],
+        },
+        {
+            "id": "exploitation",
+            "title": "Exploitation",
+            "content": "",
+            "variant": "mid",
+            "row": 3,
+            "col": 0,
+            "links": ["validation"],
+        },
+        {
+            "id": "validation",
+            "title": "Validation",
+            "content": "DAT {{ dat.reference }}",
+            "variant": "mid",
+            "row": 2,
+            "col": 2,
+            "links": [],
+        },
     ]
 }
 
@@ -228,25 +260,9 @@ def _apply_workflow_overrides(base: dict[str, Any], overrides: dict[str, Any]) -
             variant = str(node_override["variant"] or "").strip().lower()
             if variant in {"start", "mid", "end"}:
                 node["variant"] = variant
-        if "row" in node_override:
-            try:
-                node["row"] = max(0, int(node_override["row"]))
-            except (TypeError, ValueError):
-                pass
-        if "col" in node_override:
-            try:
-                node["col"] = max(0, int(node_override["col"]))
-            except (TypeError, ValueError):
-                pass
-        if "links" in node_override and isinstance(node_override["links"], list):
-            valid_ids = set(by_id)
-            links: list[str] = []
-            for value in node_override["links"]:
-                target = str(value or "").strip()
-                if not target or target == node_id or target not in valid_ids:
-                    continue
-                links.append(target)
-            node["links"] = links
+        # Keep layout coordinates and graph links sourced from the template file.
+        # DAT-level workflow_config can customize labels/content, but should not
+        # override node placement; this guarantees template layout updates apply.
 
     return template
 

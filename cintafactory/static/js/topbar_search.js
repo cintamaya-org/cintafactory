@@ -59,7 +59,7 @@
     var resultContainer = document.getElementById("topbar-search-results");
     var applicationFilter = document.getElementById("topbar-search-filter-applications");
     var datFilter = document.getElementById("topbar-search-filter-dats");
-    if (!input || !resultContainer || !applicationFilter || !datFilter) {
+    if (!input || !resultContainer) {
       return;
     }
     if (input.dataset.topbarSearchInitialized === "1") {
@@ -76,9 +76,11 @@
     }
 
     function currentFilters() {
+      var includeApplications = applicationFilter ? applicationFilter.checked : true;
+      var includeDats = datFilter ? datFilter.checked : true;
       return {
-        applications: applicationFilter.checked,
-        dats: datFilter.checked,
+        applications: includeApplications,
+        dats: includeDats,
       };
     }
 
@@ -161,8 +163,12 @@
         onInputChanged();
       }
     });
-    applicationFilter.addEventListener("change", onInputChanged);
-    datFilter.addEventListener("change", onInputChanged);
+    if (applicationFilter) {
+      applicationFilter.addEventListener("change", onInputChanged);
+    }
+    if (datFilter) {
+      datFilter.addEventListener("change", onInputChanged);
+    }
     document.addEventListener("click", function (event) {
       if (event.target.closest(".topbar-search")) {
         return;

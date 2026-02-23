@@ -7,7 +7,7 @@ from typing import Any
 
 from django.conf import settings
 
-from .conf_utils import ensure_conf_dir
+from ..conf_utils import ensure_conf_dir
 
 DEFAULT_UPLOAD_CONFIG: dict[str, Any] = {
     "max_file_size_mb": 200,

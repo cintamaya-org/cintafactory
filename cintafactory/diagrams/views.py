@@ -6,7 +6,7 @@ from time import time
 from uuid import uuid4
 from pathlib import Path
 from urllib.error import HTTPError
-from urllib.parse import quote, urlencode, urlsplit, urlunsplit
+from urllib.parse import quote, unquote, urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 from django.apps import apps as django_apps
@@ -28,12 +28,13 @@ from django.templatetags.static import static
 from material.frontend.registry import modules as module_registry
 from types import SimpleNamespace
 
+from cintafactory.async_jobs import enqueue_drawio_export_job, enqueue_likec4_export_job
+from cintafactory.operations.slo_baseline import emit_baseline_metric
 from .forms import DiagramForm
 from .models import DrawIODiagram, LikeC4Diagram, likec4_png_path_for
-from .likec4_exports import enqueue_likec4_export
 from .validation import validate_drawio_xml
 from dat.drawio_parser import extract_drawio_pages
-from cintafactory.seaweedfs_storage import SeaweedFSStorage
+from cintafactory.storage.seaweedfs_storage import SeaweedFSStorage
 from cintafactory.url_safety import is_http_url
 
 
@@ -256,6 +257,58 @@ def _normalize_asset_path(raw_path: str | None) -> str:
     if any(part in (".", "..") for part in parts):
         return ""
     return cleaned
+
+
+def _split_csv(value: str | None) -> list[str]:
+    if value is None:
+        return []
+    return [item.strip() for item in str(value).split(",") if item.strip()]
+
+
+def _proxy_path_is_allowed(path: str) -> bool:
+    if not path:
+        return True
+    candidate = str(path).strip()
+    if not candidate:
+        return True
+    lowered = candidate.lower()
+    if lowered.startswith(("http://", "https://", "//", "/")):
+        return False
+    if "\x00" in candidate or "\\" in candidate:
+        return False
+    decoded = unquote(candidate)
+    if ".." in decoded:
+        return False
+    return True
+
+
+def _proxy_path_matches_prefixes(path: str, prefixes: list[str]) -> bool:
+    if not prefixes:
+        return True
+    normalized = path.lstrip("/")
+    for prefix in prefixes:
+        if prefix == "*":
+            return True
+        if normalized == prefix or normalized.startswith(f"{prefix.rstrip('/')}/"):
+            return True
+    return False
+
+
+def _proxy_upstream_is_allowlisted(base_url: str, allowed_hosts_setting: str) -> bool:
+    parts = urlsplit(base_url)
+    host = (parts.hostname or "").strip().lower()
+    if not host:
+        return False
+    if parts.username or parts.password:
+        return False
+    configured_hosts = {
+        host_item.lower()
+        for host_item in _split_csv(getattr(settings, allowed_hosts_setting, ""))
+        if host_item
+    }
+    if not configured_hosts:
+        configured_hosts = {host}
+    return host in configured_hosts
 
 
 def _diagram_asset_url(request, diagram: DrawIODiagram, storage_path: str | None) -> str | None:
@@ -510,11 +563,18 @@ def diagram_save_xml(request, pk: int):
         return JsonResponse({"ok": False, "error": "invalid xml"}, status=400)
 
     diagram.write_xml(xml)
-    try:
-        _export_drawio_views(diagram, xml)
-    except Exception as exc:  # pragma: no cover - best effort export
-        logger.warning("diagram %s: draw.io export failed: %s", diagram.pk, exc)
-    return JsonResponse({"ok": True})
+    job = enqueue_drawio_export_job(diagram.pk, xml_payload=xml, requested_by=request.user, source="save_xml")
+    status_path = reverse("api:async-job-detail", args=[job.id])
+    return JsonResponse(
+        {
+            "ok": True,
+            "job": {
+                "job_id": str(job.id),
+                "status": job.status,
+                "status_url": request.build_absolute_uri(status_path),
+            },
+        }
+    )
 
 
 @csrf_exempt
@@ -535,6 +595,15 @@ def likec4_metadata(request):
     provided = request.headers.get("X-LikeC4-Token", "") or request.GET.get("token", "") or data.get("token", "")
     token_valid = bool(token) and str(provided or "").strip() == str(token or "").strip()
     if not (is_authenticated or token_valid):
+        emit_baseline_metric(
+            "auth.token_validation",
+            duration_ms=0.0,
+            success=False,
+            dimensions={
+                "surface": "likec4_metadata",
+                "outcome": "unauthorized",
+            },
+        )
         logger.warning(
             "likec4_metadata unauthorized: auth=%s has_header=%s has_query=%s has_body=%s user_agent=%s",
             is_authenticated,
@@ -628,9 +697,23 @@ def likec4_metadata(request):
                 except Exception as exc:  # pragma: no cover - best effort cleanup
                     logger.warning("likec4_metadata failed to delete old png %s: %s", path, exc)
 
+    job_payload = None
     if not png_path:
-        enqueue_likec4_export(storage_path, source="metadata")
-    return JsonResponse({"ok": True})
+        job = enqueue_likec4_export_job(
+            storage_path,
+            requested_by=user if is_authenticated else None,
+            source="metadata",
+        )
+        status_path = reverse("api:async-job-detail", args=[job.id])
+        job_payload = {
+            "job_id": str(job.id),
+            "status": job.status,
+            "status_url": request.build_absolute_uri(status_path),
+        }
+    response = {"ok": True}
+    if job_payload:
+        response["job"] = job_payload
+    return JsonResponse(response)
 
 
 def _normalize_likec4_path(raw_path: str | None) -> str:
@@ -684,13 +767,17 @@ def likec4_import(request):
             "updated_at": timezone.now(),
         },
     )
-    enqueue_likec4_export(storage_path, source="import")
+    job = enqueue_likec4_export_job(storage_path, requested_by=request.user, source="import")
+    status_path = reverse("api:async-job-detail", args=[job.id])
     return JsonResponse(
         {
             "ok": True,
             "path": storage_path,
             "size": size,
             "content_type": content_type,
+            "job_id": str(job.id),
+            "status": job.status,
+            "status_url": request.build_absolute_uri(status_path),
         }
     )
 
@@ -847,7 +934,15 @@ def drawio_proxy(request, path: str = ""):
     if not is_http_url(upstream_base):
         logger.warning("draw.io proxy blocked: DRAWIO_BASE_URL must be http(s).")
         raise Http404("draw.io unavailable")
-    upstream = upstream_base if not path else f"{upstream_base}/{path.lstrip('/')}"
+    if not _proxy_upstream_is_allowlisted(upstream_base, "DRAWIO_PROXY_ALLOWED_UPSTREAM_HOSTS"):
+        logger.warning("draw.io proxy blocked: upstream host is not allowlisted.")
+        raise Http404("draw.io unavailable")
+    normalized_path = (path or "").strip()
+    allowed_prefixes = _split_csv(getattr(settings, "DRAWIO_PROXY_ALLOWED_PATH_PREFIXES", "*,"))
+    if not _proxy_path_is_allowed(normalized_path) or not _proxy_path_matches_prefixes(normalized_path, allowed_prefixes):
+        logger.warning("draw.io proxy blocked: invalid/disallowed path '%s'.", normalized_path)
+        raise Http404("draw.io unavailable")
+    upstream = upstream_base if not normalized_path else f"{upstream_base}/{normalized_path.lstrip('/')}"
     query = request.META.get("QUERY_STRING")
     if query:
         upstream = f"{upstream}?{query}"
@@ -890,7 +985,15 @@ def likec4_proxy(request, path: str = ""):
     if not is_http_url(upstream_base):
         logger.warning("LikeC4 proxy blocked: LIKEC4_EDITOR_URL must be http(s).")
         raise Http404("LikeC4 editor unavailable.")
-    upstream = upstream_base if not path else f"{upstream_base}/{path.lstrip('/')}"
+    if not _proxy_upstream_is_allowlisted(upstream_base, "LIKEC4_PROXY_ALLOWED_UPSTREAM_HOSTS"):
+        logger.warning("LikeC4 proxy blocked: upstream host is not allowlisted.")
+        raise Http404("LikeC4 editor unavailable.")
+    normalized_path = (path or "").strip()
+    allowed_prefixes = _split_csv(getattr(settings, "LIKEC4_PROXY_ALLOWED_PATH_PREFIXES", "*,"))
+    if not _proxy_path_is_allowed(normalized_path) or not _proxy_path_matches_prefixes(normalized_path, allowed_prefixes):
+        logger.warning("LikeC4 proxy blocked: invalid/disallowed path '%s'.", normalized_path)
+        raise Http404("LikeC4 editor unavailable.")
+    upstream = upstream_base if not normalized_path else f"{upstream_base}/{normalized_path.lstrip('/')}"
     query = request.META.get("QUERY_STRING")
     if query:
         upstream = f"{upstream}?{query}"
@@ -910,6 +1013,14 @@ def likec4_proxy(request, path: str = ""):
     if api_token:
         headers["X-LikeC4-Token"] = api_token
     body = request.body if method == "POST" else None
+    if method == "POST":
+        max_body_bytes = int(getattr(settings, "LIKEC4_PROXY_MAX_BODY_BYTES", 1024 * 1024))
+        if len(body or b"") > max_body_bytes:
+            logger.warning(
+                "LikeC4 proxy blocked: payload exceeds max size (%s bytes).",
+                max_body_bytes,
+            )
+            return HttpResponse("payload too large", status=413)
 
     try:
         req = Request(upstream, data=body, headers=headers, method=method)
@@ -956,8 +1067,14 @@ def diagram_viewer_context(request, pk: int):
     diagram = get_object_or_404(DrawIODiagram, pk=pk, owner=request.user)
     thumbnail_url = _current_thumbnail_url(diagram)
     diagram_xml = diagram.read_xml() or "<mxGraphModel/>"
-    if not thumbnail_url and _regenerate_drawio_thumbnail(diagram, diagram_xml):
-        thumbnail_url = _current_thumbnail_url(diagram)
+    drawio_job = None
+    if not thumbnail_url:
+        drawio_job = enqueue_drawio_export_job(
+            diagram.pk,
+            xml_payload=diagram_xml,
+            requested_by=request.user,
+            source="viewer_context",
+        )
     thumbnail_url = (
         _diagram_asset_url(request, diagram, diagram.thumbnail.name)
         if thumbnail_url and diagram.thumbnail and diagram.thumbnail.name
@@ -985,13 +1102,19 @@ def diagram_viewer_context(request, pk: int):
             "image_urls": image_urls,
         },
     }
+    if drawio_job:
+        status_path = reverse("api:async-job-detail", args=[drawio_job.id])
+        payload["job"] = {
+            "job_id": str(drawio_job.id),
+            "status": drawio_job.status,
+            "status_url": request.build_absolute_uri(status_path),
+        }
     return JsonResponse(payload)
 
 
 @login_required
 @require_POST
 def diagram_import_xml(request, pk: int):
-    logger.info("TEST")
     diagram = get_object_or_404(DrawIODiagram, pk=pk, owner=request.user)
     base_context = _build_import_log_context(request, diagram)
     logger.info(
@@ -1091,16 +1214,13 @@ def diagram_import_xml(request, pk: int):
     diagram.thumbnail_size = 0
     diagram.thumbnail_content_type = ""
     diagram.save(update_fields=["thumbnail", "thumbnail_size", "thumbnail_content_type"])
-    regenerated = _regenerate_drawio_thumbnail(diagram, normalized_xml)
-    logger.info(
-        "diagram_import_xml: thumbnail regeneration diagram_id=%s user_id=%s regenerated=%s",
-        log_context["diagram_id"],
-        log_context["user_id"],
-        regenerated,
+    drawio_job = enqueue_drawio_export_job(
+        diagram.pk,
+        xml_payload=normalized_xml,
+        requested_by=request.user,
+        source="import_xml",
     )
     thumbnail_url = None
-    if regenerated and _current_thumbnail_url(diagram):
-        thumbnail_url = _diagram_asset_url(request, diagram, diagram.thumbnail.name)
 
     logger.info(
         "diagram_import_xml: success diagram_id=%s user_id=%s filename=%s thumbnail=%s",
@@ -1116,6 +1236,11 @@ def diagram_import_xml(request, pk: int):
                 "id": diagram.pk,
                 "title": diagram.title,
                 "thumbnail_url": thumbnail_url,
+            },
+            "job": {
+                "job_id": str(drawio_job.id),
+                "status": drawio_job.status,
+                "status_url": request.build_absolute_uri(reverse("api:async-job-detail", args=[drawio_job.id])),
             },
         }
     )

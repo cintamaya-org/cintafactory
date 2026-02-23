@@ -17,6 +17,7 @@
         {% block js %}{% include 'material/frontend/includes/material_js.html' %}{% endblock js %}
         <script src="{% static 'js/user_form.js' %}" defer></script>
         <script src="{% static 'js/topbar_search.js' %}" defer></script>
+        <script src="{% static 'js/attachment_download.js' %}" defer></script>
         {% if frontend_dev_logger_enabled %}
         <script src="{% static 'js/dev_front_logger.js' %}" defer></script>
         {% endif %}
@@ -113,24 +114,16 @@
                     </div>
                     <ul id="nav-mobile" class="right hide-on-med-and-down">
                         <li class="topbar-search"> 
-                            <form class="topbar-search__form" role="search" action="javascript:void(0);" onsubmit="return false;">
-                                <i class="material-icons topbar-search__icon" aria-hidden="true">search</i>
-                                <input
+                            <form class="topbar-search__form" role="search" method="get" action="{% url 'dat:search_page' %}">
+                                 <input
                                   id="topbar-search"
                                   type="search"
+                                  name="q"
                                   placeholder="Rechercher"
                                   aria-label="Rechercher"
                                   autocomplete="off"
                                   data-search-url="{% url 'dat:topbar_search' %}"
                                 >
-                                <label class="topbar-search__filter">
-                                    <input id="topbar-search-filter-applications" type="checkbox" checked>
-                                    <span>Applications</span>
-                                </label>
-                                <label class="topbar-search__filter">
-                                    <input id="topbar-search-filter-dats" type="checkbox" checked>
-                                    <span>DAT</span>
-                                </label>
                             </form>
                             <div id="topbar-search-results" class="topbar-search__results" hidden></div>
                         </li>
@@ -171,50 +164,6 @@
                 {% endfor %}
             {% endwith %}
         </dmc-snackbar>
-        <script>
-          (function () {
-            function triggerAttachmentDownload(url) {
-              if (!url) {
-                return;
-              }
-              var win = window.open(url, "_blank");
-              if (win) {
-                setTimeout(function () {
-                  try {
-                    win.close();
-                  } catch (err) {}
-                }, 1500);
-                return;
-              }
-              var iframe = document.createElement("iframe");
-              iframe.style.display = "none";
-              iframe.src = url;
-              document.body.appendChild(iframe);
-              setTimeout(function () {
-                if (iframe.parentNode) {
-                  iframe.parentNode.removeChild(iframe);
-                }
-              }, 60000);
-            }
-
-            document.addEventListener("click", function (event) {
-              var link = event.target.closest("[data-attachment-download]");
-              if (!link) {
-                return;
-              }
-              if (link.dataset.attachmentDownloading === "1") {
-                event.preventDefault();
-                return;
-              }
-              event.preventDefault();
-              link.dataset.attachmentDownloading = "1";
-              setTimeout(function () {
-                link.removeAttribute("data-attachment-downloading");
-              }, 2000);
-              triggerAttachmentDownload(link.getAttribute("href"));
-            });
-          })();
-        </script>
         {% endblock messages %}
     </body>
 </html>

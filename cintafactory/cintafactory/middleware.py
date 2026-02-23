@@ -1,6 +1,6 @@
 from __future__ import annotations
-
 import uuid
+import re
 from typing import Callable
 from urllib.parse import urlsplit
 
@@ -9,8 +9,47 @@ from django.core.cache import cache
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.http.request import validate_host
 
-from .logging_utils import bind_request_context, clear_request_context
+from .logging.logging_utils import bind_request_context, clear_request_context
 from .rate_limit import load_limit_config
+from .operations.slo_baseline import emit_web_request_baseline
+from time import perf_counter
+
+
+_SENSITIVE_ENDPOINT_PATTERNS = (
+    re.compile(r"^/diagrams/[^/]+/(import|export|save|thumbnail)/?$"),
+    re.compile(r"^/diagrams/likec4/(import|export|metadata)/?$"),
+    re.compile(r"^/diagrams/likec4/editor(?:/.*)?$"),
+    re.compile(r"^/dat/my/[^/]+/export(?:/.*)?$"),
+    re.compile(r"^/dat/my/[^/]+/sections/[^/]+/attachments/upload/?$"),
+    re.compile(r"^/dat/manage/dats/import/?$"),
+)
+
+
+class AppSecurityHeadersMiddleware:
+    """
+    Apply security response headers consistently across the app.
+    """
+
+    def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]) -> None:
+        self.get_response = get_response
+
+    def __call__(self, request: HttpRequest) -> HttpResponse:
+        response = self.get_response(request)
+        csp_policy = (
+            "default-src 'self'; frame-ancestors 'self'; "
+            "img-src 'self' data: blob:; "
+            "script-src 'self' https://cdnjs.cloudflare.com; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; "
+            "font-src 'self' https://fonts.gstatic.com; "
+            f"frame-src 'self' {settings.DRAWIO_PUBLIC_ORIGIN}; "
+            f"connect-src 'self' {settings.DRAWIO_PUBLIC_ORIGIN}"
+        )
+        response.setdefault("Content-Security-Policy", csp_policy)
+        response.setdefault("X-Content-Type-Options", "nosniff")
+        response.setdefault("Referrer-Policy", settings.SECURE_REFERRER_POLICY)
+        response.setdefault("X-Frame-Options", settings.X_FRAME_OPTIONS)
+        response.setdefault("Cross-Origin-Opener-Policy", settings.SECURE_CROSS_ORIGIN_OPENER_POLICY)
+        return response
 
 
 class LoggingContextMiddleware:
@@ -40,6 +79,7 @@ class LoggingContextMiddleware:
         request.request_id = request_id  # type: ignore[attr-defined]
         try:
             response = self.get_response(request)
+            response["X-Request-ID"] = request_id
             status_code = getattr(response, "status_code", None)
             if status_code is not None:
                 bind_request_context(status_code=status_code)
@@ -54,6 +94,39 @@ class LoggingContextMiddleware:
                 if value:
                     return value
         return uuid.uuid4().hex
+
+
+class SLOBaselineMiddleware:
+    """
+    Emit request latency and status signals used by baseline SLO tracking.
+    """
+
+    def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]) -> None:
+        self.get_response = get_response
+
+    def __call__(self, request: HttpRequest) -> HttpResponse:
+        started_at = perf_counter()
+        try:
+            response = self.get_response(request)
+        except Exception as exc:
+            duration_ms = (perf_counter() - started_at) * 1000.0
+            emit_web_request_baseline(
+                request,
+                duration_ms=duration_ms,
+                status_code=500,
+                success=False,
+                error_type=exc.__class__.__name__,
+            )
+            raise
+        duration_ms = (perf_counter() - started_at) * 1000.0
+        status_code = int(getattr(response, "status_code", 0) or 0)
+        emit_web_request_baseline(
+            request,
+            duration_ms=duration_ms,
+            status_code=status_code,
+            success=status_code < 500,
+        )
+        return response
 
 
 class DynamicCsrfTrustedOriginsMiddleware:
@@ -110,6 +183,12 @@ class RateLimitMiddleware:
         if self._is_excluded(request, config):
             return self.get_response(request)
 
+        sensitive_limit = self._sensitive_endpoint_limit(request)
+        if sensitive_limit:
+            client_ip = self._get_client_ip(request)
+            if self._is_over_limit("sensitive", "ip", client_ip, sensitive_limit, 60):
+                return self._rate_limited_response(is_api=request.path.startswith("/api/"))
+
         is_api = request.path.startswith("/api/")
         window_seconds = 60
         client_ip = self._get_client_ip(request)
@@ -142,6 +221,15 @@ class RateLimitMiddleware:
             if path.startswith("/admin/"):
                 return True
         return False
+
+    def _sensitive_endpoint_limit(self, request: HttpRequest) -> int:
+        path = request.path or ""
+        if not any(pattern.match(path) for pattern in _SENSITIVE_ENDPOINT_PATTERNS):
+            return 0
+        try:
+            return int(getattr(settings, "ENDPOINT_RATE_LIMIT_PER_IP_PER_MINUTE", 30))
+        except (TypeError, ValueError):
+            return 30
 
     def _get_client_ip(self, request: HttpRequest) -> str:
         forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")

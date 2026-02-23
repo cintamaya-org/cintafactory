@@ -49,94 +49,11 @@
   </div>
 </div>
 
-<script>
-const iframeEl = document.getElementById("dio");
-const iframeWin = iframeEl.contentWindow;
-const loaderEl = document.getElementById("drawio-loading");
-const DRAWIO_ORIGIN = "{{ drawio_origin|escapejs }}";
-const DIAGRAM_XML = `{{ diagram_xml|default:""|escapejs }}`;
-const SAVE_XML_URL = "{% url 'diagrams:save_xml' diagram.pk %}";
-const SAVE_THUMB_URL = "{% url 'diagrams:save_thumbnail' diagram.pk %}";
-
-function hideLoader() {
-  if (loaderEl) {
-    loaderEl.style.opacity = "0";
-    loaderEl.style.pointerEvents = "none";
-    window.setTimeout(() => loaderEl.remove(), 200);
-  }
-}
-
-function getCSRF() {
-  const input = document.querySelector('#csrfForm input[name=csrfmiddlewaretoken]');
-  return input ? input.value : "";
-}
-
-function sendToDrawio(payload) {
-  if (!iframeWin) return;
-  iframeWin.postMessage(JSON.stringify(payload), DRAWIO_ORIGIN);
-}
-
-window.addEventListener("message", (evt) => {
-  if (evt.origin !== DRAWIO_ORIGIN) return;
-
-  let msg = evt.data;
-  if (!msg) return;
-
-  if (typeof msg === "string") {
-    try {
-      msg = JSON.parse(msg);
-    } catch {
-      return;
-    }
-  }
-
-  if (typeof msg !== "object") return;
-
-  if (msg.event === "init") {
-    sendToDrawio({ action: "configure", config: { autosave: 1 } });
-    sendToDrawio({ action: "load", xml: DIAGRAM_XML || "<mxGraphModel/>" });
-    hideLoader();
-  }
-
-  if (msg.event === "save") {
-    handleSave(msg.xml);
-  }
-
-  if (msg.event === "export" && msg.data) {
-    fetch(SAVE_THUMB_URL, {
-      method: "POST",
-      credentials: "same-origin",
-      headers: {
-        "Content-Type": "application/json",
-        "X-CSRFToken": getCSRF(),
-      },
-      body: JSON.stringify({ data_uri: msg.data }),
-    }).catch(console.error);
-  }
-});
-
-document.getElementById("btnSave").addEventListener("click", () => {
-  sendToDrawio({ action: "save" });
-});
-
-iframeEl.addEventListener("load", () => window.setTimeout(hideLoader, 5000));
-
-async function handleSave(xml) {
-  try {
-    await fetch(SAVE_XML_URL, {
-      method: "POST",
-      credentials: "same-origin",
-      headers: {
-        "Content-Type": "application/json",
-        "X-CSRFToken": getCSRF(),
-      },
-      body: JSON.stringify({ xml }),
-    });
-
-    sendToDrawio({ action: "export", format: "png", scale: 1, grid: 0 });
-  } catch (e) {
-    console.error(e);
-  }
-}
-</script>
+<div id="diagram-editor-config"
+     data-drawio-origin="{{ drawio_origin|escape }}"
+     data-diagram-xml="{{ diagram_xml|default:''|escape }}"
+     data-save-xml-url="{% url 'diagrams:save_xml' diagram.pk %}"
+     data-save-thumb-url="{% url 'diagrams:save_thumbnail' diagram.pk %}"
+     hidden></div>
+<script src="{% static 'js/diagrams_edit.js' %}"></script>
 {% endblock %}

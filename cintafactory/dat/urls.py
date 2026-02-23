@@ -12,6 +12,16 @@ urlpatterns = [
     path("my/", views.DatList.as_view(), name="my_list"),
     path("my/applications/", views.MyApplicationListView.as_view(), name="my_applications"),
     path("my/<uuid:pk>/", views.DatDetail.as_view(), name="my_detail"),
+    path(
+        "my/<uuid:pk>/section-responsibles/update/",
+        views.update_overview_section_responsibles,
+        name="my_section_responsibles_update",
+    ),
+    path(
+        "my/<uuid:pk>/section-participants/update/",
+        views.update_overview_section_participants,
+        name="my_section_participants_update",
+    ),
     path("my/<uuid:pk>/validation/decision/", views.submit_validation_decision, name="my_validation_decision"),
     path("my/<uuid:pk>/export/json/", views.DatExportJSONView.as_view(), name="my_export_json"),
     path(
@@ -93,6 +103,7 @@ urlpatterns = [
     # Dashboard
     path("manage/dats/dashboard/", views.DatDashboardView.as_view(), name="dashboard"),
     path("manage/dats/import/", views.DatImportView.as_view(), name="import"),
+    path("search/", views.DatSearchPageView.as_view(), name="search_page"),
 
     # CRUD
     path("manage/dats/", views.DatAdminList.as_view(), name="admin_list"),

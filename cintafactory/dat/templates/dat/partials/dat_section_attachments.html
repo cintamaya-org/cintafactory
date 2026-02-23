@@ -36,7 +36,15 @@
   </div>
   {% if attachments_show_upload and container.attachments_can_upload %}
     <p class="dat-attachments-help">
-      Formats autorisés : {{ attachments_allowed_extensions_display }} · Taille max : {{ attachments_max_size_label }}.
+      <span
+        class="dat-attachments-help__tooltip-target wf-tooltip-trigger"
+        data-tooltip="{{ attachments_allowed_extensions_display }}"
+        tabindex="0"
+        aria-label="Types de fichiers autorisés"
+      >
+        Types de fichiers autorisés
+      </span>
+      &amp; Taille maximale : {{ attachments_max_size_label }}
     </p>
   {% endif %}
   {% if container.attachments %}

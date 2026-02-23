@@ -7,7 +7,7 @@ from django.contrib.auth import get_user_model
 from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
 
-from cintafactory.logging_utils import get_request_context, log_info
+from cintafactory.logging.logging_utils import get_request_context, log_info
 
 from .models import DAT, DATSection, DATSectionMetadata, DATHistory, DATHistoryAction
 from .sections import ensure_default_sections

@@ -21,6 +21,25 @@ def user_is_dat_admin(user) -> bool:
     return False
 
 
+def user_is_dat_admin_for_dat(dat, user) -> bool:
+    """
+    DAT-scoped administration rights.
+    """
+    if user_is_dat_admin(user):
+        return True
+    if dat is None or user is None or not getattr(user, "is_authenticated", False):
+        return False
+    user_id = getattr(user, "id", None)
+    if user_id is None:
+        return False
+    if getattr(dat, "owner_id", None) == user_id:
+        return True
+    try:
+        return dat.dat_admins.filter(user_id=user_id).exists()
+    except Exception:
+        return False
+
+
 def user_is_responsible_for_section(dat, section, user, *, participants=None) -> bool:
     """
     Determine whether the user is the responsible (manager) of the business group of

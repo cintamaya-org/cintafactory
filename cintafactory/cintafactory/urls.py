@@ -29,12 +29,16 @@ from material.frontend import urls as material_urls
 
 from account.views import AccountLogoutView
 from cintafactory.admin_config import load_admin_config
+from cintafactory.operations import views_health
 from users import oauth_views
 
-_admin_cipher = load_admin_config().get("cipher_url", "khtijgdryi")
+_admin_cipher = load_admin_config().get("cipher_url", "3b63cbd5-52d0-4af9-9a61-6a79d41a7b09")
 
 urlpatterns = [
     path("", RedirectView.as_view(url="/accounts/login", permanent=False)),
+    path("health/live", views_health.health_live, name="health_live"),
+    path("health/ready", views_health.health_ready, name="health_ready"),
+    path("metrics", views_health.metrics, name="metrics"),
     path(f"{_admin_cipher}/admin/", admin.site.urls),      # Django admin
     path("api/schema/", SpectacularAPIView.as_view(), name="api-schema"),
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="api-schema"), name="api-docs"),

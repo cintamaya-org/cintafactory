@@ -18,7 +18,7 @@ from django.utils import timezone
 from django.utils.module_loading import import_string
 
 from diagrams.models import DrawIODiagram, LikeC4Diagram, likec4_png_path_for
-from cintafactory.seaweedfs_storage import SeaweedFSStorage
+from cintafactory.storage.seaweedfs_storage import SeaweedFSStorage
 from cintafactory.url_safety import is_http_url
 
 from .models import (

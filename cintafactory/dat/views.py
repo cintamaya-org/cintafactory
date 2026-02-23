@@ -16,6 +16,8 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.paginator import Paginator
+from django.db import IntegrityError, transaction
 from django.db.models import Count, F, Prefetch, Q
 from django.db.models.functions import TruncMonth
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
@@ -38,6 +40,7 @@ from diagrams.validation import sanitize_diagram_title
 from cintafactory.url_safety import is_http_url
 
 from .attachments import (
+    AttachmentSecurityError,
     build_attachment_ui_context,
     build_download_filename,
     create_section_attachment,
@@ -57,13 +60,18 @@ from .importers import DATImportError, DATImportService
 from .models import (
     Application,
     DAT,
+    DATAdmin,
     DATPart,
     DATPartEntryType,
     DATPartEntry,
+    DATParticipant,
+    DATParticipantType,
     DATReserveHistory,
     DATReserveHistoryAction,
     DATSection,
     DATSectionAttachment,
+    DATSectionParticipant,
+    DATSectionResponsible,
     DATSubSection,
     DATStatus,
     DATHistory,
@@ -74,6 +82,7 @@ from .permissions import (
     filter_dat_queryset_for_user,
     user_can_update_section_status,
     user_is_dat_admin,
+    user_is_dat_admin_for_dat,
     user_is_responsible_for_section,
 )
 from .sections import (
@@ -120,6 +129,18 @@ VALIDATION_STATUS_LABELS = {
     DATStatus.RESERVE.label,
     DATStatus.VALIDER.label,
     DATStatus.REFUSE.label,
+}
+
+WORKFLOW_NODE_SECTION_SLUGS = {
+    "urbanisme": "urbanisme",
+    "architecture-technique": "architecture",
+    "cybersecurite": "cybersecurite",
+    "exploitation": "exploitation",
+}
+
+SECTION_FORCED_RESPONSIBLE_ROLE_SLUGS = {
+    "architecture": "architecte-referent",
+    "cybersecurite": "rssi",
 }
 
 
@@ -373,6 +394,16 @@ def build_participant_overview(dat: DAT):
                 "is_porteur": slug == DAT_PORTEUR_ROLE_SLUG,
                 "is_missing": user is None,
                 "is_responsible": slug in required_roles,
+                "participant_type": (
+                    getattr(participant, "participant_type", DATParticipantType.RESPONSABLE)
+                    if participant
+                    else None
+                ),
+                "participant_type_label": (
+                    participant.get_participant_type_display()
+                    if participant and getattr(participant, "participant_type", None)
+                    else "—"
+                ),
             }
         )
     return overview
@@ -501,14 +532,322 @@ def build_dat_history_user_choices(dat: DAT):
     return choices
 
 
+def can_edit_section_responsibles(dat: DAT, user) -> bool:
+    return user_is_dat_admin_for_dat(dat, user)
+
+
+def _find_participant_user_for_role_slug(participants: list[DATParticipant], role_slug: str):
+    role_matches = [
+        participant
+        for participant in participants
+        if getattr(getattr(participant, "role", None), "slug", "") == role_slug
+        and getattr(participant, "user", None) is not None
+    ]
+    if not role_matches:
+        return None
+    for participant in role_matches:
+        if getattr(participant, "participant_type", None) == DATParticipantType.RESPONSABLE:
+            return getattr(participant, "user", None)
+    return getattr(role_matches[0], "user", None)
+
+
+def _infer_section_responsible_user(section: DATSection, participants: list[DATParticipant]):
+    """
+    Fallback used when no explicit DATSectionResponsible exists yet.
+    Prefer a single eligible participant tagged as Responsable for the section roles.
+    """
+    forced_role_slug = SECTION_FORCED_RESPONSIBLE_ROLE_SLUGS.get(section.slug)
+    if forced_role_slug:
+        return _find_participant_user_for_role_slug(participants, forced_role_slug)
+
+    try:
+        allowed_role_ids = {int(role_id) for role_id in section.allowed_roles.values_list("pk", flat=True)}
+    except Exception:
+        allowed_role_ids = set()
+    if not allowed_role_ids:
+        return None
+
+    eligible_responsables = []
+    eligible_participants = []
+    for participant in participants:
+        role_id = getattr(participant, "role_id", None)
+        if role_id is None or int(role_id) not in allowed_role_ids:
+            continue
+        role_slug = getattr(getattr(participant, "role", None), "slug", "")
+        if section.slug == "informations-generales" and role_slug == "architecte-referent":
+            continue
+        user = getattr(participant, "user", None)
+        if user is None:
+            continue
+        eligible_participants.append(participant)
+        if getattr(participant, "participant_type", None) == DATParticipantType.RESPONSABLE:
+            eligible_responsables.append(participant)
+
+    if len(eligible_responsables) == 1:
+        return getattr(eligible_responsables[0], "user", None)
+    if len(eligible_participants) == 1:
+        return getattr(eligible_participants[0], "user", None)
+    return None
+
+
+def build_section_responsible_editor(dat: DAT, user):
+    section_qs = dat.sections.select_related("metadata").prefetch_related("allowed_roles").order_by("order", "id")
+    sections = list(section_qs)
+    all_participants = list(dat.participants.select_related("role", "user"))
+    responsibles = [p for p in all_participants if p.participant_type == DATParticipantType.RESPONSABLE]
+    # Bootstrap fallback: if no one is tagged Responsable yet, expose existing assignments
+    # so the porteur can recover and set section responsibles.
+    if not responsibles:
+        responsibles = list(all_participants)
+    participants_by_role_id: dict[int, list[DATParticipant]] = {}
+    participants_by_user_id: dict[int, DATParticipant] = {}
+    for participant in responsibles:
+        role_id = getattr(participant, "role_id", None)
+        user_id = getattr(participant, "user_id", None)
+        if role_id is not None:
+            participants_by_role_id.setdefault(int(role_id), []).append(participant)
+        if user_id is not None:
+            participants_by_user_id[int(user_id)] = participant
+
+    assigned_map: dict[str, DATSectionResponsible] = {}
+    for assigned in dat.section_responsibles.select_related("section__metadata", "user"):
+        section_slug = getattr(getattr(assigned, "section", None), "slug", None)
+        if section_slug:
+            assigned_map[section_slug] = assigned
+    use_inferred_fallback = not bool(assigned_map)
+
+    rows = []
+    for section in sections:
+        forced_role_slug = SECTION_FORCED_RESPONSIBLE_ROLE_SLUGS.get(section.slug)
+        allowed_role_ids = set(section.allowed_roles.values_list("pk", flat=True))
+        if not allowed_role_ids:
+            continue
+        section_title = section.title or section.slug
+        option_participants: list[DATParticipant] = []
+        group_responsible_users = []
+        seen_group_responsible_ids: set[int] = set()
+        if forced_role_slug:
+            for participant in all_participants:
+                role_slug = getattr(getattr(participant, "role", None), "slug", "")
+                if role_slug != forced_role_slug:
+                    continue
+                if getattr(participant, "user", None) is None:
+                    continue
+                option_participants.append(participant)
+        else:
+            for role_id in sorted(allowed_role_ids):
+                for participant in participants_by_role_id.get(int(role_id), []):
+                    role_slug = getattr(getattr(participant, "role", None), "slug", "")
+                    if section.slug == "informations-generales" and role_slug == "architecte-referent":
+                        continue
+                    option_participants.append(participant)
+                for participant in all_participants:
+                    if getattr(participant, "role_id", None) != role_id:
+                        continue
+                    assignee = getattr(participant, "user", None)
+                    group = getattr(assignee, "business_group", None) if assignee is not None else None
+                    responsible = getattr(group, "responsible", None) if group is not None else None
+                    responsible_id = getattr(responsible, "id", None)
+                    if not responsible_id:
+                        continue
+                    if int(responsible_id) in seen_group_responsible_ids:
+                        continue
+                    seen_group_responsible_ids.add(int(responsible_id))
+                    group_responsible_users.append(responsible)
+        dedup_options = []
+        seen_user_ids: set[int] = set()
+        for participant in option_participants:
+            user = getattr(participant, "user", None)
+            user_id = getattr(user, "id", None)
+            if not user_id or int(user_id) in seen_user_ids:
+                continue
+            seen_user_ids.add(int(user_id))
+            dedup_options.append(
+                {
+                    "id": str(user_id),
+                    "label": format_user_display(user),
+                    "role_label": getattr(getattr(participant, "role", None), "name", ""),
+                }
+            )
+        for manager in group_responsible_users:
+            manager_id = getattr(manager, "id", None)
+            if not manager_id or int(manager_id) in seen_user_ids:
+                continue
+            seen_user_ids.add(int(manager_id))
+            dedup_options.append(
+                {
+                    "id": str(manager_id),
+                    "label": format_user_display(manager),
+                    "role_label": "Responsable de groupe",
+                }
+            )
+        current_assignment = assigned_map.get(section.slug)
+        current_user = getattr(current_assignment, "user", None)
+        if current_user is None and use_inferred_fallback:
+            current_user = _infer_section_responsible_user(section, all_participants)
+        current_user_id = getattr(current_user, "id", None)
+        if current_user_id and int(current_user_id) not in seen_user_ids:
+            participant = participants_by_user_id.get(int(current_user_id))
+            dedup_options.append(
+                {
+                    "id": str(current_user_id),
+                    "label": format_user_display(current_user),
+                    "role_label": getattr(getattr(participant, "role", None), "name", ""),
+                }
+            )
+            seen_user_ids.add(int(current_user_id))
+        options = dedup_options
+        options.sort(key=lambda item: item["label"].lower())
+        is_current_admin = bool(
+            current_user_id
+            and dat.dat_admins.filter(user_id=current_user_id).exists()
+            and (not dat.owner_id or int(current_user_id) != int(dat.owner_id))
+        )
+        rows.append(
+            {
+                "section_slug": section.slug,
+                "section_title": section_title,
+                "field_name": f"section_responsible__{section.slug}",
+                "admin_field_name": f"section_admin__{section.slug}",
+                "options": options,
+                "current_user_id": str(current_user_id) if current_user_id else "",
+                "current_user_display": format_user_display(current_user),
+                "current_user_is_dat_admin": is_current_admin,
+                "has_options": bool(options),
+            }
+        )
+
+    return {
+        "can_edit": can_edit_section_responsibles(dat, user),
+        "has_rows": bool(rows),
+        "rows": rows,
+        "update_url": reverse("dat:my_section_responsibles_update", args=[dat.pk]),
+    }
+
+
+def _build_section_responsible_user_map(dat: DAT, sections: list[DATSection], participants: list[DATParticipant]) -> dict[str, object]:
+    assigned_map = {
+        assignment.section.slug: assignment
+        for assignment in dat.section_responsibles.select_related("section", "user")
+    }
+    use_inferred_fallback = not bool(assigned_map)
+    by_section_slug: dict[str, object] = {}
+    for section in sections:
+        current_assignment = assigned_map.get(section.slug)
+        current_user = getattr(current_assignment, "user", None)
+        if current_user is None and use_inferred_fallback:
+            current_user = _infer_section_responsible_user(section, participants)
+        if current_user is not None:
+            by_section_slug[section.slug] = current_user
+    return by_section_slug
+
+
+def build_section_participant_editor(dat: DAT, user):
+    section_qs = dat.sections.select_related("metadata").prefetch_related("allowed_roles").order_by("order", "id")
+    sections = list(section_qs)
+    participants = list(dat.participants.select_related("role", "user"))
+    participants_by_role_id: dict[int, list[DATParticipant]] = {}
+    participants_by_user_id: dict[int, DATParticipant] = {}
+    for participant in participants:
+        role_id = getattr(participant, "role_id", None)
+        user_id = getattr(participant, "user_id", None)
+        if role_id is not None:
+            participants_by_role_id.setdefault(int(role_id), []).append(participant)
+        if user_id is not None:
+            participants_by_user_id[int(user_id)] = participant
+
+    section_responsible_users = _build_section_responsible_user_map(dat, sections, participants)
+    current_assignments = {
+        assignment.section.slug: assignment
+        for assignment in dat.section_participants.select_related("section", "user")
+    }
+    current_user_id = getattr(user, "id", None)
+    can_edit_any = user_is_dat_admin_for_dat(dat, user)
+
+    rows = []
+    for section in sections:
+        allowed_role_ids = set(section.allowed_roles.values_list("pk", flat=True))
+        if not allowed_role_ids:
+            continue
+        forced_role_slug = SECTION_FORCED_RESPONSIBLE_ROLE_SLUGS.get(section.slug)
+        option_participants: list[DATParticipant] = []
+        for role_id in sorted(allowed_role_ids):
+            for participant in participants_by_role_id.get(int(role_id), []):
+                role_slug = getattr(getattr(participant, "role", None), "slug", "")
+                if forced_role_slug and role_slug == forced_role_slug:
+                    continue
+                if getattr(participant, "user", None) is None:
+                    continue
+                option_participants.append(participant)
+        dedup_options = []
+        seen_user_ids: set[int] = set()
+        for participant in option_participants:
+            option_user = getattr(participant, "user", None)
+            option_user_id = getattr(option_user, "id", None)
+            if not option_user_id or int(option_user_id) in seen_user_ids:
+                continue
+            seen_user_ids.add(int(option_user_id))
+            dedup_options.append(
+                {
+                    "id": str(option_user_id),
+                    "label": format_user_display(option_user),
+                    "role_label": getattr(getattr(participant, "role", None), "name", ""),
+                }
+            )
+
+        current_assignment = current_assignments.get(section.slug)
+        current_assignee = getattr(current_assignment, "user", None)
+        current_assignee_id = getattr(current_assignee, "id", None)
+        if current_assignee_id and int(current_assignee_id) not in seen_user_ids:
+            participant = participants_by_user_id.get(int(current_assignee_id))
+            dedup_options.append(
+                {
+                    "id": str(current_assignee_id),
+                    "label": format_user_display(current_assignee),
+                    "role_label": getattr(getattr(participant, "role", None), "name", ""),
+                }
+            )
+            seen_user_ids.add(int(current_assignee_id))
+
+        responsible_user = section_responsible_users.get(section.slug)
+        responsible_user_id = getattr(responsible_user, "id", None)
+        row_can_edit = bool(can_edit_any or (current_user_id and responsible_user_id and int(current_user_id) == int(responsible_user_id)))
+
+        options = sorted(dedup_options, key=lambda item: item["label"].lower())
+        rows.append(
+            {
+                "section_slug": section.slug,
+                "section_title": section.title or section.slug,
+                "field_name": f"section_participant__{section.slug}",
+                "options": options,
+                "has_options": bool(options),
+                "current_user_id": str(current_assignee_id) if current_assignee_id else "",
+                "current_user_display": format_user_display(current_assignee),
+                "can_edit": row_can_edit,
+                "responsible_display": format_user_display(responsible_user),
+            }
+        )
+
+    has_editable_rows = any(bool(row.get("can_edit")) for row in rows)
+    return {
+        "can_edit_any": can_edit_any,
+        "has_editable_rows": has_editable_rows,
+        "has_rows": bool(rows),
+        "rows": rows,
+        "update_url": reverse("dat:my_section_participants_update", args=[dat.pk]),
+    }
+
+
 def build_dat_overview_context(dat: DAT, user):
     next_status = get_next_status(dat.status)
     return {
         "dat": dat,
         "participant_overview": build_participant_overview(dat),
         "current_responsibles": get_current_responsibles(dat),
+        "section_responsible_editor": build_section_responsible_editor(dat, user),
+        "section_participant_editor": build_section_participant_editor(dat, user),
         "owner_editable_statuses": {status.value for status in OWNER_EDITABLE_STATUSES},
-        "owner_can_edit": user_is_dat_admin(user),
+        "owner_can_edit": user_is_dat_admin_for_dat(dat, user),
         "can_create_dat": user_can_create_dat_entities(user),
         "next_status": next_status,
         "next_status_label": DATStatus(next_status).label if next_status else None,
@@ -731,6 +1070,69 @@ def build_section_status_map(dat: DAT, sections_list: list[DATSection] | None = 
     return status_map, choice_map
 
 
+def build_workflow_node_statuses(dat: DAT, status_map: dict[str, dict] | None = None) -> dict[str, dict[str, str]]:
+    if status_map is None:
+        status_map, _ = build_section_status_map(dat)
+
+    def _tone_from_section_status(value: str | None) -> tuple[str, str]:
+        if value == SECTION_STATUS_VALIDATED_VALUE:
+            return ("validated", "check_circle")
+        if value == SECTION_STATUS_BLOCKED_VALUE:
+            return ("blocked", "block")
+        if value == SECTION_STATUS_DEFAULT:
+            return ("in_progress", "pending")
+        return ("unknown", "help_outline")
+
+    node_statuses: dict[str, dict[str, str]] = {}
+    for node_id, section_slug in WORKFLOW_NODE_SECTION_SLUGS.items():
+        section_info = status_map.get(section_slug) or {}
+        raw_value = section_info.get("value")
+        value = str(raw_value) if raw_value not in (None, "") else None
+        tone, icon = _tone_from_section_status(value)
+        blocked_message = str(section_info.get("commentaire") or "").strip()
+        reserve_message = str(section_info.get("reserve_message") or "").strip()
+        message = ""
+        message_kind = ""
+
+        if value == SECTION_STATUS_BLOCKED_VALUE and blocked_message:
+            message = blocked_message
+            message_kind = "blocked"
+        elif reserve_message:
+            message = reserve_message
+            message_kind = "reserve"
+
+        node_statuses[node_id] = {
+            "scope": "section",
+            "tone": tone,
+            "icon": icon,
+            "message": message,
+            "message_kind": message_kind,
+        }
+
+    validation_tone = "in_progress"
+    validation_icon = "pending_actions"
+    if dat.status == DATStatus.VALIDER:
+        validation_tone = "validated"
+        validation_icon = "task_alt"
+    elif dat.status in {DATStatus.REFUSE, DATStatus.RESERVE}:
+        validation_tone = "blocked"
+        validation_icon = "gpp_maybe"
+    elif dat.status == DATStatus.EN_ATTENTE_DE_REVUE:
+        validation_tone = "review"
+        validation_icon = "rate_review"
+
+    # The validation node intentionally reflects the whole DAT lifecycle status,
+    # not any section-level status value.
+    node_statuses["validation"] = {
+        "scope": "dat",
+        "tone": validation_tone,
+        "icon": validation_icon,
+        "message": "",
+        "message_kind": "",
+    }
+    return node_statuses
+
+
 def section_is_locked(status_info: dict | None, *, dat: DAT | None = None) -> bool:
     if dat is not None:
         if dat.status in FINAL_DAT_STATUSES:
@@ -842,10 +1244,45 @@ def build_section_payload(
             for entry in sub_section.parts.all():
                 entry_value_map[entry.key] = entry.value
     try:
-        participants = list(dat.participants.select_related("user__business_group__responsible").all())
+        participants = list(dat.participants.select_related("role", "user__business_group__responsible").all())
     except Exception:
         participants = []
     dat._participants_cache = participants  # type: ignore[attr-defined]
+    section_responsibles_map: dict[str, list[dict[str, str]]] = {}
+    try:
+        section_responsibles = list(
+            dat.section_responsibles.select_related("section__metadata", "user")
+        )
+    except Exception:
+        section_responsibles = []
+    for assignment in section_responsibles:
+        assigned_section = getattr(assignment, "section", None)
+        assigned_slug = getattr(assigned_section, "slug", None)
+        assigned_user = getattr(assignment, "user", None)
+        if not assigned_slug or assigned_user is None:
+            continue
+        if SECTION_FORCED_RESPONSIBLE_ROLE_SLUGS.get(str(assigned_slug)):
+            continue
+        section_responsibles_map.setdefault(str(assigned_slug), []).append(
+            {
+                "id": str(getattr(assigned_user, "id", "")),
+                "display": format_user_display(assigned_user),
+            }
+        )
+    if not section_responsibles:
+        for section in sections_list:
+            if section_responsibles_map.get(section.slug):
+                continue
+            inferred_user = _infer_section_responsible_user(section, participants)
+            inferred_user_id = getattr(inferred_user, "id", None)
+            if not inferred_user_id:
+                continue
+            section_responsibles_map[section.slug] = [
+                {
+                    "id": str(inferred_user_id),
+                    "display": format_user_display(inferred_user),
+                }
+            ]
     validation_targets: list[DATSection] | None = None
     for section in sections_list:
         section_status = status_map.get(
@@ -992,6 +1429,7 @@ def build_section_payload(
             {
                 "section": section,
                 "parts": parts_payload,
+                "section_responsibles": section_responsibles_map.get(section.slug, []),
                 "can_edit": section_can_edit,
                 "attachments_enabled": attachments_enabled,
                 "attachments": attachments,
@@ -1126,10 +1564,23 @@ def upload_section_attachment(request, dat_pk: int, section_slug: str):
         return redirect(redirect_url)
     saved_count = 0
     message_list = []
+    failure_states: list[dict[str, str]] = []
     for uploaded_file in files:
         try:
             create_section_attachment(section, uploaded_file, uploaded_by=request.user)
             saved_count += 1
+        except AttachmentSecurityError as exc:
+            state = str(getattr(exc, "failure_state", "") or "security_rejected")
+            quarantine_path = str(getattr(exc, "quarantine_path", "") or "")
+            error_msg = exc.messages[0] if getattr(exc, "messages", None) else str(exc)
+            if is_ajax:
+                message_list.append(f"{uploaded_file.name}: {error_msg}")
+                failure_payload = {"file": str(getattr(uploaded_file, "name", "") or ""), "state": state}
+                if quarantine_path:
+                    failure_payload["quarantine_path"] = quarantine_path
+                failure_states.append(failure_payload)
+            else:
+                messages.error(request, f"{uploaded_file.name}: {error_msg}")
         except ValidationError as exc:
             error_msg = exc.messages[0] if getattr(exc, "messages", None) else str(exc)
             if is_ajax:
@@ -1152,6 +1603,7 @@ def upload_section_attachment(request, dat_pk: int, section_slug: str):
             {
                 "success": bool(saved_count),
                 "messages": message_list,
+                "failure_states": failure_states,
                 "attachments_html": render_section_attachments_snippet(
                     request,
                     dat,
@@ -1243,6 +1695,222 @@ def remove_section_attachment(request, dat_pk: int, attachment_pk: int):
         )
     messages.success(request, "Piece jointe supprimee.")
     return redirect(redirect_url)
+
+
+@login_required
+@require_POST
+def update_overview_section_responsibles(request, pk: int):
+    base_queryset = filter_dat_queryset_for_user(
+        DAT.objects.prefetch_related(
+            "participants__role",
+            "participants__user",
+            "sections__metadata",
+            "sections__allowed_roles",
+            "dat_admins",
+        ),
+        request.user,
+    )
+    dat = get_object_or_404(base_queryset, pk=pk)
+    sync_dat_sections_if_needed(dat)
+    if not can_edit_section_responsibles(dat, request.user):
+        raise PermissionDenied
+
+    editor_context = build_section_responsible_editor(dat, request.user)
+    rows = editor_context.get("rows", [])
+    if not rows:
+        messages.info(request, "Aucun responsable de section n'est configurable pour ce DAT.")
+        return redirect(f"{reverse('dat:my_detail', args=[dat.pk])}?section=informations-generales")
+
+    UserModel = get_user_model()
+    section_map = {row["section_slug"]: row for row in rows}
+    cleaned_assignments: dict[str, object | None] = {}
+    admin_assignments: dict[str, bool] = {}
+    validation_errors: list[str] = []
+    for row in rows:
+        field_name = row["field_name"]
+        admin_field_name = row.get("admin_field_name")
+        section_slug = row["section_slug"]
+        if not row.get("has_options"):
+            continue
+        raw_value = str(request.POST.get(field_name, "") or "").strip()
+        if not raw_value:
+            cleaned_assignments[section_slug] = None
+            admin_assignments[section_slug] = False
+            continue
+        allowed_option_ids = {option["id"] for option in row.get("options", [])}
+        if raw_value not in allowed_option_ids:
+            validation_errors.append(
+                f"Utilisateur invalide pour la section {row['section_title']}."
+            )
+            continue
+        candidate = UserModel.objects.filter(pk=raw_value).first()
+        if candidate is None:
+            validation_errors.append(
+                f"Utilisateur introuvable pour la section {row['section_title']}."
+            )
+            continue
+        cleaned_assignments[section_slug] = candidate
+        if admin_field_name:
+            admin_assignments[section_slug] = request.POST.get(admin_field_name) == "1"
+
+    if validation_errors:
+        for error_message in validation_errors:
+            messages.error(request, error_message)
+        return redirect(f"{reverse('dat:my_detail', args=[dat.pk])}?section=informations-generales")
+
+    existing_assignments = {
+        assignment.section.slug: assignment
+        for assignment in dat.section_responsibles.select_related("section__metadata", "user")
+    }
+    sections_by_slug = {
+        section.slug: section
+        for section in dat.sections.select_related("metadata").all()
+    }
+
+    try:
+        with transaction.atomic():
+            dat_admin_user_ids = set(dat.dat_admins.values_list("user_id", flat=True))
+            for section_slug, target_user in cleaned_assignments.items():
+                row = section_map.get(section_slug)
+                if row is None:
+                    continue
+                section = sections_by_slug.get(section_slug)
+                if section is None:
+                    continue
+                existing = existing_assignments.get(section_slug)
+                if target_user is None:
+                    if existing is not None:
+                        existing.delete()
+                    admin_assignments[section_slug] = False
+                    continue
+                if existing is not None:
+                    if existing.user_id != getattr(target_user, "id", None):
+                        existing.user = target_user
+                        existing.save(update_fields=["user", "updated_at"])
+                else:
+                    DATSectionResponsible.objects.create(
+                        dat=dat,
+                        section=section,
+                        user=target_user,
+                    )
+                target_user_id = getattr(target_user, "id", None)
+                if target_user_id is None:
+                    continue
+                if admin_assignments.get(section_slug):
+                    DATAdmin.objects.get_or_create(dat=dat, user=target_user)
+                    dat_admin_user_ids.add(int(target_user_id))
+                elif (
+                    int(target_user_id) in dat_admin_user_ids
+                    and (not dat.owner_id or int(target_user_id) != int(dat.owner_id))
+                ):
+                    DATAdmin.objects.filter(dat=dat, user_id=target_user_id).delete()
+                    dat_admin_user_ids.discard(int(target_user_id))
+            selected_user_ids = {
+                getattr(user, "id", None)
+                for user in cleaned_assignments.values()
+                if user is not None
+            }
+            selected_user_ids = {int(user_id) for user_id in selected_user_ids if user_id is not None}
+            if selected_user_ids:
+                dat.participants.filter(user_id__in=selected_user_ids).exclude(
+                    participant_type=DATParticipantType.RESPONSABLE
+                ).update(participant_type=DATParticipantType.RESPONSABLE)
+    except IntegrityError:
+        messages.error(request, "Impossible d'enregistrer les responsables (conflit d'affectation).")
+        return redirect(f"{reverse('dat:my_detail', args=[dat.pk])}?section=informations-generales")
+
+    messages.success(request, "Responsables des sections mis à jour.")
+    return redirect(f"{reverse('dat:my_detail', args=[dat.pk])}?section=informations-generales")
+
+
+@login_required
+@require_POST
+def update_overview_section_participants(request, pk: int):
+    base_queryset = filter_dat_queryset_for_user(
+        DAT.objects.prefetch_related(
+            "participants__role",
+            "participants__user",
+            "sections__metadata",
+            "sections__allowed_roles",
+            "section_responsibles__user",
+            "section_participants__user",
+            "dat_admins",
+        ),
+        request.user,
+    )
+    dat = get_object_or_404(base_queryset, pk=pk)
+    sync_dat_sections_if_needed(dat)
+
+    editor_context = build_section_participant_editor(dat, request.user)
+    rows = editor_context.get("rows", [])
+    if not rows:
+        messages.info(request, "Aucun participant de section n'est configurable pour ce DAT.")
+        return redirect(f"{reverse('dat:my_detail', args=[dat.pk])}?section=informations-generales")
+
+    UserModel = get_user_model()
+    cleaned_assignments: dict[str, object | None] = {}
+    validation_errors: list[str] = []
+
+    for row in rows:
+        section_slug = row["section_slug"]
+        if not row.get("can_edit"):
+            continue
+        field_name = row["field_name"]
+        raw_value = str(request.POST.get(field_name, "") or "").strip()
+        if not raw_value:
+            cleaned_assignments[section_slug] = None
+            continue
+        allowed_option_ids = {option["id"] for option in row.get("options", [])}
+        if raw_value not in allowed_option_ids:
+            validation_errors.append(f"Utilisateur invalide pour la section {row['section_title']}.")
+            continue
+        candidate = UserModel.objects.filter(pk=raw_value).first()
+        if candidate is None:
+            validation_errors.append(f"Utilisateur introuvable pour la section {row['section_title']}.")
+            continue
+        cleaned_assignments[section_slug] = candidate
+
+    if validation_errors:
+        for error_message in validation_errors:
+            messages.error(request, error_message)
+        return redirect(f"{reverse('dat:my_detail', args=[dat.pk])}?section=informations-generales")
+
+    existing_assignments = {
+        assignment.section.slug: assignment
+        for assignment in dat.section_participants.select_related("section", "user")
+    }
+    sections_by_slug = {
+        section.slug: section
+        for section in dat.sections.select_related("metadata").all()
+    }
+
+    try:
+        with transaction.atomic():
+            for section_slug, target_user in cleaned_assignments.items():
+                section = sections_by_slug.get(section_slug)
+                if section is None:
+                    continue
+                existing = existing_assignments.get(section_slug)
+                if target_user is None:
+                    if existing is not None:
+                        existing.delete()
+                    continue
+                if existing is not None:
+                    if existing.user_id != getattr(target_user, "id", None):
+                        existing.user = target_user
+                        existing.save(update_fields=["user", "updated_at"])
+                else:
+                    DATSectionParticipant.objects.create(
+                        dat=dat,
+                        section=section,
+                        user=target_user,
+                    )
+    except IntegrityError:
+        messages.error(request, "Impossible d'enregistrer les participants (conflit d'affectation).")
+        return redirect(f"{reverse('dat:my_detail', args=[dat.pk])}?section=informations-generales")
+
+    messages.success(request, "Participants des sections mis à jour.")
+    return redirect(f"{reverse('dat:my_detail', args=[dat.pk])}?section=informations-generales")
 
 
 @login_required
@@ -1911,6 +2579,7 @@ class DATDetailView(LoginRequiredMixin, ModuleContextMixin, DetailModelView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        section_status_map, section_status_choices = build_section_status_map(self.object)
         try:
             from dat_viewflow.services import ensure_dat_viewflow_process
             from dat_viewflow.config import build_dat_viewflow_template
@@ -1930,7 +2599,18 @@ class DATDetailView(LoginRequiredMixin, ModuleContextMixin, DetailModelView):
         context["dat_history_user_choices"] = build_dat_history_user_choices(self.object)
         context["participant_overview"] = build_participant_overview(self.object)
         context["current_responsibles"] = get_current_responsibles(self.object)
-        context["sections_payload"] = build_section_payload(self.object, self.request.user)
+        context["sections_payload"] = build_section_payload(
+            self.object,
+            self.request.user,
+            section_status_map=section_status_map,
+            section_status_choices=section_status_choices,
+        )
+        context["section_status_map"] = section_status_map
+        context["section_status_choices"] = section_status_choices
+        context["workflow_node_statuses"] = build_workflow_node_statuses(
+            self.object,
+            section_status_map,
+        )
         context["section_nav"] = list(
             self.object.sections.order_by("order", "id").values(
                 slug=F("metadata__slug"),
@@ -2088,6 +2768,81 @@ class DatList(ModuleContextMixin, LoginRequiredMixin, ListView):
         return context
 
 
+class DatSearchPageView(ModuleContextMixin, LoginRequiredMixin, TemplateView):
+    template_name = "dat/search_page.html"
+    per_page = 20
+
+    def _extract_filters(self) -> tuple[bool, bool]:
+        has_explicit_filters = "applications" in self.request.GET or "dats" in self.request.GET
+        if not has_explicit_filters:
+            return True, True
+        return (
+            _to_bool(self.request.GET.get("applications"), default=False),
+            _to_bool(self.request.GET.get("dats"), default=False),
+        )
+
+    def _extract_page(self) -> int:
+        raw_page = self.request.GET.get("page", "1")
+        try:
+            return max(int(raw_page), 1)
+        except (TypeError, ValueError):
+            return 1
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        include_applications, include_dats = self._extract_filters()
+        requested_page = self._extract_page()
+        service = TopbarSearchService(self.request.user)
+        options = TopbarSearchOptions(
+            query=self.request.GET.get("q", ""),
+            include_applications=include_applications,
+            include_dats=include_dats,
+            min_length=TOPBAR_SEARCH_MIN_QUERY_LENGTH,
+        )
+
+        payload = service.search_page(
+            options=options,
+            page=requested_page,
+            per_page=self.per_page,
+        )
+        paginator = Paginator(range(payload["total_count"]), self.per_page)
+        current_page = requested_page
+        if requested_page > paginator.num_pages:
+            current_page = paginator.num_pages
+            payload = service.search_page(
+                options=options,
+                page=current_page,
+                per_page=self.per_page,
+            )
+        page_obj = paginator.page(current_page)
+
+        base_params: dict[str, str] = {}
+        if payload["query"]:
+            base_params["q"] = payload["query"]
+        if include_applications:
+            base_params["applications"] = "1"
+        if include_dats:
+            base_params["dats"] = "1"
+
+        context.update(
+            {
+                "search_query": self.request.GET.get("q", ""),
+                "include_applications": include_applications,
+                "include_dats": include_dats,
+                "search_results": payload["results"],
+                "search_too_short": payload["too_short"],
+                "search_min_length": payload["min_length"],
+                "filters_empty": not include_applications and not include_dats,
+                "total_count": payload["total_count"],
+                "is_paginated": paginator.num_pages > 1,
+                "paginator": paginator,
+                "page_obj": page_obj,
+                "base_querystring": urlencode(base_params),
+            }
+        )
+        return context
+
+
 class DatDetail(ModuleContextMixin, LoginRequiredMixin, DetailView):
     model = DAT
     template_name = "dat/my_dat_detail.html"
@@ -2107,6 +2862,7 @@ class DatDetail(ModuleContextMixin, LoginRequiredMixin, DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        section_status_map, section_status_choices = build_section_status_map(self.object)
         try:
             from dat_viewflow.services import ensure_dat_viewflow_process
             from dat_viewflow.config import build_dat_viewflow_template
@@ -2125,7 +2881,7 @@ class DatDetail(ModuleContextMixin, LoginRequiredMixin, DetailView):
         context["reserve_validation_history_entries"] = build_dat_reserve_validation_history(self.object)
         context["dat_history_user_choices"] = build_dat_history_user_choices(self.object)
         context["owner_editable_statuses"] = {status.value for status in OWNER_EDITABLE_STATUSES}
-        context["owner_can_edit"] = user_is_dat_admin(self.request.user)
+        context["owner_can_edit"] = user_is_dat_admin_for_dat(self.object, self.request.user)
         context["can_create_dat"] = user_can_create_dat_entities(self.request.user)
         next_status = get_next_status(self.object.status)
         context["next_status"] = next_status
@@ -2152,9 +2908,12 @@ class DatDetail(ModuleContextMixin, LoginRequiredMixin, DetailView):
                 title=F("metadata__title"),
             )
         )
-        section_status_map, section_status_choices = build_section_status_map(self.object)
         context["section_status_map"] = section_status_map
         context["section_status_choices"] = section_status_choices
+        context["workflow_node_statuses"] = build_workflow_node_statuses(
+            self.object,
+            section_status_map,
+        )
         valid_slugs = {entry["slug"] for entry in section_nav}
         default_slug = (
             "informations-generales"
@@ -2249,14 +3008,29 @@ class DatTriggerPDFExportView(DatExportBaseView):
     def post(self, request, *args, **kwargs):
         dat = self.get_object()
         base_url = request.build_absolute_uri("/")
-        scheduled = schedule_dat_pdf_generation(dat, request.user, base_url=base_url)
-        if scheduled:
+        job = schedule_dat_pdf_generation(dat, request.user, base_url=base_url)
+        accepts_json = request.headers.get("x-requested-with") == "XMLHttpRequest" or "application/json" in (
+            request.headers.get("Accept", "")
+        )
+        if job:
+            status_url = request.build_absolute_uri(reverse("api:async-job-detail", args=[job.id]))
+            if accepts_json:
+                return JsonResponse(
+                    {
+                        "ok": True,
+                        "job_id": str(job.id),
+                        "status": job.status,
+                        "status_url": status_url,
+                    }
+                )
             requester = format_user_display(request.user) if request.user.is_authenticated else "Système"
             messages.success(
                 request,
                 f"Une génération PDF a été lancée par {requester}. Vous serez informé lorsque le document sera prêt.",
             )
         else:
+            if accepts_json:
+                return JsonResponse({"ok": False, "error": "already_in_progress"}, status=409)
             messages.warning(
                 request,
                 "Une génération PDF est déjà en cours pour ce DAT.",
@@ -2644,13 +3418,50 @@ def create_schema_diagram(request, dat_pk: int):
     if request.method != "POST":
         return JsonResponse({"error": "Méthode non autorisée"}, status=405)
 
+    logger.warning(
+        "create_schema_diagram request dat_id=%s user_id=%s username=%s has_csrf_cookie=%s has_csrf_header=%s",
+        dat_pk,
+        getattr(request.user, "id", None),
+        getattr(request.user, "username", ""),
+        bool(request.COOKIES.get("csrftoken")),
+        bool(request.headers.get("X-CSRFToken")),
+    )
     dat = get_object_or_404(DAT.objects.prefetch_related("sections__allowed_roles"), pk=dat_pk)
-    architecture_section = dat.sections.filter(metadata__slug="architecture").first()
-    if architecture_section is None:
+    architecture_sections = list(dat.sections.filter(metadata__slug="architecture"))
+    if not architecture_sections:
         sync_dat_sections_if_needed(dat)
-        architecture_section = dat.sections.filter(metadata__slug="architecture").first()
-    if architecture_section is None or not architecture_section.can_user_edit(request.user):
+        architecture_sections = list(dat.sections.filter(metadata__slug="architecture"))
+    if not architecture_sections:
+        logger.warning("create_schema_diagram denied: no architecture section dat_id=%s user_id=%s", dat_pk, request.user.id)
         raise PermissionDenied
+
+    schema_sub_sections = list(
+        DATSubSection.objects.filter(
+            section__dat=dat,
+            section__metadata__slug="architecture",
+            slug="schemas",
+        ).select_related("section", "section__dat")
+    )
+    if schema_sub_sections:
+        allowed = any(sub_section.can_user_edit(request.user) for sub_section in schema_sub_sections)
+        if not allowed:
+            logger.warning(
+                "create_schema_diagram denied: no editable schemas sub-section dat_id=%s user_id=%s sub_section_count=%s",
+                dat_pk,
+                request.user.id,
+                len(schema_sub_sections),
+            )
+            raise PermissionDenied
+    else:
+        allowed = any(section.can_user_edit(request.user) for section in architecture_sections)
+        if not allowed:
+            logger.warning(
+                "create_schema_diagram denied: no editable architecture section dat_id=%s user_id=%s section_count=%s",
+                dat_pk,
+                request.user.id,
+                len(architecture_sections),
+            )
+            raise PermissionDenied
 
     try:
         payload = json.loads(request.body.decode("utf-8") or "{}")
