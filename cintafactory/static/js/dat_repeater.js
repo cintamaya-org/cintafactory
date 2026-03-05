@@ -298,7 +298,7 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
     info.style.marginRight = "0.5rem";
 
     const viewBtn = document.createElement("a");
-    viewBtn.className = "btn-flat waves-effect cinta-btn-secondary";
+    viewBtn.className = "btn btn-flat waves-effect cinta-btn-secondary";
     viewBtn.target = "_blank";
     viewBtn.rel = "noopener";
     viewBtn.innerHTML = '<i class="material-icons left" aria-hidden="true">visibility</i>Voir';
@@ -479,7 +479,7 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
 
       const viewBtn = document.createElement("button");
       viewBtn.type = "button";
-      viewBtn.className = "btn-flat waves-effect cinta-btn-secondary dat-repeater-drawio-view";
+      viewBtn.className = "btn btn-flat waves-effect cinta-btn-secondary dat-repeater-drawio-view";
       viewBtn.innerHTML = '<i class="material-icons left" aria-hidden="true">visibility</i>Voir';
       if (initialDiagramId) {
         viewBtn.dataset.diagramId = initialDiagramId;
@@ -507,7 +507,7 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
 
         exportBtn = document.createElement("button");
         exportBtn.type = "button";
-        exportBtn.className = "btn-flat waves-effect cinta-btn-secondary dat-drawio-export-button dat-repeater-drawio-view";
+        exportBtn.className = "btn btn-flat waves-effect cinta-btn-secondary dat-drawio-export-button dat-repeater-drawio-view";
         exportBtn.innerHTML = '<i class="material-icons left" aria-hidden="true">file_download</i>Exporter';
         if (initialDiagramId) {
           exportBtn.dataset.diagramId = initialDiagramId;

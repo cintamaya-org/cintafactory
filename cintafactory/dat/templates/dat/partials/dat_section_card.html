@@ -179,7 +179,7 @@
                 <form method="post" action="{% url 'dat:section_status' dat.pk container.section.metadata.slug %}">
                   {% csrf_token %}
                   <input type="hidden" name="status" value="{{ default_value }}">
-                  <button type="submit" class="btn-flat waves-effect cinta-btn-secondary">
+                  <button type="submit" class="btn btn-flat waves-effect cinta-btn-secondary">
                     <i class="material-icons left" aria-hidden="true">refresh</i>
                     Repasser en cours
                   </button>
@@ -199,7 +199,7 @@
 	                  {% csrf_token %}
 	                  <input type="hidden" name="status" value="{{ default_value }}">
 	                  <input type="hidden" name="confirm_responsable_reset" value="0">
-	                  <button type="submit" class="btn-flat waves-effect cinta-btn-secondary">
+	                  <button type="submit" class="btn btn-flat waves-effect cinta-btn-secondary">
 	                    <i class="material-icons left" aria-hidden="true">refresh</i>
 	                    Dévalider
 	                  </button>
@@ -209,7 +209,7 @@
 	                    {% csrf_token %}
 	                    <input type="hidden" name="status" value="{{ blocked_value }}">
 	                    <input type="hidden" name="commentaire" value="">
-	                    <button type="submit" class="btn-flat waves-effect cinta-btn-secondary">
+	                    <button type="submit" class="btn btn-flat waves-effect cinta-btn-secondary">
 	                      <i class="material-icons left" aria-hidden="true">block</i>
 	                      Bloquer
 	                    </button>
@@ -231,7 +231,7 @@
 	                    {% csrf_token %}
 	                    <input type="hidden" name="status" value="{{ blocked_value }}">
 	                    <input type="hidden" name="commentaire" value="">
-	                    <button type="submit" class="btn-flat waves-effect cinta-btn-secondary">
+	                    <button type="submit" class="btn btn-flat waves-effect cinta-btn-secondary">
 	                      <i class="material-icons left" aria-hidden="true">block</i>
 	                      Bloquer
 	                    </button>
@@ -268,7 +268,7 @@
               <form method="post" action="{% url 'dat:my_validation_decision' dat.pk %}">
                 {% csrf_token %}
                 <input type="hidden" name="decision" value="refuse">
-                <button type="submit" class="btn-flat waves-effect cinta-btn-secondary dat-validation-actions__decline">
+                <button type="submit" class="btn btn-flat waves-effect cinta-btn-secondary dat-validation-actions__decline">
                   <i class="material-icons left" aria-hidden="true">highlight_off</i>
                   Refusé
                 </button>
@@ -276,7 +276,7 @@
               <form method="post" action="{% url 'dat:my_validation_decision' dat.pk %}">
                 {% csrf_token %}
                 <input type="hidden" name="decision" value="reserve">
-                <button type="submit" class="btn-flat waves-effect cinta-btn-secondary">
+                <button type="submit" class="btn btn-flat waves-effect cinta-btn-secondary">
                   <i class="material-icons left" aria-hidden="true">undo</i>
                   Mettre en réserve
                 </button>

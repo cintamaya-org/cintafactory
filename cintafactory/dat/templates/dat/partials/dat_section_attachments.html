@@ -79,7 +79,7 @@
                 onsubmit="return confirm('Supprimer cette piece jointe ?');"
               >
                   {% csrf_token %}
-                  <button type="submit" class="btn-flat waves-effect cinta-btn-secondary dat-attachment-delete">
+                  <button type="submit" class="btn btn-flat waves-effect cinta-btn-secondary dat-attachment-delete">
                     <i class="material-icons left" aria-hidden="true">delete</i>
                     Supprimer
                   </button>
@@ -87,7 +87,7 @@
               {% endif %}
               <a
                 href="{% url 'dat:section_attachment_download' dat.pk attachment.pk %}"
-                class="btn-flat waves-effect cinta-btn-secondary dat-attachment-download"
+                class="btn btn-flat waves-effect cinta-btn-secondary dat-attachment-download"
                 data-attachment-download="true"
               >
                 <i class="material-icons left" aria-hidden="true">download</i>

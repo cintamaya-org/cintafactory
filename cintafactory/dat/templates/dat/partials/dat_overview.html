@@ -46,7 +46,7 @@
               {% csrf_token %}
               <button
                 type="submit"
-                class="cinta-btn-secondary waves-effect"
+                class="btn cinta-btn-secondary waves-effect"
                 {% if pdf_export_in_progress %}disabled aria-disabled="true"{% endif %}
               >
                 {% if pdf_export_in_progress %}
@@ -60,17 +60,17 @@
               </button>
             </form>
             {% if pdf_export_available %}
-              <a href="{{ export_urls.pdf_download }}" class="cinta-btn-secondary waves-effect" target="_blank" rel="noopener">
+              <a href="{{ export_urls.pdf_download }}" class="btn cinta-btn-secondary waves-effect" target="_blank" rel="noopener">
                 <i class="material-icons left" aria-hidden="true">download</i>
                 Télécharger PDF
               </a>
             {% else %}
-              <span class="cinta-btn-secondary dat-overview-chip--disabled" aria-disabled="true">
+              <span class="btn cinta-btn-secondary dat-overview-chip--disabled" aria-disabled="true">
                 <i class="material-icons left" aria-hidden="true">download</i>
                 Télécharger PDF
               </span>
             {% endif %}
-            <a href="{{ export_urls.json }}" class="cinta-btn-secondary waves-effect" target="_blank" rel="noopener">
+            <a href="{{ export_urls.json }}" class="btn cinta-btn-secondary waves-effect" target="_blank" rel="noopener">
               <i class="material-icons left" aria-hidden="true">data_object</i>
               Export JSON
             </a>

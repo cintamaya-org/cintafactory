@@ -14,39 +14,44 @@
 {% block content %}
 {% include "dat/components/drawio_viewer_loader.html" %}
 
-<div class="card cinta-card">
+<div class="card cinta-card cinta-card--transparent">
   <div class="card-content">
     {% if section_nav %}
-    <div class="card dat-section-sticky-card">
+    <div class="card dat-section-sticky-cinta-card">
       <div class="card-content">
       <div class="dat-section-header">
         <div class="dat-section-nav u-flex u-flex-wrap u-gap-0-5 u-items-center">
           {% for entry in section_nav %}
             {% with status_info=section_status_map|get_item:entry.slug %}
-              <a
-                href="?section={{ entry.slug }}"
-                class="chip dat-section-link {% if selected_section_slug == entry.slug %}active-section{% else %}grey lighten-4{% endif %}"
-                title="{% if status_info.has_status %}Statut : {{ status_info.label|default:'—' }}{% else %}Pas de statut{% endif %}"
-              >
-                {% if status_info.has_status %}
-                  {% section_status_icon status_info.value as section_status_icon %}
-                  <span
-                    class="{{ section_status_icon.variant }} dat-section-status-icon"
-                    aria-hidden="true"
-                    style="color: {{ section_status_icon.color|default:'#546e7a' }};"
-                  >
-                    {{ section_status_icon.name|default:'radio_button_unchecked' }}
-                  </span>
-                {% endif %}
-                {{ entry.title }}
-                {% if status_info.has_status %}
-                  <span class="dat-section-status-pill">{{ status_info.label|default:"—" }}</span>
-                {% endif %}
-              </a>
+              <div class="dat-section-nav-item">
+                <a
+                  href="?section={{ entry.slug }}"
+                  class="dat-section-link dat-section-link--with-status {% if selected_section_slug == entry.slug %}active-section{% else %}{% endif %}"
+                  title="{% if status_info.has_status %}Statut : {{ status_info.label|default:'—' }}{% else %}Pas de statut{% endif %}"
+                >
+                  <!--{% if status_info.has_status %}
+                    {% section_status_icon status_info.value as section_status_icon %}
+                    <span
+                      class="{{ section_status_icon.variant }} dat-section-status-icon"
+                      aria-hidden="true"
+                      style="color: {{ section_status_icon.color|default:'#546e7a' }};"
+                    >
+                      {{ section_status_icon.name|default:'radio_button_unchecked' }}
+                    </span>
+                  {% endif %}-->
+                  {{ entry.title }}
+                  {% if status_info.has_status %}
+                    <span class="chip dat-section-status-pill{% if status_info.value == 'bloque' %} dat-section-status-pill--blocked{% elif status_info.value == 'valide' %} dat-section-status-pill--validated{% elif status_info.value == 'reserve' %} dat-section-status-pill--reserve{% elif status_info.value == 'en_cours' %} dat-section-status-pill--in-progress{% endif %}">{{ status_info.label|default:"—" }}</span>
+                  {% endif %}
+                </a>
+              </div>
+              {% if entry.title == "BESOIN(S)" or entry.title == "EXPLOITATION" %}
+                <span class="dat-section-nav-divider" aria-hidden="true"></span>
+              {% endif %}
             {% endwith %}
           {% endfor %}
           <span
-            class="dat-section-status-pill chip dat-section-link"
+            class="dat-section-status-pill dat-section-link"
             data-dat-created-at="{{ dat.created_at|date:'c' }}"
             title="Créé le {{ dat.created_at|date:'d/m/Y' }} à {{ dat.created_at|time:'H\\hi' }}"
           >
