@@ -10,8 +10,9 @@ class CintaFactoryConfig(AppConfig):
         from .admin_config import ensure_admin_config_exists
         from .notifications.config import ensure_external_notifications_config_exists
         from .rate_limit import ensure_limit_config_exists
+        from . import security_checks  # noqa: F401
         from .theming import ensure_theme_structure_exists
-        from .upload_limit import ensure_upload_config_exists
+        from .upload.upload_limit import ensure_upload_config_exists
 
         ensure_admin_config_exists()
         ensure_external_notifications_config_exists()

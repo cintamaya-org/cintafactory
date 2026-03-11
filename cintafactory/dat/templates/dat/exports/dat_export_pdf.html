@@ -144,19 +144,34 @@
   font-size: 11px;
   color: #455a64;
 }
+    .pdf-header {
+      margin-bottom: 24px;
+    }
+    .pdf-header__meta {
+      margin: 4px 0 0;
+    }
+    .pdf-section {
+      margin-bottom: 24px;
+    }
+    .pdf-section--compact {
+      margin-bottom: 20px;
+    }
+    .pdf-muted-top-gap {
+      margin: 6px 0 0;
+    }
   </style>
 </head>
 <body>
   {% with meta=export.dat application=export.application owner=export.owner %}
-  <header style="margin-bottom:24px;">
+  <header class="pdf-header">
     <h1>DAT {{ meta.reference }} &mdash; {{ meta.title }}</h1>
-    <p class="muted" style="margin:4px 0 0;">
+    <p class="muted pdf-header__meta">
       Exporté le {{ export.exported_at_display }} &
       statut : {{ meta.status_label|default:meta.status }}
     </p>
   </header>
 
-  <section style="margin-bottom:20px;">
+  <section class="pdf-section pdf-section--compact">
     <h2>Informations générales</h2>
     <table class="meta-table">
       <tbody>
@@ -192,7 +207,7 @@
     </table>
   </section>
 
-  <section style="margin-bottom:24px;">
+  <section class="pdf-section">
     <h2>Participants</h2>
     {% if export.participants %}
       <table class="participants-table">
@@ -313,7 +328,7 @@
                           {% elif diagram.thumbnail_url %}
                             <img src="{{ diagram.thumbnail_url }}" alt="Schéma {{ preview.title|default:'Schéma' }}">
                           {% else %}
-                            <p class="muted" style="margin:6px 0 0;">Miniature indisponible.</p>
+                            <p class="muted pdf-muted-top-gap">Miniature indisponible.</p>
                           {% endif %}
                         </div>
                       {% endwith %}

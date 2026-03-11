@@ -45,7 +45,9 @@ jobs:
             export DJANGO_SETTINGS_MODULE="cintafactory.settings"
             export APP_MODULE="cintafactory.wsgi:application"
             export DEBUG=1
-            export SECRET_KEY="insecure-test-only"             # pour sécurité forte, gère via .env côté VPS
+            export SECRET_KEY="${{ secrets.DEV_DJANGO_SECRET_KEY }}"
+            export LIKEC4_METADATA_TOKEN="${{ secrets.DEV_LIKEC4_METADATA_TOKEN }}"
+            export LIKEC4_API_TOKEN="${{ secrets.DEV_LIKEC4_API_TOKEN }}"
             export ALLOWED_HOSTS="*"
             export APP_PORT=8000
             export HOST_PORT=8101          # HTTP externe app DEV

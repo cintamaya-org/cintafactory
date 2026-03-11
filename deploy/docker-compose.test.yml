@@ -26,10 +26,7 @@ services:
       - cinta_test_media:/archifactory/cintafactory/media
 
   likec4:
-    ports:
-      - "${TEST_LIKEC4_DEV_PORT:-5173}:5173"
-      - "${TEST_LIKEC4_HMR_PORT:-24678}:24678"
-      - "${TEST_LIKEC4_EDITOR_PORT:-4173}:4173"
+    # keep likec4 internal-only; access goes through app proxy routes
 
 volumes:
   cinta_test_static:

@@ -11,7 +11,7 @@ from django.core.files.uploadedfile import InMemoryUploadedFile, UploadedFile
 from django.utils.text import get_valid_filename, slugify
 from PIL import Image, ImageOps
 
-from cintafactory.seaweedfs_storage import SeaweedFSStorage
+from cintafactory.storage.seaweedfs_storage import SeaweedFSStorage
 
 PROFILE_PICTURE_SIZE = (350, 350)
 PROFILE_PICTURE_STORAGE_SUBDIR = "profile_pictures"

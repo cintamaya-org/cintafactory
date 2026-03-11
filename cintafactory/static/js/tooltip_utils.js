@@ -1,14 +1,20 @@
 (function (global) {
   "use strict";
 
-  var DEFAULT_TOOLTIP_TEXT =
-    "Exmaple DEFAULT_TOOLTIP_TEXT" +
-    "DEFAULT_TOOLTIP_TEXT" +
-    "tra laoreeilisis bibendum elementum morbi. Semper risus condimentum porttitor netus pharetra congue nam, metus natoque maecenas tortor sapien praesent, turpis consequat\n\n";
+  var DEFAULT_TOOLTIP_TEXT = "";
 
   function buildDefaultText(target) {
     var tip = target.getAttribute("data-tooltip") || "Information";
     return DEFAULT_TOOLTIP_TEXT + tip;
+  }
+
+  function normalizeTooltipText(text) {
+    if (text == null) {
+      return "";
+    }
+    return String(text)
+      .replace(/\s+/g, " ")
+      .trim();
   }
 
   function initWorkflowTooltip(options) {
@@ -57,8 +63,28 @@
       if (!tooltip || tooltip.hidden) {
         return;
       }
-      tooltip.style.left = point.x + offsetX + "px";
-      tooltip.style.top = point.y - offsetY + "px";
+      var padding = 8;
+      var viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+      var viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+      var nextLeft = point.x + offsetX;
+      var nextTop = point.y - offsetY;
+      var rect = tooltip.getBoundingClientRect();
+      var width = rect.width || tooltip.offsetWidth || 0;
+      var height = rect.height || tooltip.offsetHeight || 0;
+      if (nextLeft + width + padding > viewportWidth) {
+        nextLeft = viewportWidth - width - padding;
+      }
+      if (nextTop + height + padding > viewportHeight) {
+        nextTop = viewportHeight - height - padding;
+      }
+      if (nextLeft < padding) {
+        nextLeft = padding;
+      }
+      if (nextTop < padding) {
+        nextTop = padding;
+      }
+      tooltip.style.left = nextLeft + "px";
+      tooltip.style.top = nextTop + "px";
     }
 
     function hideTooltip(target) {
@@ -80,7 +106,7 @@
     }
 
     function showText(text) {
-      var content = text == null ? "" : String(text);
+      var content = normalizeTooltipText(text);
       spinner.hidden = true;
       textNode.textContent = content;
       textNode.hidden = false;

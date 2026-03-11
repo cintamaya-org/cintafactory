@@ -32,6 +32,8 @@
       data-pdf-export-card="true"
       data-status-url="{{ export_urls.status }}"
       data-in-progress="{{ pdf_export_in_progress|yesno:'true,false' }}"
+      data-secure-enabled="{{ secure_export.enabled|yesno:'true,false' }}"
+      data-secure-remaining-seconds="{{ secure_export.remaining_seconds|default:0 }}"
     >
       <div class="card-content">
         <div class="dat-overview-card__header">
@@ -46,7 +48,7 @@
               {% csrf_token %}
               <button
                 type="submit"
-                class="cinta-btn-secondary waves-effect"
+                class="btn cinta-btn-secondary waves-effect"
                 {% if pdf_export_in_progress %}disabled aria-disabled="true"{% endif %}
               >
                 {% if pdf_export_in_progress %}
@@ -60,20 +62,52 @@
               </button>
             </form>
             {% if pdf_export_available %}
-              <a href="{{ export_urls.pdf_download }}" class="cinta-btn-secondary waves-effect" target="_blank" rel="noopener">
-                <i class="material-icons left" aria-hidden="true">download</i>
-                Télécharger PDF
-              </a>
+              {% if not secure_export.enabled or secure_export.user_can_download_pdf %}
+                <a href="{{ export_urls.pdf_download }}" class="btn cinta-btn-secondary waves-effect" target="_blank" rel="noopener">
+                  <i class="material-icons left" aria-hidden="true">download</i>
+                  Télécharger PDF
+                </a>
+              {% else %}
+                <span class="btn cinta-btn-secondary dat-overview-chip--disabled" aria-disabled="true">
+                  <i class="material-icons left" aria-hidden="true">download</i>
+                  Télécharger PDF
+                </span>
+              {% endif %}
             {% else %}
-              <span class="cinta-btn-secondary dat-overview-chip--disabled" aria-disabled="true">
+              <span class="btn cinta-btn-secondary dat-overview-chip--disabled" aria-disabled="true">
                 <i class="material-icons left" aria-hidden="true">download</i>
                 Télécharger PDF
               </span>
             {% endif %}
-            <a href="{{ export_urls.json }}" class="cinta-btn-secondary waves-effect" target="_blank" rel="noopener">
-              <i class="material-icons left" aria-hidden="true">data_object</i>
-              Export JSON
-            </a>
+            {% if not secure_export.enabled or secure_export.user_can_download_json %}
+              <a href="{{ export_urls.json }}" class="btn cinta-btn-secondary waves-effect" target="_blank" rel="noopener">
+                <i class="material-icons left" aria-hidden="true">data_object</i>
+                Export JSON
+              </a>
+            {% else %}
+              <span class="btn cinta-btn-secondary dat-overview-chip--disabled" aria-disabled="true">
+                <i class="material-icons left" aria-hidden="true">data_object</i>
+                Export JSON
+              </span>
+            {% endif %}
+            {% if secure_export.enabled and secure_export.user_can_request %}
+              <form method="post" action="{{ export_urls.secure_request }}">
+                {% csrf_token %}
+                <button type="submit" class="btn cinta-btn-secondary waves-effect">
+                  <i class="material-icons left" aria-hidden="true">lock_open</i>
+                  Demander accès
+                </button>
+              </form>
+            {% endif %}
+            {% if secure_export.enabled and secure_export.user_can_approve %}
+              <form method="post" action="{{ export_urls.secure_approve }}">
+                {% csrf_token %}
+                <button type="submit" class="btn cinta-btn-secondary waves-effect">
+                  <i class="material-icons left" aria-hidden="true">verified_user</i>
+                  Approuver demande
+                </button>
+              </form>
+            {% endif %}
           </div>
         </div>
         <div class="dat-overview-card__footer">
@@ -91,94 +125,221 @@
                 Aucun export PDF enregistré pour l'instant.
               {% endif %}
             </p>
-          
+          {% if secure_export.enabled %}
+            <p>
+              Sécurité export activée (2 admins DAT requis). État :
+              {% if secure_export.is_pending %}
+                <strong>en attente</strong>
+              {% elif secure_export.is_approved %}
+                <strong>approuvé</strong>
+              {% else %}
+                <strong>aucune demande active</strong>
+              {% endif %}
+              .
+            </p>
+            {% if secure_export.requested_by_display %}
+              <p>
+                Demandeur: {{ secure_export.requested_by_display }}
+                {% if secure_export.requested_at %} le {{ secure_export.requested_at|timezone:"Europe/Paris"|date:"d/m/Y H:i" }}{% endif %}.
+              </p>
+            {% endif %}
+            {% if secure_export.is_pending %}
+              <p>
+                Approbations: {{ secure_export.approval_count }}/{{ secure_export.required_approvals }}.
+                {% if secure_export.approve_deadline_at %}
+                  Expire le {{ secure_export.approve_deadline_at|timezone:"Europe/Paris"|date:"d/m/Y H:i" }}.
+                {% endif %}
+              </p>
+            {% endif %}
+            {% if secure_export.is_approved %}
+              <p>
+                Accès valide jusqu'au {{ secure_export.access_valid_until|timezone:"Europe/Paris"|date:"d/m/Y H:i" }}.
+                <span data-secure-export-remaining-label>
+                  (reste environ {{ secure_export.remaining_seconds }} s)
+                </span>
+              </p>
+            {% endif %}
+            {% if secure_export.approvers %}
+              <p>
+                Approbateurs:
+                {% for item in secure_export.approvers %}
+                  {{ item.display }}{% if not forloop.last %}, {% endif %}
+                {% endfor %}.
+              </p>
+            {% endif %}
+          {% endif %}
         </div>
+        {% if secure_export_history_entries %}
+          <div class="responsive-table dat-history-table u-mt-1">
+            <table class="highlight">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Événement export</th>
+                  <th>Utilisateur</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for entry in secure_export_history_entries %}
+                  <tr>
+                    <td>{{ entry.created_at|date:"d/m/Y" }} à {{ entry.created_at|time:"H\\hi" }}</td>
+                    <td>{{ entry.get_event_type_display }}</td>
+                    <td>{{ entry.actor|default:"Système" }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
       </div>
     </div>
   </div>
-  <script>
-    (function() {
-      const card = document.querySelector("[data-pdf-export-card]");
-      const logPrefix = "[DAT PDF]";
-      const log = (...args) => console.info(logPrefix, ...args);
-      const warn = (...args) => console.warn(logPrefix, ...args);
-      const error = (...args) => console.error(logPrefix, ...args);
-
-      if (!card) {
-        log("Aucune carte d'export PDF trouvee.");
-        return;
-      }
-      const statusUrl = card.dataset.statusUrl;
-      if (!statusUrl) {
-        warn("URL de statut PDF manquante.");
-        return;
-      }
-      const inProgress = card.dataset.inProgress === "true";
-      log("Initialisation du polling PDF.", { statusUrl, inProgress });
-      if (!inProgress) {
-        return;
-      }
-      const toast = (message) => {
-        if (window.M && M.toast) {
-          M.toast({html: message});
-        } else {
-          log(message);
-        }
-      };
-      const validatePayload = (data) => {
-        if (!data || typeof data !== "object") {
-          warn("Payload de statut PDF invalide.", data);
-          return false;
-        }
-        const required = ["in_progress", "available", "requested_at", "generated_at"];
-        required.forEach((key) => {
-          if (!(key in data)) {
-            warn("Champ manquant dans le payload.", key, data);
-          }
-        });
-        if ("in_progress" in data && typeof data.in_progress !== "boolean") {
-          warn("Type inattendu pour in_progress.", data.in_progress);
-        }
-        if ("available" in data && typeof data.available !== "boolean") {
-          warn("Type inattendu pour available.", data.available);
-        }
-        return true;
-      };
-      const pollStatus = (delay) => {
-        log("Polling statut PDF...", { delay });
-        setTimeout(() => {
-          fetch(statusUrl, {headers: {"Accept": "application/json"}})
-            .then((response) => {
-              log("Reponse statut PDF.", { status: response.status });
-              if (!response.ok) {
-                throw new Error("statut HTTP invalide");
-              }
-              return response.json();
-            })
-            .then((data) => {
-              log("Payload statut PDF.", data);
-              validatePayload(data);
-              if (!data || data.in_progress) {
-                log("PDF toujours en cours de generation.");
-                pollStatus(15000);
-                return;
-              }
-              if (!data.available) {
-                warn("Generation terminee mais PDF indisponible.", data);
-              }
-              toast("Le PDF est prêt. Rafraîchissement…");
-              window.location.reload();
-            })
-            .catch((err) => {
-              error("Erreur lors du polling PDF.", err);
-              pollStatus(15000);
-            });
-        }, delay);
-      };
-      pollStatus(15000);
-    })();
-  </script>
+  <script src="{% static 'js/dat_dat_overview.js' %}"></script>
   {% endif %}
+
+  <div class="card cinta-card dat-overview-card">
+    <div class="card-content">
+      <div class="section">
+        <div>
+          <span class="card-title dat-overview-card__title">Admins DAT</span>
+          <p class="u-m-0 text-muted">
+            Gérez explicitement les administrateurs du DAT depuis cette section.
+          </p>
+        </div>
+
+        {% if dat_admin_editor.has_admins %}
+          <div class="u-mt-1 u-flex u-flex-wrap u-gap-0-5">
+            {% for admin in dat_admin_editor.admins %}
+              <div class="chip grey lighten-4 u-flex u-items-center u-gap-0-5">
+                <span>{{ admin.display }}</span>
+                {% if admin.is_owner %}
+                  <span class="chip blue lighten-4">Owner</span>
+                {% elif dat_admin_editor.can_edit %}
+                  <form method="post" action="{{ admin.remove_url }}" class="u-m-0">
+                    {% csrf_token %}
+                    <button type="submit" class="btn-flat waves-effect" title="Retirer cet admin">
+                      <i class="material-icons" aria-hidden="true">close</i>
+                    </button>
+                  </form>
+                {% endif %}
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="u-mt-1 u-mb-0 text-muted">Aucun admin DAT explicite pour le moment.</p>
+        {% endif %}
+
+        {% if dat_admin_editor.can_edit %}
+          <form method="post" action="{{ dat_admin_editor.add_url }}" class="u-mt-1">
+            {% csrf_token %}
+            <div class="u-flex u-items-center u-gap-0-5">
+              <select id="dat-admin-user-id" name="user_id" class="browser-default">
+                <option value="">Sélectionner un utilisateur</option>
+                {% for option in dat_admin_editor.candidate_options %}
+                  <option value="{{ option.id }}">{{ option.display }}</option>
+                {% endfor %}
+              </select>
+              <button
+                type="submit"
+                class="btn waves-effect waves-light cinta-btn-primary"
+                {% if not dat_admin_editor.has_candidates %}disabled aria-disabled="true"{% endif %}
+              >
+                <i class="material-icons left" aria-hidden="true">person_add</i>
+                Ajouter admin
+              </button>
+            </div>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="card cinta-card dat-overview-card">
+    <div class="card-content">
+      <div class="section">
+        <div>
+          <span class="card-title dat-overview-card__title">Responsables des sections</span>
+          <p class="u-m-0 text-muted">
+            Un seul responsable par section. Seuls les utilisateurs affectés en type Responsable sont proposés.
+          </p>
+        </div>
+        {% if section_responsible_editor.has_rows %}
+          <form method="post" action="{{ section_responsible_editor.update_url }}" class="u-mt-1">
+            {% csrf_token %}
+            <div class="responsive-table">
+              <table class="highlight dat-overview-info-table">
+                <thead>
+                  <tr>
+                    <th>Section</th>
+                    <th>Responsable</th>
+                    {% if section_responsible_editor.can_edit %}
+                      <th>Admin DAT</th>
+                    {% endif %}
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in section_responsible_editor.rows %}
+                    <tr>
+                      <th scope="row">{{ row.section_title }}</th>
+                      <td>
+                        {% if section_responsible_editor.can_edit %}
+                          {% if row.has_options %}
+                            <select id="{{ row.field_name }}" name="{{ row.field_name }}" class="browser-default">
+                              <option value="" {% if not row.current_user_id %}selected{% endif %}>Non affecté</option>
+                              {% for option in row.options %}
+                                <option value="{{ option.id }}" {% if row.current_user_id == option.id %}selected{% endif %}>
+                                  {{ option.label }}{% if option.role_label %} ({{ option.role_label }}){% endif %}
+                                </option>
+                              {% endfor %}
+                            </select>
+                          {% else %}
+                            <span class="chip red lighten-4">Aucun responsable disponible</span>
+                          {% endif %}
+                        {% else %}
+                          {% if row.current_user_id %}
+                            {{ row.current_user_display }}
+                          {% else %}
+                            <span class="chip red lighten-4">Non affecté</span>
+                          {% endif %}
+                        {% endif %}
+                      </td>
+                      {% if section_responsible_editor.can_edit %}
+                        <td>
+                          {% if row.current_user_id %}
+                            <label>
+                              <input
+                                type="checkbox"
+                                name="{{ row.admin_field_name }}"
+                                value="1"
+                                {% if row.current_user_is_dat_admin %}checked{% endif %}
+                              >
+                              <span>Admin DAT</span>
+                            </label>
+                          {% else %}
+                            <span class="chip grey lighten-3">—</span>
+                          {% endif %}
+                        </td>
+                      {% endif %}
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% if section_responsible_editor.can_edit %}
+              <div class="u-mt-1">
+                <button type="submit" class="btn waves-effect waves-light cinta-btn-primary">
+                  <i class="material-icons left" aria-hidden="true">save</i>
+                  Enregistrer
+                </button>
+              </div>
+            {% endif %}
+          </form>
+        {% else %}
+          <p class="u-mt-1 u-mb-0 text-muted">Aucune section configurable pour les responsables.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
 
   {% if participant_overview %}
       <div
@@ -209,33 +370,58 @@
       </p>
       </div>
     {% endif %}
-    <div class="responsive-table">
-      <table class="highlight">
-        <thead>
-          <tr>
-            <th>Rôle</th>
-            <th>Utilisateur</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for item in participant_overview %}
-            <tr>
-              <th scope="row">{{ item.role_label }}</th>
-              <td>
-                {% if item.user %}
-                  {{ item.user_display }}
-                  {% if item.is_responsible %}
-                    <span class="chip green lighten-4 u-ml-0-5" title="Acteur attendu">Responsable</span>
-                  {% endif %}
-                {% else %}
-                  <span class="chip red lighten-4" title="Affectation requise">Non affecté</span>
-                {% endif %}
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
+    {% if section_participant_editor.has_rows %}
+      <form method="post" action="{{ section_participant_editor.update_url }}" class="u-mt-1">
+        {% csrf_token %}
+        <div class="responsive-table">
+          <table class="highlight">
+            <thead>
+              <tr>
+                <th>Section</th>
+                <th>Participant normal</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in section_participant_editor.rows %}
+                <tr>
+                  <th scope="row">{{ row.section_title }}</th>
+                  <td>
+                    {% if row.can_edit %}
+                      {% if row.has_options %}
+                        <select id="{{ row.field_name }}" name="{{ row.field_name }}" class="browser-default">
+                          <option value="" {% if not row.current_user_id %}selected{% endif %}>Non affecté</option>
+                          {% for option in row.options %}
+                            <option value="{{ option.id }}" {% if row.current_user_id == option.id %}selected{% endif %}>
+                              {{ option.label }}{% if option.role_label %} ({{ option.role_label }}){% endif %}
+                            </option>
+                          {% endfor %}
+                        </select>
+                      {% else %}
+                        <span class="chip red lighten-4">Aucun participant disponible</span>
+                      {% endif %}
+                    {% else %}
+                      {% if row.current_user_id %}
+                        {{ row.current_user_display }}
+                      {% else %}
+                        <span class="chip red lighten-4">Non affecté</span>
+                      {% endif %}
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if section_participant_editor.has_editable_rows %}
+          <div class="u-mt-1">
+            <button type="submit" class="btn waves-effect waves-light cinta-btn-primary">
+              <i class="material-icons left" aria-hidden="true">save</i>
+              Enregistrer
+            </button>
+          </div>
+        {% endif %}
+      </form>
+    {% endif %}
   </div>
 </div>
 </div>

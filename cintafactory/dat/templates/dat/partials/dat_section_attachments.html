@@ -36,7 +36,15 @@
   </div>
   {% if attachments_show_upload and container.attachments_can_upload %}
     <p class="dat-attachments-help">
-      Formats autorisés : {{ attachments_allowed_extensions_display }} · Taille max : {{ attachments_max_size_label }}.
+      <span
+        class="dat-attachments-help__tooltip-target wf-tooltip-trigger"
+        data-tooltip="{{ attachments_allowed_extensions_display }}"
+        tabindex="0"
+        aria-label="Types de fichiers autorisés"
+      >
+        Types de fichiers autorisés
+      </span>
+      &amp; Taille maximale : {{ attachments_max_size_label }}
     </p>
   {% endif %}
   {% if container.attachments %}
@@ -71,7 +79,7 @@
                 onsubmit="return confirm('Supprimer cette piece jointe ?');"
               >
                   {% csrf_token %}
-                  <button type="submit" class="btn-flat waves-effect cinta-btn-secondary dat-attachment-delete">
+                  <button type="submit" class="btn btn-flat waves-effect cinta-btn-secondary dat-attachment-delete">
                     <i class="material-icons left" aria-hidden="true">delete</i>
                     Supprimer
                   </button>
@@ -79,7 +87,7 @@
               {% endif %}
               <a
                 href="{% url 'dat:section_attachment_download' dat.pk attachment.pk %}"
-                class="btn-flat waves-effect cinta-btn-secondary dat-attachment-download"
+                class="btn btn-flat waves-effect cinta-btn-secondary dat-attachment-download"
                 data-attachment-download="true"
               >
                 <i class="material-icons left" aria-hidden="true">download</i>

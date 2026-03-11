@@ -6,7 +6,7 @@ from django.core.files.base import ContentFile
 from django.db import models
 from django.utils import timezone
 
-from cintafactory.seaweedfs_storage import SeaweedFSStorage
+from cintafactory.storage.seaweedfs_storage import SeaweedFSStorage
 
 from .validation import sanitize_diagram_title
 

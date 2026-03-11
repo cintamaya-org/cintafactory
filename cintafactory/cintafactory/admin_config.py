@@ -9,7 +9,7 @@ from .conf_utils import ensure_conf_dir
 
 
 DEFAULT_ADMIN_CONFIG: dict[str, Any] = {
-    "cipher_url": "khtijgdryi",
+    "cipher_url": "3b63cbd5-52d0-4af9-9a61-6a79d41a7b09",
 }
 
 _config_lock = threading.Lock()

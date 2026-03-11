@@ -114,7 +114,7 @@
                                       {% with cell=row|get_item:column.key %}
                                         {% if column.render == "link" %}
                                           {% if cell %}
-                                            <a href="{{ cell }}" class="btn-flat waves-effect cinta-btn-secondary" target="_blank" rel="noopener">
+                                            <a href="{{ cell }}" class="btn btn-flat waves-effect cinta-btn-secondary" target="_blank" rel="noopener">
                                               {% if column.icon %}<i class="material-icons left" aria-hidden="true">{{ column.icon }}</i>{% endif %}
                                               {{ column.button_label|default:column.label }}
                                             </a>
@@ -132,7 +132,7 @@
                                                 {% if row_slug and container.validation_reserve_clear_allowed_sections and container.validation_reserve_clear_allowed_sections|get_item:row_slug %}
                                                   <form method="post" action="{% url 'dat:section_reserve_clear' dat.pk row_slug %}" class="dat-sub-section__inline-form">
                                                     {% csrf_token %}
-                                                    <button type="submit" class="btn-flat waves-effect cinta-btn-secondary text-muted-dark">
+                                                    <button type="submit" class="btn btn-flat waves-effect cinta-btn-secondary text-muted-dark">
                                                       Lever la réserve
                                                     </button>
                                                   </form>
@@ -144,7 +144,7 @@
                                                 <form method="post" action="{% url 'dat:section_reserve' dat.pk row_slug %}" class="dat-reserve-create-form dat-sub-section__inline-form-spaced" data-section-title="{{ row|get_item:'section' }}">
                                                   {% csrf_token %}
                                                   <input type="hidden" name="reserve_message" value="">
-                                                  <button type="submit" class="btn-flat waves-effect cinta-btn-secondary">
+                                                  <button type="submit" class="btn btn-flat waves-effect cinta-btn-secondary">
                                                     Mettre en réserve
                                                   </button>
                                                 </form>

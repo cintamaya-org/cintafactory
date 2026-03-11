@@ -9,7 +9,7 @@ from django.core.files.base import ContentFile
 from django.utils import timezone
 from django.utils.text import slugify
 
-from cintafactory.seaweedfs_storage import SeaweedFSStorage
+from cintafactory.storage.seaweedfs_storage import SeaweedFSStorage
 
 def format_user_display(user) -> str:
     """

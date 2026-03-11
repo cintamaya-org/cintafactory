@@ -1,62 +1,36 @@
-# Logging Quick Guide
+# CintaFactory Log Guide
 
-This project ships with a structured logging helper (`cintafactory.logging_utils`) that keeps the log format consistent in both stdout and `logs/application.jsonl`. Use the helpers below whenever you add new log statements.
+## Quick Start
 
-## 1. Pick a helper
-
-For most cases you can call the shortcut functions that already use the shared project logger:
-
-```python
-from cintafactory.logging_utils import log_debug, log_info, log_warning, log_error, log_exception
+Core dev stack:
+```bash
+docker compose -f docker-compose.dev.yml logs -f
 ```
 
-They accept a message plus arbitrary keyword arguments that become structured JSON fields:
-
-```python
-log_info("Order confirmed", order_id=order.id, amount=order.total)
-log_warning("Payment gateway slow", gateway="stripe", duration_ms=elapsed_ms)
-
-try:
-    service.sync()
-except ServiceError:
-    log_exception("Failed to sync partner catalog", partner_id=partner.id)
+Scaling stack:
+```bash
+docker compose -f docker-compose.scaling.dev.yml logs -f
 ```
 
-Need module-level control (custom logger name, extra adapters, etc.)? Grab a logger directly:
-
-```python
-from cintafactory.logging_utils import get_logger
-
-logger = get_logger(__name__)
-logger.info("Provisioning VM", fields={"vm_id": vm.id, "region": vm.region})
+Observability stack:
+```bash
+docker compose -f cintafactory/docker-compose.observability.dev.yml logs -f
 ```
 
-## 2. Attach request context (optional but recommended in views/tasks)
+## Service Logs
 
-`bind_request_context` stores metadata (request id, user, etc.) so every subsequent log automatically includes it. Remember to clear the context when you are done (middleware already does this for regular HTTP requests).
-
-```python
-from cintafactory.logging_utils import bind_request_context, clear_request_context, log_info
-
-def sync_order(request, order_id: str):
-    bind_request_context(request_id=request.request_id, user_id=request.user.id)
-    try:
-        order = sync_service.sync(order_id)
-        log_info("Sync completed", order_id=order.id, status=order.status)
-    finally:
-        clear_request_context()
+Follow one service only:
+```bash
+docker compose -f docker-compose.dev.yml logs -f web
 ```
 
-## 3. Choose the right level
+Show recent lines:
+```bash
+docker compose -f docker-compose.dev.yml logs --tail=120 web
+```
 
-- `log_debug` – noisy internals, disabled in production by default.
-- `log_info` – lifecycle events users might care about (create/update/delete, background job completion, etc.).
-- `log_warning` – recoverable issues or retries.
-- `log_error` – failures that degrade functionality.
-- `log_exception` – like `log_error` but automatically includes the traceback; use inside `except` blocks.
+## Useful Notes
 
-## 4. Where the logs end up
-
-In development `docker compose logs web` shows both the colourised console handler and the structured JSON lines because they now stream to stdout/stderr by default. If you still need on-disk rotation (for example when debugging locally), set `DJANGO_LOG_TO_STDOUT=0` and the JSON handler will write to `cintafactory/logs/application.jsonl`.
-
-Following these patterns keeps our log streams searchable and makes alerts, dashboards, and support workflows much easier.
+- Django/Gunicorn logs are written to container stdout/stderr.
+- Promtail ships container logs to Loki for Grafana Explore.
+- If logs are empty, confirm the stack is running with `docker compose ... ps`.

@@ -12,7 +12,7 @@ from pathlib import Path
 from queue import Queue
 from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple, Union
 
-from .url_safety import is_http_url
+from ..url_safety import is_http_url
 
 
 # ---------------------------------------------------------------------------
@@ -232,10 +232,20 @@ class CriticalNotificationHandler(logging.Handler):
 class AsyncQueueHandler(QueueHandler):
     """Queue-backed handler to defer heavy IO to background listeners."""
 
-    def __init__(self, queue_name: str = "default") -> None:
-        queue = QUEUE_REGISTRY.setdefault(queue_name, Queue(-1))
-        super().__init__(queue)
-        self.queue_name = queue_name
+    def __init__(self, queue_name: str = "default", queue: Queue | None = None) -> None:
+        # dictConfig may instantiate QueueHandler subclasses with a Queue object
+        # as the first positional argument. Accept both call styles.
+        resolved_name = queue_name
+        resolved_queue = queue
+        if isinstance(queue_name, Queue):
+            resolved_queue = queue_name
+            resolved_name = "default"
+        if resolved_queue is None:
+            resolved_queue = QUEUE_REGISTRY.setdefault(str(resolved_name), Queue(-1))
+        else:
+            QUEUE_REGISTRY.setdefault(str(resolved_name), resolved_queue)
+        super().__init__(resolved_queue)
+        self.queue_name = str(resolved_name)
 
 
 def _stop_queue_listeners() -> None:
@@ -332,26 +342,26 @@ def build_logging_dict(base_dir: Path) -> Dict[str, Any]:
     # Print structured logs to stdout by default; opt-out with DJANGO_LOG_TO_STDOUT=0.
     log_to_stdout = _env_flag("DJANGO_LOG_TO_STDOUT", True)
     filters = {
-        "request_context": {"()": "cintafactory.logging_utils.RequestContextFilter"},
-        "sensitive_data": {"()": "cintafactory.logging_utils.SensitiveDataFilter"},
+        "request_context": {"()": "cintafactory.logging.logging_utils.RequestContextFilter"},
+        "sensitive_data": {"()": "cintafactory.logging.logging_utils.SensitiveDataFilter"},
     }
 
     formatters = {
-        "json": {"()": "cintafactory.logging_utils.JSONFormatter"},
+        "json": {"()": "cintafactory.logging.logging_utils.JSONFormatter"},
         "color": {
-            "()": "cintafactory.logging_utils.ColorFormatter",
+            "()": "cintafactory.logging.logging_utils.ColorFormatter",
             "fmt": "%(asctime)s | %(levelname)s | %(request_id)s | %(name)s | %(message)s",
         },
     }
 
     handlers: Dict[str, Dict[str, Any]] = {
         "queue": {
-            "class": "cintafactory.logging_utils.AsyncQueueHandler",
+            "class": "cintafactory.logging.logging_utils.AsyncQueueHandler",
             "level": "DEBUG",
             "filters": ["request_context", "sensitive_data"],
         },
         "console": {
-            "class": "cintafactory.logging_utils.StructuredStreamHandler",
+            "class": "cintafactory.logging.logging_utils.StructuredStreamHandler",
             "level": log_level,
             "formatter": "color",
             "filters": ["request_context", "sensitive_data"],
@@ -359,7 +369,7 @@ def build_logging_dict(base_dir: Path) -> Dict[str, Any]:
             "handler_name": "console",
         },
         "critical": {
-            "class": "cintafactory.logging_utils.CriticalNotificationHandler",
+            "class": "cintafactory.logging.logging_utils.CriticalNotificationHandler",
             "level": "ERROR",
             "handler_name": "critical",
             "webhook_url": os.getenv("LOG_CRITICAL_WEBHOOK"),
@@ -368,7 +378,7 @@ def build_logging_dict(base_dir: Path) -> Dict[str, Any]:
 
     if log_to_stdout:
         handlers["json_file"] = {
-            "class": "cintafactory.logging_utils.StructuredStreamHandler",
+            "class": "cintafactory.logging.logging_utils.StructuredStreamHandler",
             "level": "DEBUG",
             "formatter": "json",
             "filters": ["request_context", "sensitive_data"],
@@ -377,7 +387,7 @@ def build_logging_dict(base_dir: Path) -> Dict[str, Any]:
         }
     else:
         handlers["json_file"] = {
-            "class": "cintafactory.logging_utils.StructuredRotatingFileHandler",
+            "class": "cintafactory.logging.logging_utils.StructuredRotatingFileHandler",
             "level": "DEBUG",
             "formatter": "json",
             "filters": ["request_context", "sensitive_data"],

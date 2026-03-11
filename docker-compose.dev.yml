@@ -7,12 +7,23 @@ services:
     environment:
       DJANGO_SETTINGS_MODULE: cintafactory.settings
       DEBUG: 1
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}
       DATABASE_HOST: test_factory_db
       DATABASE_PORT: 5432
       DATABASE_NAME: test_factory_db
       DATABASE_USER: test_factory_user
       DATABASE_PASSWORD: test_factory_pass
       RUN_MIGRATIONS: 1
+      EMAIL_BACKEND: ${EMAIL_BACKEND:-django.core.mail.backends.smtp.EmailBackend}
+      EMAIL_HOST: ${EMAIL_HOST:-smtp.office365.com}
+      EMAIL_PORT: ${EMAIL_PORT:-587}
+      EMAIL_HOST_USER: ${EMAIL_HOST_USER:-}
+      EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD:-}
+      EMAIL_USE_TLS: ${EMAIL_USE_TLS:-1}
+      EMAIL_USE_SSL: ${EMAIL_USE_SSL:-0}
+      EMAIL_TIMEOUT: ${EMAIL_TIMEOUT:-10}
+      DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:-webmaster@localhost}
+      SERVER_EMAIL: ${SERVER_EMAIL:-webmaster@localhost}
       SEAWEEDFS_FILER_URL: ${SEAWEEDFS_FILER_URL:-http://seaweedfs:8888}
       SEAWEEDFS_PUBLIC_URL: ${SEAWEEDFS_PUBLIC_URL:-http://seaweedfs:8888}
       SEAWEEDFS_BASE_DIR: ${SEAWEEDFS_BASE_DIR:-media}

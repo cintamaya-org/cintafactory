@@ -1,0 +1,102 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "graphTooltip": 0,
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 0},
+      "id": 1,
+      "options": {"showHeader": true},
+      "targets": [
+        {
+          "expr": "max by (container_id) (container_last_seen{container_id!=\"\"})",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Container List (container_id)",
+      "type": "table"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "percentunit"}, "overrides": []},
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 9},
+      "id": 2,
+      "targets": [
+        {
+          "expr": "sum by (container_id) (rate(container_cpu_usage_seconds_total{container_id!=\"\"}[5m]))",
+          "refId": "A"
+        }
+      ],
+      "title": "CPU Usage by Container",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []},
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 9},
+      "id": 3,
+      "targets": [
+        {
+          "expr": "sum by (container_id) (container_memory_working_set_bytes{container_id!=\"\"})",
+          "refId": "A"
+        }
+      ],
+      "title": "Memory Working Set by Container",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "Bps"}, "overrides": []},
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 18},
+      "id": 4,
+      "targets": [
+        {
+          "expr": "sum by (interface) (rate(container_network_receive_bytes_total{interface!=\"\"}[5m]))",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (interface) (rate(container_network_transmit_bytes_total{interface!=\"\"}[5m]))",
+          "refId": "B"
+        }
+      ],
+      "title": "Network Throughput by Interface",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 18},
+      "id": 5,
+      "targets": [
+        {"expr": "cinta_async_queue_backlog", "refId": "A"},
+        {"expr": "cinta_async_workers_running", "refId": "B"}
+      ],
+      "title": "Scale Pressure Signals",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 27},
+      "id": 6,
+      "options": {"mode": "markdown"},
+      "targets": [],
+      "title": "Scale Guidance",
+      "type": "text",
+      "content": "Scale `web` when request throughput and error rate rise together. Scale `worker` when `cinta_async_queue_backlog` grows while `cinta_async_workers_running` remains flat."
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["plan6", "capacity", "scaling", "containers"],
+  "templating": {"list": []},
+  "time": {"from": "now-6h", "to": "now"},
+  "title": "Cinta Capacity and Scaling",
+  "uid": "cinta-capacity-scaling",
+  "version": 1
+}
