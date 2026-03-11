@@ -35,9 +35,18 @@ class AppSecurityHeadersMiddleware:
 
     def __call__(self, request: HttpRequest) -> HttpResponse:
         response = self.get_response(request)
+        public_media_url = getattr(settings, "SEAWEEDFS_PUBLIC_URL_PP", "").strip()
+        public_media_parts = urlsplit(public_media_url)
+        if public_media_parts.scheme and public_media_parts.netloc:
+            public_media_origin = f"{public_media_parts.scheme}://{public_media_parts.netloc}"
+        else:
+            public_media_origin = public_media_url
+        img_sources = "'self' data: blob:"
+        if public_media_origin:
+            img_sources = f"{img_sources} {public_media_origin}"
         csp_policy = (
             "default-src 'self'; frame-ancestors 'self'; "
-            "img-src 'self' data: blob:; "
+            f"img-src {img_sources}; "
             "script-src 'self' https://cdnjs.cloudflare.com; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; "
             "font-src 'self' https://fonts.gstatic.com; "

@@ -15,7 +15,34 @@
         return;
       }
       const inProgress = card.dataset.inProgress === "true";
+      const secureEnabled = card.dataset.secureEnabled === "true";
+      let secureRemainingSeconds = Number(card.dataset.secureRemainingSeconds || "0");
       log("Initialisation du polling PDF.", { statusUrl, inProgress });
+      if (secureEnabled && secureRemainingSeconds > 0) {
+        const remainingLabel = card.querySelector("[data-secure-export-remaining-label]");
+        if (remainingLabel) {
+          const formatDuration = (seconds) => {
+            const total = Math.max(0, seconds);
+            const hours = Math.floor(total / 3600);
+            const minutes = Math.floor((total % 3600) / 60);
+            const secs = total % 60;
+            if (hours > 0) {
+              return `${hours}h ${minutes}m ${secs}s`;
+            }
+            return `${minutes}m ${secs}s`;
+          };
+          const tick = () => {
+            remainingLabel.textContent = `(reste environ ${formatDuration(secureRemainingSeconds)})`;
+            if (secureRemainingSeconds <= 0) {
+              window.location.reload();
+              return;
+            }
+            secureRemainingSeconds -= 1;
+            setTimeout(tick, 1000);
+          };
+          tick();
+        }
+      }
       if (!inProgress) {
         return;
       }

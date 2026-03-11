@@ -386,7 +386,8 @@ def _origin_from_url(url: str) -> str:
     return url
 
 
-DRAWIO_PUBLIC_ORIGIN = _origin_from_url(DRAWIO_PUBLIC_URL)
+# Keep CSP bound to the in-app Draw.io service origin (internal URL),
+DRAWIO_PUBLIC_ORIGIN = _origin_from_url(DRAWIO_BASE_URL)
 
 # Content Security Policy (effective when django-csp is installed)
 CSP_FRAME_SRC = ["'self'", DRAWIO_PUBLIC_ORIGIN]

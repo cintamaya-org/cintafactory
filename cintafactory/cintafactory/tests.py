@@ -397,7 +397,10 @@ class MiddlewareTests(SimpleTestCase):
         self.assertEqual(first.status_code, 200)
         self.assertEqual(second.status_code, 429)
 
-    @override_settings(DRAWIO_PUBLIC_ORIGIN="https://drawio.example.com")
+    @override_settings(
+        DRAWIO_PUBLIC_ORIGIN="https://drawio.example.com",
+        SEAWEEDFS_PUBLIC_URL_PP="http://localhost:8888/media",
+    )
     def test_app_security_headers_middleware_sets_csp(self):
         def get_response(request):
             return HttpResponse("ok")
@@ -412,6 +415,7 @@ class MiddlewareTests(SimpleTestCase):
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com",
             csp,
         )
+        self.assertIn("img-src 'self' data: blob: http://localhost:8888", csp)
         self.assertIn("font-src 'self' https://fonts.gstatic.com", csp)
         self.assertIn("frame-src 'self' https://drawio.example.com", csp)
 

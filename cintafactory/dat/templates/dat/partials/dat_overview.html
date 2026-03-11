@@ -32,6 +32,8 @@
       data-pdf-export-card="true"
       data-status-url="{{ export_urls.status }}"
       data-in-progress="{{ pdf_export_in_progress|yesno:'true,false' }}"
+      data-secure-enabled="{{ secure_export.enabled|yesno:'true,false' }}"
+      data-secure-remaining-seconds="{{ secure_export.remaining_seconds|default:0 }}"
     >
       <div class="card-content">
         <div class="dat-overview-card__header">
@@ -60,20 +62,52 @@
               </button>
             </form>
             {% if pdf_export_available %}
-              <a href="{{ export_urls.pdf_download }}" class="btn cinta-btn-secondary waves-effect" target="_blank" rel="noopener">
-                <i class="material-icons left" aria-hidden="true">download</i>
-                Télécharger PDF
-              </a>
+              {% if not secure_export.enabled or secure_export.user_can_download_pdf %}
+                <a href="{{ export_urls.pdf_download }}" class="btn cinta-btn-secondary waves-effect" target="_blank" rel="noopener">
+                  <i class="material-icons left" aria-hidden="true">download</i>
+                  Télécharger PDF
+                </a>
+              {% else %}
+                <span class="btn cinta-btn-secondary dat-overview-chip--disabled" aria-disabled="true">
+                  <i class="material-icons left" aria-hidden="true">download</i>
+                  Télécharger PDF
+                </span>
+              {% endif %}
             {% else %}
               <span class="btn cinta-btn-secondary dat-overview-chip--disabled" aria-disabled="true">
                 <i class="material-icons left" aria-hidden="true">download</i>
                 Télécharger PDF
               </span>
             {% endif %}
-            <a href="{{ export_urls.json }}" class="btn cinta-btn-secondary waves-effect" target="_blank" rel="noopener">
-              <i class="material-icons left" aria-hidden="true">data_object</i>
-              Export JSON
-            </a>
+            {% if not secure_export.enabled or secure_export.user_can_download_json %}
+              <a href="{{ export_urls.json }}" class="btn cinta-btn-secondary waves-effect" target="_blank" rel="noopener">
+                <i class="material-icons left" aria-hidden="true">data_object</i>
+                Export JSON
+              </a>
+            {% else %}
+              <span class="btn cinta-btn-secondary dat-overview-chip--disabled" aria-disabled="true">
+                <i class="material-icons left" aria-hidden="true">data_object</i>
+                Export JSON
+              </span>
+            {% endif %}
+            {% if secure_export.enabled and secure_export.user_can_request %}
+              <form method="post" action="{{ export_urls.secure_request }}">
+                {% csrf_token %}
+                <button type="submit" class="btn cinta-btn-secondary waves-effect">
+                  <i class="material-icons left" aria-hidden="true">lock_open</i>
+                  Demander accès
+                </button>
+              </form>
+            {% endif %}
+            {% if secure_export.enabled and secure_export.user_can_approve %}
+              <form method="post" action="{{ export_urls.secure_approve }}">
+                {% csrf_token %}
+                <button type="submit" class="btn cinta-btn-secondary waves-effect">
+                  <i class="material-icons left" aria-hidden="true">verified_user</i>
+                  Approuver demande
+                </button>
+              </form>
+            {% endif %}
           </div>
         </div>
         <div class="dat-overview-card__footer">
@@ -91,13 +125,134 @@
                 Aucun export PDF enregistré pour l'instant.
               {% endif %}
             </p>
-          
+          {% if secure_export.enabled %}
+            <p>
+              Sécurité export activée (2 admins DAT requis). État :
+              {% if secure_export.is_pending %}
+                <strong>en attente</strong>
+              {% elif secure_export.is_approved %}
+                <strong>approuvé</strong>
+              {% else %}
+                <strong>aucune demande active</strong>
+              {% endif %}
+              .
+            </p>
+            {% if secure_export.requested_by_display %}
+              <p>
+                Demandeur: {{ secure_export.requested_by_display }}
+                {% if secure_export.requested_at %} le {{ secure_export.requested_at|timezone:"Europe/Paris"|date:"d/m/Y H:i" }}{% endif %}.
+              </p>
+            {% endif %}
+            {% if secure_export.is_pending %}
+              <p>
+                Approbations: {{ secure_export.approval_count }}/{{ secure_export.required_approvals }}.
+                {% if secure_export.approve_deadline_at %}
+                  Expire le {{ secure_export.approve_deadline_at|timezone:"Europe/Paris"|date:"d/m/Y H:i" }}.
+                {% endif %}
+              </p>
+            {% endif %}
+            {% if secure_export.is_approved %}
+              <p>
+                Accès valide jusqu'au {{ secure_export.access_valid_until|timezone:"Europe/Paris"|date:"d/m/Y H:i" }}.
+                <span data-secure-export-remaining-label>
+                  (reste environ {{ secure_export.remaining_seconds }} s)
+                </span>
+              </p>
+            {% endif %}
+            {% if secure_export.approvers %}
+              <p>
+                Approbateurs:
+                {% for item in secure_export.approvers %}
+                  {{ item.display }}{% if not forloop.last %}, {% endif %}
+                {% endfor %}.
+              </p>
+            {% endif %}
+          {% endif %}
         </div>
+        {% if secure_export_history_entries %}
+          <div class="responsive-table dat-history-table u-mt-1">
+            <table class="highlight">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Événement export</th>
+                  <th>Utilisateur</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for entry in secure_export_history_entries %}
+                  <tr>
+                    <td>{{ entry.created_at|date:"d/m/Y" }} à {{ entry.created_at|time:"H\\hi" }}</td>
+                    <td>{{ entry.get_event_type_display }}</td>
+                    <td>{{ entry.actor|default:"Système" }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
       </div>
     </div>
   </div>
   <script src="{% static 'js/dat_dat_overview.js' %}"></script>
   {% endif %}
+
+  <div class="card cinta-card dat-overview-card">
+    <div class="card-content">
+      <div class="section">
+        <div>
+          <span class="card-title dat-overview-card__title">Admins DAT</span>
+          <p class="u-m-0 text-muted">
+            Gérez explicitement les administrateurs du DAT depuis cette section.
+          </p>
+        </div>
+
+        {% if dat_admin_editor.has_admins %}
+          <div class="u-mt-1 u-flex u-flex-wrap u-gap-0-5">
+            {% for admin in dat_admin_editor.admins %}
+              <div class="chip grey lighten-4 u-flex u-items-center u-gap-0-5">
+                <span>{{ admin.display }}</span>
+                {% if admin.is_owner %}
+                  <span class="chip blue lighten-4">Owner</span>
+                {% elif dat_admin_editor.can_edit %}
+                  <form method="post" action="{{ admin.remove_url }}" class="u-m-0">
+                    {% csrf_token %}
+                    <button type="submit" class="btn-flat waves-effect" title="Retirer cet admin">
+                      <i class="material-icons" aria-hidden="true">close</i>
+                    </button>
+                  </form>
+                {% endif %}
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="u-mt-1 u-mb-0 text-muted">Aucun admin DAT explicite pour le moment.</p>
+        {% endif %}
+
+        {% if dat_admin_editor.can_edit %}
+          <form method="post" action="{{ dat_admin_editor.add_url }}" class="u-mt-1">
+            {% csrf_token %}
+            <div class="u-flex u-items-center u-gap-0-5">
+              <select id="dat-admin-user-id" name="user_id" class="browser-default">
+                <option value="">Sélectionner un utilisateur</option>
+                {% for option in dat_admin_editor.candidate_options %}
+                  <option value="{{ option.id }}">{{ option.display }}</option>
+                {% endfor %}
+              </select>
+              <button
+                type="submit"
+                class="btn waves-effect waves-light cinta-btn-primary"
+                {% if not dat_admin_editor.has_candidates %}disabled aria-disabled="true"{% endif %}
+              >
+                <i class="material-icons left" aria-hidden="true">person_add</i>
+                Ajouter admin
+              </button>
+            </div>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
 
   <div class="card cinta-card dat-overview-card">
     <div class="card-content">

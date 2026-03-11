@@ -107,6 +107,7 @@ class DAT(models.Model):
     pdf_export_path = models.CharField(max_length=500, blank=True, default="")
     pdf_export_content_type = models.CharField(max_length=120, blank=True, default="application/pdf")
     pdf_export_size = models.PositiveBigIntegerField(default=0)
+    secure_export_requires_dual_admin_approval = models.BooleanField(default=True)
 
     class Meta:
         db_table = "dat_dat"
@@ -367,28 +368,9 @@ class DATSection(models.Model):
     def can_user_edit(self, user) -> bool:
         if user is None or not getattr(user, "is_authenticated", False):
             return False
-        from .permissions import user_is_dat_admin
+        from .permissions import user_is_assigned_to_section
 
-        if user_is_dat_admin(user):
-            return True
-        role = getattr(user, "role", None)
-        if role is None:
-            return False
-        allowed_role_ids = getattr(self, "_allowed_role_ids_cache", None)
-        if allowed_role_ids is None:
-            allowed_role_ids = set(self.allowed_roles.values_list("pk", flat=True))
-            self._allowed_role_ids_cache = allowed_role_ids
-        if role.pk not in allowed_role_ids:
-            return False
-        participants = getattr(self.dat, "_participants_cache", None)
-        if participants is None:
-            participants = list(self.dat.participants.all())
-            self.dat._participants_cache = participants  # type: ignore[attr-defined]
-        user_id = getattr(user, "id", None)
-        for participant in participants:
-            if participant.user_id == user_id and participant.role_id == role.pk:
-                return True
-        return False
+        return user_is_assigned_to_section(self, user)
 
 
 class DATSectionResponsible(models.Model):
@@ -491,6 +473,120 @@ class DATAdmin(models.Model):
         return f"{self.dat.reference} - {self.user.get_username()}"
 
 
+class DATExportAccessRequestStatus(models.TextChoices):
+    PENDING = "pending", "En attente"
+    APPROVED = "approved", "Approuvée"
+    EXPIRED = "expired", "Expirée"
+
+
+class DATExportAccessEventType(models.TextChoices):
+    REQUEST_CREATED = "request_created", "Demande créée"
+    APPROVED = "approved", "Demande approuvée"
+    ACCESS_GRANTED = "access_granted", "Accès autorisé"
+    DOWNLOAD_PDF = "download_pdf", "Téléchargement PDF"
+    DOWNLOAD_JSON = "download_json", "Téléchargement JSON"
+    REQUEST_EXPIRED = "request_expired", "Demande expirée"
+    ACCESS_EXPIRED = "access_expired", "Accès expiré"
+
+
+class DATExportAccessRequest(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    dat = models.ForeignKey(
+        DAT,
+        on_delete=models.CASCADE,
+        related_name="export_access_requests",
+    )
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="dat_export_access_requests",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=DATExportAccessRequestStatus.choices,
+        default=DATExportAccessRequestStatus.PENDING,
+    )
+    requested_at = models.DateTimeField(auto_now_add=True)
+    approve_deadline_at = models.DateTimeField()
+    approved_at = models.DateTimeField(blank=True, null=True)
+    access_valid_until = models.DateTimeField(blank=True, null=True)
+    required_approvals = models.PositiveSmallIntegerField(default=2)
+
+    class Meta:
+        db_table = "dat_export_access_request"
+        ordering = ["-requested_at", "-id"]
+
+    def __str__(self) -> str:
+        return f"{self.dat.reference} - {self.get_status_display()}"
+
+
+class DATExportAccessApproval(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    request = models.ForeignKey(
+        DATExportAccessRequest,
+        on_delete=models.CASCADE,
+        related_name="approvals",
+    )
+    dat = models.ForeignKey(
+        DAT,
+        on_delete=models.CASCADE,
+        related_name="export_access_approvals",
+    )
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="dat_export_access_approvals",
+    )
+    approved_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "dat_export_access_approval"
+        ordering = ["approved_at", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["request", "approved_by"],
+                name="dat_export_access_approval_unique_request_user",
+            ),
+        ]
+
+
+class DATExportAccessHistory(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    dat = models.ForeignKey(
+        DAT,
+        on_delete=models.CASCADE,
+        related_name="export_access_history_entries",
+    )
+    request = models.ForeignKey(
+        DATExportAccessRequest,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="history_entries",
+    )
+    event_type = models.CharField(
+        max_length=32,
+        choices=DATExportAccessEventType.choices,
+    )
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="dat_export_access_history_entries",
+    )
+    details = models.JSONField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "dat_export_access_history"
+        ordering = ["-created_at", "-id"]
+
+
 class DATSectionMetadata(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     title = models.CharField(max_length=200, verbose_name="Titre")
@@ -544,32 +640,9 @@ class DATSubSection(models.Model):
             return False
         if not getattr(user, "is_authenticated", False):
             return False
-        from .permissions import user_is_dat_admin
+        from .permissions import user_is_assigned_to_section
 
-        if user_is_dat_admin(user):
-            return True
-        allowed_roles_qs = self.allowed_roles.all()
-        if not allowed_roles_qs.exists():
-            return self.section.can_user_edit(user)
-        role = getattr(user, "role", None)
-        if role is None:
-            return False
-        allowed_role_ids = getattr(self, "_allowed_role_ids_cache", None)
-        if allowed_role_ids is None:
-            allowed_role_ids = set(allowed_roles_qs.values_list("pk", flat=True))
-            self._allowed_role_ids_cache = allowed_role_ids
-        if role.pk not in allowed_role_ids:
-            return False
-        dat = self.section.dat
-        participants = getattr(dat, "_participants_cache", None)
-        if participants is None:
-            participants = list(dat.participants.all())
-            dat._participants_cache = participants  # type: ignore[attr-defined]
-        user_id = getattr(user, "id", None)
-        for participant in participants:
-            if participant.user_id == user_id and participant.role_id == role.pk:
-                return True
-        return False
+        return user_is_assigned_to_section(self.section, user)
 
 
 class DATSectionAttachment(models.Model):

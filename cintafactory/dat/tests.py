@@ -1,4 +1,6 @@
 import json
+from io import BytesIO
+from datetime import timedelta
 from unittest import mock
 
 from django.contrib.auth import get_user_model
@@ -6,6 +8,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db.models import ProtectedError
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from cintafactory.logging.logging_utils import bind_request_context, clear_request_context
 
@@ -23,6 +26,11 @@ from .models import (
     Application,
     DAT,
     DATAdmin,
+    DATExportAccessApproval,
+    DATExportAccessEventType,
+    DATExportAccessHistory,
+    DATExportAccessRequest,
+    DATExportAccessRequestStatus,
     DATParticipant,
     DATParticipantType,
     DATPart,
@@ -1001,6 +1009,60 @@ class DatOverviewSectionResponsibleUpdateTest(TestCase):
         )
         self.assertTrue(user_is_dat_admin_for_dat(self.dat, self.referent_executant))
 
+    def test_dat_admin_editor_block_is_exposed_in_overview_context(self):
+        self.client.force_login(self.owner)
+        response = self.client.get(reverse("dat:my_detail", args=[self.dat.pk]))
+        self.assertEqual(response.status_code, 200)
+        editor = response.context.get("dat_admin_editor") or {}
+        self.assertIn("admins", editor)
+        self.assertIn("candidate_options", editor)
+        self.assertIn("add_url", editor)
+        self.assertTrue(editor.get("can_edit"))
+
+    def test_dat_admin_editor_candidate_option_ids_keep_uuid_format(self):
+        self.client.force_login(self.owner)
+        response = self.client.get(reverse("dat:my_detail", args=[self.dat.pk]))
+        self.assertEqual(response.status_code, 200)
+        editor = response.context.get("dat_admin_editor") or {}
+        candidate_ids = {option.get("id") for option in editor.get("candidate_options", [])}
+        self.assertIn(str(self.referent_executant.pk), candidate_ids)
+
+    def test_owner_can_add_dat_admin_from_dedicated_endpoint(self):
+        self.client.force_login(self.owner)
+        response = self.client.post(
+            reverse("dat:my_dat_admin_add", args=[self.dat.pk]),
+            {"user_id": str(self.referent_executant.pk)},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(DATAdmin.objects.filter(dat=self.dat, user=self.referent_executant).exists())
+
+    def test_non_admin_cannot_add_dat_admin_from_dedicated_endpoint(self):
+        self.client.force_login(self.referent_executant)
+        response = self.client.post(
+            reverse("dat:my_dat_admin_add", args=[self.dat.pk]),
+            {"user_id": str(self.rssi_user.pk)},
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(DATAdmin.objects.filter(dat=self.dat, user=self.rssi_user).exists())
+
+    def test_owner_can_remove_dat_admin_from_dedicated_endpoint(self):
+        DATAdmin.objects.create(dat=self.dat, user=self.referent_executant)
+        self.client.force_login(self.owner)
+        response = self.client.post(
+            reverse("dat:my_dat_admin_remove", args=[self.dat.pk, self.referent_executant.pk]),
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(DATAdmin.objects.filter(dat=self.dat, user=self.referent_executant).exists())
+
+    def test_owner_cannot_remove_dat_owner_from_admins(self):
+        DATAdmin.objects.create(dat=self.dat, user=self.owner)
+        self.client.force_login(self.owner)
+        response = self.client.post(
+            reverse("dat:my_dat_admin_remove", args=[self.dat.pk, self.owner.pk]),
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(DATAdmin.objects.filter(dat=self.dat, user=self.owner).exists())
+
     def test_owner_can_update_section_participants(self):
         architecture_section = DATSection.objects.get(dat=self.dat, metadata__slug="architecture")
         payload = self._build_section_participant_payload(
@@ -1346,6 +1408,9 @@ class DatSectionIntegrationTest(TestCase):
             owner=self.porteur,
         )
         DATParticipant.objects.create(dat=self.dat, role=self.roles["porteur-demande"], user=self.porteur)
+        sync_dat_sections_if_needed(self.dat)
+        besoins_section = self.dat.sections.get(metadata__slug="besoins")
+        DATSectionParticipant.objects.create(dat=self.dat, section=besoins_section, user=self.porteur)
 
     def test_default_sections_created(self):
         sections = list(self.dat.sections.order_by("order"))
@@ -1477,6 +1542,8 @@ class CreateSchemaDiagramViewTest(TestCase):
             metadata=metadata,
             order=1,
         )
+        architecture_section = self.dat.sections.get(metadata__slug="architecture")
+        DATSectionParticipant.objects.create(dat=self.dat, section=architecture_section, user=self.user)
         self.url = reverse("dat:schema_create_diagram", args=[self.dat.pk])
 
     def test_rejects_invalid_diagram_title(self):
@@ -1540,6 +1607,11 @@ class CreateSchemaDiagramViewTest(TestCase):
 
         architecture_section = DATSection.objects.filter(dat=self.dat, metadata__slug="architecture").order_by("order", "id").first()
         self.assertIsNotNone(architecture_section)
+        DATSectionParticipant.objects.update_or_create(
+            dat=self.dat,
+            section=architecture_section,
+            defaults={"user": self.user},
+        )
         architecture_section.allowed_roles.set([role_section])
         schema_sub_section = DATSubSection.objects.create(
             section=architecture_section,
@@ -1652,6 +1724,133 @@ class DatPdfExportNotificationTest(TestCase):
         self.assertIn("prêt", notification.message)
 
 
+class DatSecureExportAccessTest(TestCase):
+    def setUp(self) -> None:
+        self.admin_1 = get_user_model().objects.create_user(username="secure-admin-1", password="pwd")
+        self.admin_2 = get_user_model().objects.create_user(username="secure-admin-2", password="pwd")
+        self.admin_3 = get_user_model().objects.create_user(username="secure-admin-3", password="pwd")
+        self.regular = get_user_model().objects.create_user(username="secure-regular", password="pwd")
+        direction = get_default_business_direction()
+        self.application = Application.objects.create(
+            code="app-secure-export",
+            name="Application Secure Export",
+            business_direction=direction,
+        )
+        self.dat = DAT.objects.create(
+            reference="DAT-SECURE-EXPORT",
+            title="DAT Secure Export",
+            application=self.application,
+            status=DATStatus.NOUVELLE_DEMANDE,
+            owner=self.regular,
+            secure_export_requires_dual_admin_approval=True,
+        )
+        DATAdmin.objects.create(dat=self.dat, user=self.admin_1)
+        DATAdmin.objects.create(dat=self.dat, user=self.admin_2)
+        DATAdmin.objects.create(dat=self.dat, user=self.admin_3)
+
+    def test_only_explicit_dat_admin_can_create_secure_request(self):
+        self.client.force_login(self.regular)
+        response = self.client.post(reverse("dat:my_export_secure_request", args=[self.dat.pk]))
+        self.assertEqual(response.status_code, 403)
+
+        self.client.force_login(self.admin_1)
+        response = self.client.post(reverse("dat:my_export_secure_request", args=[self.dat.pk]))
+        self.assertEqual(response.status_code, 302)
+        request_obj = DATExportAccessRequest.objects.get(dat=self.dat)
+        self.assertEqual(request_obj.status, DATExportAccessRequestStatus.PENDING)
+        self.assertEqual(request_obj.required_approvals, 2)
+        self.assertEqual(request_obj.approvals.count(), 1)
+        self.assertEqual(request_obj.approvals.first().approved_by, self.admin_1)
+        self.assertTrue(
+            DATExportAccessHistory.objects.filter(
+                dat=self.dat,
+                request=request_obj,
+                event_type=DATExportAccessEventType.REQUEST_CREATED,
+            ).exists()
+        )
+
+    @mock.patch("dat.views.get_dat_export_model_builder")
+    def test_json_download_requires_two_approvals_and_only_approvers_can_download(self, get_builder):
+        class _Builder:
+            def build(self, dat):
+                return {"reference": dat.reference}
+
+        get_builder.return_value = _Builder()
+        self.client.force_login(self.admin_1)
+        self.client.post(reverse("dat:my_export_secure_request", args=[self.dat.pk]))
+        response = self.client.get(reverse("dat:my_export_json", args=[self.dat.pk]))
+        self.assertEqual(response.status_code, 302)
+
+        self.client.force_login(self.admin_2)
+        self.client.post(reverse("dat:my_export_secure_approve", args=[self.dat.pk]))
+        self.client.force_login(self.admin_1)
+        response = self.client.get(reverse("dat:my_export_json", args=[self.dat.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["reference"], self.dat.reference)
+
+        self.client.force_login(self.admin_2)
+        response = self.client.get(reverse("dat:my_export_json", args=[self.dat.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["reference"], self.dat.reference)
+
+        self.client.force_login(self.admin_3)
+        response = self.client.get(reverse("dat:my_export_json", args=[self.dat.pk]))
+        self.assertEqual(response.status_code, 302)
+
+        self.assertTrue(
+            DATExportAccessHistory.objects.filter(
+                dat=self.dat,
+                event_type=DATExportAccessEventType.DOWNLOAD_JSON,
+                actor=self.admin_2,
+            ).exists()
+        )
+
+    def test_requester_cannot_add_second_approval_secure_request(self):
+        self.client.force_login(self.admin_1)
+        self.client.post(reverse("dat:my_export_secure_request", args=[self.dat.pk]))
+        response = self.client.post(reverse("dat:my_export_secure_approve", args=[self.dat.pk]))
+        self.assertEqual(response.status_code, 403)
+        request_obj = DATExportAccessRequest.objects.get(dat=self.dat)
+        self.assertEqual(request_obj.status, DATExportAccessRequestStatus.PENDING)
+        self.assertEqual(request_obj.approvals.count(), 1)
+        self.assertEqual(request_obj.approvals.first().approved_by, self.admin_1)
+
+    @mock.patch("dat.views.open_dat_pdf_export")
+    def test_pdf_download_allowed_for_approvers_within_one_hour(self, open_export):
+        open_export.return_value = BytesIO(b"%PDF-1.4 test")
+        self.client.force_login(self.admin_1)
+        self.client.post(reverse("dat:my_export_secure_request", args=[self.dat.pk]))
+        self.client.force_login(self.admin_2)
+        self.client.post(reverse("dat:my_export_secure_approve", args=[self.dat.pk]))
+
+        request_obj = DATExportAccessRequest.objects.get(dat=self.dat)
+        self.assertEqual(request_obj.status, DATExportAccessRequestStatus.APPROVED)
+        self.assertIsNotNone(request_obj.access_valid_until)
+        self.assertGreater(request_obj.access_valid_until, timezone.now() + timedelta(minutes=59))
+
+        self.client.force_login(self.admin_2)
+        response = self.client.get(reverse("dat:my_export_pdf_download", args=[self.dat.pk]))
+        self.assertEqual(response.status_code, 200)
+
+        self.client.force_login(self.admin_3)
+        response = self.client.get(reverse("dat:my_export_pdf_download", args=[self.dat.pk]))
+        self.assertEqual(response.status_code, 302)
+
+    def test_status_endpoint_returns_secure_export_payload(self):
+        self.client.force_login(self.admin_1)
+        self.client.post(reverse("dat:my_export_secure_request", args=[self.dat.pk]))
+
+        response = self.client.get(reverse("dat:my_export_pdf_status", args=[self.dat.pk]))
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIn("secure_export", payload)
+        secure = payload["secure_export"]
+        self.assertTrue(secure["enabled"])
+        self.assertTrue(secure["is_pending"])
+        self.assertEqual(secure["approval_count"], 1)
+        self.assertTrue(secure["user_is_explicit_admin"])
+
+
 class DatReserveNotificationTest(TestCase):
     def setUp(self) -> None:
         self.admin = get_user_model().objects.create_user(
@@ -1691,26 +1890,23 @@ class DatReserveNotificationTest(TestCase):
         )
         sync_dat_sections_if_needed(self.dat)
         DATParticipant.objects.create(dat=self.dat, role=self.role_architecture, user=self.assignee)
+        section = self.dat.sections.get(metadata__slug="architecture")
+        DATSectionParticipant.objects.create(dat=self.dat, section=section, user=self.assignee)
+        DATSectionResponsible.objects.create(dat=self.dat, section=section, user=self.manager)
         self.section_slug = "architecture"
         self.reserve_url = reverse("dat:section_reserve", args=[self.dat.pk, self.section_slug])
         self.status_url = reverse("dat:section_status", args=[self.dat.pk, self.section_slug])
 
     def _set_reserve(self):
-        self.client.force_login(self.admin)
+        self.client.force_login(self.assignee)
         response = self.client.post(
             self.reserve_url,
             data={"reserve_message": "Corriger la section."},
         )
         self.assertEqual(response.status_code, 302)
 
-    def test_reserve_notifies_participant_and_manager(self):
+    def test_reserve_notifies_manager(self):
         self._set_reserve()
-        self.assertTrue(
-            UserNotification.objects.filter(
-                user=self.assignee,
-                notification_type__title="Réserve sur votre section",
-            ).exists()
-        )
         self.assertTrue(
             UserNotification.objects.filter(
                 user=self.manager,
@@ -1720,7 +1916,7 @@ class DatReserveNotificationTest(TestCase):
 
     def test_validation_notifies_reserve_author(self):
         self._set_reserve()
-        self.client.force_login(self.assignee)
+        self.client.force_login(self.manager)
         response = self.client.post(
             self.status_url,
             data={"status": SECTION_STATUS_VALIDATED_VALUE},
@@ -1728,7 +1924,7 @@ class DatReserveNotificationTest(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertTrue(
             UserNotification.objects.filter(
-                user=self.admin,
+                user=self.assignee,
                 notification_type__title="Réserve à lever",
             ).exists()
         )
@@ -1765,9 +1961,11 @@ class SectionStatusGroupResponsibleTest(TestCase):
         )
         DATParticipant.objects.create(dat=self.dat, role=self.role_architecture, user=self.member)
         sync_dat_sections_if_needed(self.dat)
+        architecture_section = self.dat.sections.get(metadata__slug="architecture")
+        DATSectionParticipant.objects.create(dat=self.dat, section=architecture_section, user=self.member)
 
-    def test_group_responsible_can_view_dat_and_validate_architecture(self):
-        self.client.force_login(self.manager)
+    def test_assigned_user_can_view_dat_and_validate_architecture(self):
+        self.client.force_login(self.member)
         detail_url = reverse("dat:my_detail", args=[self.dat.pk]) + "?section=validation"
         response = self.client.get(detail_url)
         self.assertEqual(response.status_code, 200)
@@ -1781,10 +1979,10 @@ class SectionStatusGroupResponsibleTest(TestCase):
         status_map, _choices = build_section_status_map(DAT.objects.get(pk=self.dat.pk))
         self.assertEqual(status_map["architecture"]["value"], "valide")
 
-    def test_group_responsible_cannot_validate_unassigned_section(self):
+    def test_group_responsible_cannot_validate_architecture_when_unassigned(self):
         self.client.force_login(self.manager)
         response = self.client.post(
-            reverse("dat:section_status", args=[self.dat.pk, "urbanisme"]),
+            reverse("dat:section_status", args=[self.dat.pk, "architecture"]),
             {"status": "valide"},
         )
         self.assertEqual(response.status_code, 403)
@@ -1863,6 +2061,7 @@ class DatPermissionsTests(TestCase):
         DATParticipant.objects.create(dat=self.dat, role=self.role_architecture, user=self.member)
         self.section = self.dat.sections.get(metadata__slug="architecture")
         self.section.allowed_roles.set([self.role_architecture])
+        DATSectionParticipant.objects.create(dat=self.dat, section=self.section, user=self.member)
 
     def test_user_is_dat_admin_for_staff(self):
         self.assertTrue(user_is_dat_admin(self.manager))
@@ -1872,6 +2071,14 @@ class DatPermissionsTests(TestCase):
 
     def test_user_can_update_section_status_for_assignee(self):
         self.assertTrue(user_can_update_section_status(self.dat, self.section, self.member))
+
+    def test_user_can_update_section_status_for_section_responsible(self):
+        DATSectionResponsible.objects.create(dat=self.dat, section=self.section, user=self.responsible)
+        self.assertTrue(user_can_update_section_status(self.dat, self.section, self.responsible))
+
+    def test_unassigned_user_cannot_update_section_status(self):
+        other = get_user_model().objects.create_user(username="perm-unassigned", password="pwd")
+        self.assertFalse(user_can_update_section_status(self.dat, self.section, other))
 
     def test_filter_dat_queryset_for_user(self):
         other = get_user_model().objects.create_user(username="perm-other", password="pwd")
@@ -1885,6 +2092,31 @@ class DatPermissionsTests(TestCase):
         queryset = filter_dat_queryset_for_user(DAT.objects.all(), self.member)
         self.assertIn(self.dat, list(queryset))
         self.assertNotIn(other_dat, list(queryset))
+
+    def test_dat_owner_cannot_edit_section_without_explicit_section_assignment(self):
+        owner = get_user_model().objects.create_user(username="perm-owner-only", password="pwd")
+        dat = DAT.objects.create(
+            reference="DAT-PERM-OWNER-1",
+            title="Owner Perm DAT",
+            application=self.application,
+            status=DATStatus.EN_COURS,
+            owner=owner,
+        )
+        sync_dat_sections_if_needed(dat)
+        section = dat.sections.get(metadata__slug="architecture")
+        section.allowed_roles.set([self.role_architecture])
+        sub_section = section.sub_sections.order_by("order", "id").first()
+        self.assertIsNotNone(sub_section)
+        self.assertFalse(section.can_user_edit(owner))
+        self.assertFalse(sub_section.can_user_edit(owner))
+
+    def test_dat_admin_cannot_edit_section_without_explicit_section_assignment(self):
+        dat_admin = get_user_model().objects.create_user(username="perm-dat-admin-only", password="pwd")
+        DATAdmin.objects.create(dat=self.dat, user=dat_admin)
+        sub_section = self.section.sub_sections.order_by("order", "id").first()
+        self.assertIsNotNone(sub_section)
+        self.assertFalse(self.section.can_user_edit(dat_admin))
+        self.assertFalse(sub_section.can_user_edit(dat_admin))
 
 
 class DatSectionsSyncTests(TestCase):

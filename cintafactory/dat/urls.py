@@ -22,12 +22,32 @@ urlpatterns = [
         views.update_overview_section_participants,
         name="my_section_participants_update",
     ),
+    path(
+        "my/<uuid:pk>/admins/add/",
+        views.add_dat_admin_from_overview,
+        name="my_dat_admin_add",
+    ),
+    path(
+        "my/<uuid:pk>/admins/<uuid:user_id>/remove/",
+        views.remove_dat_admin_from_overview,
+        name="my_dat_admin_remove",
+    ),
     path("my/<uuid:pk>/validation/decision/", views.submit_validation_decision, name="my_validation_decision"),
     path("my/<uuid:pk>/export/json/", views.DatExportJSONView.as_view(), name="my_export_json"),
     path(
         "my/<uuid:pk>/export/pdf/trigger/",
         views.DatTriggerPDFExportView.as_view(),
         name="my_export_pdf_trigger",
+    ),
+    path(
+        "my/<uuid:pk>/export/secure/request/",
+        views.DatRequestSecureExportAccessView.as_view(),
+        name="my_export_secure_request",
+    ),
+    path(
+        "my/<uuid:pk>/export/secure/approve/",
+        views.DatApproveSecureExportAccessView.as_view(),
+        name="my_export_secure_approve",
     ),
     path(
         "my/<uuid:pk>/export/pdf/status/",

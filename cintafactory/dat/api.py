@@ -42,6 +42,7 @@ class DATSerializer(serializers.ModelSerializer):
             "pdf_export_path",
             "pdf_export_content_type",
             "pdf_export_size",
+            "secure_export_requires_dual_admin_approval",
         ]
         read_only_fields = [
             "id",

@@ -54,6 +54,15 @@ from .constants import (
     DAT_STATUS_REQUIRED_ROLES,
 )
 from .drawio_parser import BRIQUE_COLUMNS, FLUX_COLUMNS, dedupe_architecture_rows, parse_architecture_diagram
+from .export_access import (
+    ExportAccessConflict,
+    ExportAccessPermissionDenied,
+    approve_request as approve_export_access_request,
+    can_download as can_download_export,
+    create_request as create_export_access_request,
+    get_access_state,
+    record_download as record_export_download,
+)
 from .exporters import get_dat_export_model_builder
 from .forms import DATForm, DATImportForm, DATSubSectionForm
 from .importers import DATImportError, DATImportService
@@ -61,6 +70,7 @@ from .models import (
     Application,
     DAT,
     DATAdmin,
+    DATExportAccessHistory,
     DATPart,
     DATPartEntryType,
     DATPartEntry,
@@ -83,7 +93,6 @@ from .permissions import (
     user_can_update_section_status,
     user_is_dat_admin,
     user_is_dat_admin_for_dat,
-    user_is_responsible_for_section,
 )
 from .sections import (
     SECTION_STATUS_BLOCKED_VALUE,
@@ -838,6 +847,67 @@ def build_section_participant_editor(dat: DAT, user):
     }
 
 
+def build_dat_admin_editor(dat: DAT, user):
+    can_edit = can_edit_section_responsibles(dat, user)
+    dat_admin_rows = []
+    dat_admin_user_ids: set[str] = set()
+    owner_key = str(dat.owner_id) if getattr(dat, "owner_id", None) is not None else ""
+    for assignment in dat.dat_admins.select_related("user").order_by("created_at", "id"):
+        admin_user = getattr(assignment, "user", None)
+        admin_user_id = getattr(admin_user, "id", None)
+        if admin_user is None or admin_user_id is None:
+            continue
+        admin_user_key = str(admin_user_id)
+        dat_admin_user_ids.add(admin_user_key)
+        dat_admin_rows.append(
+            {
+                "id": admin_user_key,
+                "display": format_user_display(admin_user),
+                "is_owner": bool(owner_key and admin_user_key == owner_key),
+                "remove_url": reverse("dat:my_dat_admin_remove", args=[dat.pk, admin_user_id]),
+            }
+        )
+
+    candidate_users_by_id: dict[str, object] = {}
+    owner = getattr(dat, "owner", None)
+    owner_id = getattr(owner, "id", None)
+    if owner is not None and owner_id is not None:
+        candidate_users_by_id[str(owner_id)] = owner
+    for participant in dat.participants.select_related("user"):
+        candidate = getattr(participant, "user", None)
+        candidate_id = getattr(candidate, "id", None)
+        if candidate is None or candidate_id is None:
+            continue
+        candidate_users_by_id.setdefault(str(candidate_id), candidate)
+    for assignment in dat.section_responsibles.select_related("user"):
+        candidate = getattr(assignment, "user", None)
+        candidate_id = getattr(candidate, "id", None)
+        if candidate is None or candidate_id is None:
+            continue
+        candidate_users_by_id.setdefault(str(candidate_id), candidate)
+
+    candidate_options = []
+    for candidate_id, candidate in candidate_users_by_id.items():
+        if candidate_id in dat_admin_user_ids:
+            continue
+        candidate_options.append(
+            {
+                "id": candidate_id,
+                "display": format_user_display(candidate),
+            }
+        )
+    candidate_options.sort(key=lambda item: item["display"].lower())
+    dat_admin_rows.sort(key=lambda item: item["display"].lower())
+    return {
+        "can_edit": can_edit,
+        "admins": dat_admin_rows,
+        "candidate_options": candidate_options,
+        "has_candidates": bool(candidate_options),
+        "has_admins": bool(dat_admin_rows),
+        "add_url": reverse("dat:my_dat_admin_add", args=[dat.pk]),
+    }
+
+
 def build_dat_overview_context(dat: DAT, user):
     next_status = get_next_status(dat.status)
     return {
@@ -846,6 +916,7 @@ def build_dat_overview_context(dat: DAT, user):
         "current_responsibles": get_current_responsibles(dat),
         "section_responsible_editor": build_section_responsible_editor(dat, user),
         "section_participant_editor": build_section_participant_editor(dat, user),
+        "dat_admin_editor": build_dat_admin_editor(dat, user),
         "owner_editable_statuses": {status.value for status in OWNER_EDITABLE_STATUSES},
         "owner_can_edit": user_is_dat_admin_for_dat(dat, user),
         "can_create_dat": user_can_create_dat_entities(user),
@@ -854,6 +925,53 @@ def build_dat_overview_context(dat: DAT, user):
         "can_progress_dat": user_can_progress_dat(dat, user),
         "can_review_dat": user_can_review_dat(dat, user),
     }
+
+
+def _serialize_secure_export_state(dat: DAT, user) -> dict[str, object]:
+    state = get_access_state(dat, user)
+    active_request = state.active_request
+    approvers = []
+    for approval in state.approvers:
+        approver = getattr(approval, "approved_by", None)
+        approvers.append(
+            {
+                "id": str(getattr(approver, "pk", "")) if approver is not None else None,
+                "display": format_user_display(approver),
+                "approved_at": getattr(approval, "approved_at", None),
+            }
+        )
+    return {
+        "enabled": state.enabled,
+        "request_id": str(getattr(active_request, "pk", "")) if active_request is not None else None,
+        "status": getattr(active_request, "status", None),
+        "required_approvals": getattr(active_request, "required_approvals", 2) if active_request else 2,
+        "approval_count": state.approval_count,
+        "approvers": approvers,
+        "requested_by_display": (
+            format_user_display(getattr(active_request, "requested_by", None)) if active_request is not None else ""
+        ),
+        "requested_at": getattr(active_request, "requested_at", None) if active_request else None,
+        "approve_deadline_at": getattr(active_request, "approve_deadline_at", None) if active_request else None,
+        "approved_at": getattr(active_request, "approved_at", None) if active_request else None,
+        "access_valid_until": getattr(active_request, "access_valid_until", None) if active_request else None,
+        "is_pending": state.is_pending,
+        "is_approved": state.is_approved,
+        "user_is_explicit_admin": state.user_is_explicit_admin,
+        "user_has_approved": state.user_has_approved,
+        "user_can_request": state.user_can_request,
+        "user_can_approve": state.user_can_approve,
+        "user_can_download_pdf": state.user_can_download,
+        "user_can_download_json": state.user_can_download,
+        "remaining_seconds": state.remaining_seconds,
+    }
+
+
+def _get_secure_export_history(dat: DAT):
+    return list(
+        DATExportAccessHistory.objects.select_related("actor", "request")
+        .filter(dat=dat)
+        .order_by("-created_at", "-id")[:50]
+    )
 
 
 def _find_section_status_part(dat: DAT, sections_list: list[DATSection] | None = None) -> DATPart | None:
@@ -1312,44 +1430,17 @@ def build_section_payload(
                     validation_targets = []
             validation_allowed_sections = {}
             user_id = getattr(user, "id", None)
-            managed_role_ids: set[int] = set()
-            if user_is_dat_admin(user):
-                managed_role_ids = set()
-            else:
-                for participant in participants:
-                    assignee = getattr(participant, "user", None)
-                    group = getattr(assignee, "business_group", None) if assignee is not None else None
-                    if group is None:
-                        continue
-                    if getattr(group, "responsible_id", None) != user_id:
-                        continue
-                    role_id = getattr(participant, "role_id", None)
-                    if role_id is not None:
-                        managed_role_ids.add(int(role_id))
-            is_any_group_responsible = bool(user_is_dat_admin(user) or managed_role_ids)
             for target in validation_targets:
                 if not section_has_status(target.slug):
                     continue
                 if dat.status in FINAL_DAT_STATUSES:
                     continue
-                if (status_map.get(target.slug) or {}).get("value") != SECTION_STATUS_VALIDATED_VALUE:
-                    continue
-                if user_is_dat_admin(user):
-                    validation_allowed_sections[target.slug] = True
-                    continue
-                allowed_role_ids = getattr(target, "_allowed_role_ids_cache", None)
-                if allowed_role_ids is None:
-                    try:
-                        allowed_role_ids = set(target.allowed_roles.values_list("pk", flat=True))
-                    except Exception:
-                        allowed_role_ids = set()
-                    target._allowed_role_ids_cache = allowed_role_ids
-                if allowed_role_ids and managed_role_ids.intersection({int(pk) for pk in allowed_role_ids}):
+                if target.can_user_edit(user):
                     validation_allowed_sections[target.slug] = True
             if not validation_allowed_sections:
                 validation_allowed_sections = None
 
-            if is_any_group_responsible and validation_targets:
+            if validation_targets:
                 validation_reserve_allowed_sections = {}
                 validation_reserve_clear_allowed_sections = {}
                 for target in validation_targets:
@@ -1357,7 +1448,7 @@ def build_section_payload(
                         continue
                     if dat.status in FINAL_DAT_STATUSES:
                         continue
-                    if not user_is_dat_admin(user) and user_is_responsible_for_section(dat, target, user, participants=participants):
+                    if not target.can_user_edit(user):
                         continue
                     info = status_map.get(target.slug) or {}
                     reserve_message = str(info.get("reserve_message") or "").strip()
@@ -1523,7 +1614,7 @@ def upload_section_attachment(request, dat_pk: int, section_slug: str):
     if dat.status in FINAL_DAT_STATUSES:
         raise PermissionDenied
     section = get_object_or_404(DATSection, dat=dat, metadata__slug=section_slug)
-    if not user_can_update_section_status(dat, section, request.user):
+    if not section.can_user_edit(request.user):
         raise PermissionDenied
     is_ajax = is_ajax_request(request)
     redirect_url = f"{reverse('dat:my_detail', args=[dat.pk])}?section={section.slug}#section-{section.slug}"
@@ -1915,6 +2006,73 @@ def update_overview_section_participants(request, pk: int):
 
 @login_required
 @require_POST
+def add_dat_admin_from_overview(request, pk: int):
+    base_queryset = filter_dat_queryset_for_user(
+        DAT.objects.prefetch_related(
+            "participants__user",
+            "section_responsibles__user",
+            "dat_admins__user",
+        ),
+        request.user,
+    )
+    dat = get_object_or_404(base_queryset, pk=pk)
+    if not can_edit_section_responsibles(dat, request.user):
+        raise PermissionDenied
+
+    raw_user_id = str(request.POST.get("user_id", "") or "").strip()
+    if not raw_user_id:
+        messages.error(request, "Sélectionnez un utilisateur à promouvoir en admin DAT.")
+        return redirect(f"{reverse('dat:my_detail', args=[dat.pk])}?section=informations-generales")
+
+    editor = build_dat_admin_editor(dat, request.user)
+    allowed_user_ids = {option["id"] for option in editor.get("candidate_options", [])}
+    if raw_user_id not in allowed_user_ids:
+        messages.error(request, "Utilisateur invalide pour la promotion en admin DAT.")
+        return redirect(f"{reverse('dat:my_detail', args=[dat.pk])}?section=informations-generales")
+
+    UserModel = get_user_model()
+    candidate = UserModel.objects.filter(pk=raw_user_id).first()
+    if candidate is None:
+        messages.error(request, "Utilisateur introuvable.")
+        return redirect(f"{reverse('dat:my_detail', args=[dat.pk])}?section=informations-generales")
+
+    DATAdmin.objects.get_or_create(dat=dat, user=candidate)
+    messages.success(request, f"{format_user_display(candidate)} est désormais admin DAT.")
+    return redirect(f"{reverse('dat:my_detail', args=[dat.pk])}?section=informations-generales")
+
+
+@login_required
+@require_POST
+def remove_dat_admin_from_overview(request, pk: int, user_id: str):
+    base_queryset = filter_dat_queryset_for_user(
+        DAT.objects.prefetch_related("dat_admins__user"),
+        request.user,
+    )
+    dat = get_object_or_404(base_queryset, pk=pk)
+    if not can_edit_section_responsibles(dat, request.user):
+        raise PermissionDenied
+
+    UserModel = get_user_model()
+    target_user = UserModel.objects.filter(pk=user_id).first()
+    if target_user is None:
+        messages.error(request, "Utilisateur introuvable.")
+        return redirect(f"{reverse('dat:my_detail', args=[dat.pk])}?section=informations-generales")
+
+    target_user_id = getattr(target_user, "id", None)
+    if dat.owner_id and target_user_id and int(dat.owner_id) == int(target_user_id):
+        messages.error(request, "Le propriétaire du DAT ne peut pas être retiré des admins DAT.")
+        return redirect(f"{reverse('dat:my_detail', args=[dat.pk])}?section=informations-generales")
+
+    deleted_count, _deleted = DATAdmin.objects.filter(dat=dat, user_id=target_user_id).delete()
+    if deleted_count:
+        messages.success(request, f"{format_user_display(target_user)} n'est plus admin DAT.")
+    else:
+        messages.info(request, "Cet utilisateur n'était pas admin DAT.")
+    return redirect(f"{reverse('dat:my_detail', args=[dat.pk])}?section=informations-generales")
+
+
+@login_required
+@require_POST
 def update_section_status(request, dat_pk: int, section_slug: str):
     base_queryset = filter_dat_queryset_for_user(DAT.objects.all(), request.user)
     dat = get_object_or_404(base_queryset, pk=dat_pk)
@@ -2081,7 +2239,7 @@ def update_section_responsible_status(request, dat_pk: int, section_slug: str):
     except Exception:
         participants = []
     dat._participants_cache = participants  # type: ignore[attr-defined]
-    if not (user_is_dat_admin(request.user) or user_is_responsible_for_section(dat, section, request.user, participants=participants)):
+    if not section.can_user_edit(request.user):
         raise PermissionDenied
 
     status_map, status_choices = build_section_status_map(dat)
@@ -2199,19 +2357,13 @@ def update_section_reserve(request, dat_pk: int, section_slug: str):
         messages.error(request, "Un message est obligatoire pour mettre une réserve.")
         return redirect(f"{reverse('dat:my_detail', args=[dat.pk])}?section=validation#section-validation")
 
+    if not section.can_user_edit(request.user):
+        raise PermissionDenied
     try:
         participants = list(dat.participants.select_related("role", "user__business_group__responsible").all())
     except Exception:
         participants = []
     user_id = getattr(request.user, "id", None)
-    is_any_group_responsible = user_is_dat_admin(request.user) or any(
-        getattr(getattr(getattr(p, "user", None), "business_group", None), "responsible_id", None) == user_id
-        for p in participants
-    )
-    if not is_any_group_responsible:
-        raise PermissionDenied
-    if not user_is_dat_admin(request.user) and user_is_responsible_for_section(dat, section, request.user, participants=participants):
-        raise PermissionDenied
 
     status_map, status_choices = build_section_status_map(dat)
     status_part = _find_section_status_part(dat)
@@ -2374,6 +2526,8 @@ def clear_section_reserve(request, dat_pk: int, section_slug: str):
     current_row = existing_row_map.get(section.slug) or existing_row_map.get(section.title) or {}
     reserve_by_id = current_row.get("reserve_by_id")
     current_reserve_message = str(current_row.get("reserve_message") or "").strip()
+    if not section.can_user_edit(request.user):
+        raise PermissionDenied
     if reserve_by_id != getattr(request.user, "id", None):
         raise PermissionDenied
 
@@ -2618,6 +2772,8 @@ class DATDetailView(LoginRequiredMixin, ModuleContextMixin, DetailModelView):
             )
         )
         context["can_review_dat"] = user_can_review_dat(self.object, self.request.user)
+        context["secure_export"] = _serialize_secure_export_state(self.object, self.request.user)
+        context["secure_export_history_entries"] = _get_secure_export_history(self.object)
         context.update(build_attachment_ui_context())
         context["attachments_show_upload"] = False
         return context
@@ -2654,8 +2810,7 @@ class DATViewSet(BaseSecuredViewSet):
             Row("participant_rssi", "participant_comite_validation"),
             Row("participant_infra_exploitation"),
         ),
-        Fieldset("Contenu", Row("description")),
-        Fieldset("Flux", Row("status", "owner")),
+        Fieldset("Contenu", Row("description"), Row("secure_export_requires_dual_admin_approval")),
     )
 
     def get_queryset(self, request):
@@ -2892,12 +3047,16 @@ class DatDetail(ModuleContextMixin, LoginRequiredMixin, DetailView):
             "pdf_download": reverse("dat:my_export_pdf_download", args=[self.object.pk]),
             "json": reverse("dat:my_export_json", args=[self.object.pk]),
             "status": reverse("dat:my_export_pdf_status", args=[self.object.pk]),
+            "secure_request": reverse("dat:my_export_secure_request", args=[self.object.pk]),
+            "secure_approve": reverse("dat:my_export_secure_approve", args=[self.object.pk]),
         }
         context["pdf_export_available"] = dat_pdf_export_exists(self.object)
         context["pdf_export_generated_at"] = dat_pdf_export_modified_at(self.object)
         context["pdf_export_in_progress"] = self.object.pdf_export_in_progress
         context["pdf_export_requested_at"] = self.object.pdf_export_requested_at
         context["pdf_export_requested_by_display"] = self.object.pdf_export_requested_by_display
+        context["secure_export"] = _serialize_secure_export_state(self.object, self.request.user)
+        context["secure_export_history_entries"] = _get_secure_export_history(self.object)
         sync_dat_sections_if_needed(self.object)
         context.update(build_dat_overview_context(self.object, self.request.user))
         context.update(build_attachment_ui_context())
@@ -2979,8 +3138,15 @@ class DatExportBaseView(LoginRequiredMixin, View):
 class DatExportJSONView(DatExportBaseView):
     def get(self, request, *args, **kwargs):
         dat = self.get_object()
+        if not can_download_export(dat, request.user, "json"):
+            messages.error(
+                request,
+                "Export JSON verrouillé : 2 administrateurs DAT doivent approuver la demande.",
+            )
+            return redirect("dat:my_detail", pk=dat.pk)
         builder = get_dat_export_model_builder()
         payload = builder.build(dat)
+        record_export_download(dat, request.user, "json")
         response = JsonResponse(
             payload,
             json_dumps_params={"ensure_ascii": False, "indent": 2},
@@ -3038,9 +3204,53 @@ class DatTriggerPDFExportView(DatExportBaseView):
         return redirect("dat:my_detail", pk=dat.pk)
 
 
+class DatRequestSecureExportAccessView(DatExportBaseView):
+    http_method_names = ["post"]
+
+    def post(self, request, *args, **kwargs):
+        dat = self.get_object()
+        try:
+            create_export_access_request(dat, request.user)
+        except ExportAccessPermissionDenied:
+            raise PermissionDenied
+        except ExportAccessConflict:
+            messages.warning(
+                request,
+                "Une demande est déjà en cours ou un accès est déjà actif.",
+            )
+        else:
+            messages.success(request, "Demande d'accès export créée. 2 approbations admin DAT sont requises.")
+        return redirect("dat:my_detail", pk=dat.pk)
+
+
+class DatApproveSecureExportAccessView(DatExportBaseView):
+    http_method_names = ["post"]
+
+    def post(self, request, *args, **kwargs):
+        dat = self.get_object()
+        try:
+            updated_request = approve_export_access_request(dat, request.user)
+        except ExportAccessPermissionDenied:
+            raise PermissionDenied
+        except ExportAccessConflict:
+            messages.warning(request, "Aucune demande en attente à approuver.")
+        else:
+            if updated_request.status == "approved":
+                messages.success(request, "Accès export approuvé pour 1 heure.")
+            else:
+                messages.success(request, "Approbation enregistrée.")
+        return redirect("dat:my_detail", pk=dat.pk)
+
+
 class DatDownloadCachedPDFView(DatExportBaseView):
     def get(self, request, *args, **kwargs):
         dat = self.get_object()
+        if not can_download_export(dat, request.user, "pdf"):
+            messages.error(
+                request,
+                "Téléchargement PDF verrouillé : 2 administrateurs DAT doivent approuver la demande.",
+            )
+            return redirect("dat:my_detail", pk=dat.pk)
         file_handle = open_dat_pdf_export(dat)
         if file_handle is None:
             messages.warning(
@@ -3048,6 +3258,7 @@ class DatDownloadCachedPDFView(DatExportBaseView):
                 "Aucun export PDF n'est disponible pour ce DAT. Veuillez en générer un nouveau.",
             )
             return redirect("dat:my_detail", pk=dat.pk)
+        record_export_download(dat, request.user, "pdf")
         response = FileResponse(file_handle, content_type="application/pdf")
         response["Content-Disposition"] = f'attachment; filename="{self.build_filename(dat, "pdf")}"'
         return response
@@ -3057,6 +3268,7 @@ class DatExportStatusView(DatExportBaseView):
     def get(self, request, *args, **kwargs):
         dat = self.get_object()
         generated_at = dat_pdf_export_modified_at(dat)
+        secure_export = _serialize_secure_export_state(dat, request.user)
         payload = {
             "in_progress": dat.pdf_export_in_progress,
             "requested_at": isoformat_datetime(dat.pdf_export_requested_at),
@@ -3067,6 +3279,47 @@ class DatExportStatusView(DatExportBaseView):
             "available": dat_pdf_export_exists(dat),
             "generated_at": isoformat_datetime(generated_at),
             "generated_at_display": localize_datetime(generated_at) if generated_at else None,
+            "secure_export": {
+                "enabled": secure_export["enabled"],
+                "status": secure_export["status"],
+                "required_approvals": secure_export["required_approvals"],
+                "approval_count": secure_export["approval_count"],
+                "approvers": [
+                    {
+                        "id": item["id"],
+                        "display": item["display"],
+                        "approved_at": isoformat_datetime(item["approved_at"]),
+                        "approved_at_display": localize_datetime(item["approved_at"]) if item["approved_at"] else None,
+                    }
+                    for item in secure_export["approvers"]
+                ],
+                "requested_by_display": secure_export["requested_by_display"],
+                "requested_at": isoformat_datetime(secure_export["requested_at"]),
+                "requested_at_display": localize_datetime(secure_export["requested_at"])
+                if secure_export["requested_at"]
+                else None,
+                "approve_deadline_at": isoformat_datetime(secure_export["approve_deadline_at"]),
+                "approve_deadline_at_display": localize_datetime(secure_export["approve_deadline_at"])
+                if secure_export["approve_deadline_at"]
+                else None,
+                "approved_at": isoformat_datetime(secure_export["approved_at"]),
+                "approved_at_display": localize_datetime(secure_export["approved_at"])
+                if secure_export["approved_at"]
+                else None,
+                "access_valid_until": isoformat_datetime(secure_export["access_valid_until"]),
+                "access_valid_until_display": localize_datetime(secure_export["access_valid_until"])
+                if secure_export["access_valid_until"]
+                else None,
+                "is_pending": secure_export["is_pending"],
+                "is_approved": secure_export["is_approved"],
+                "user_is_explicit_admin": secure_export["user_is_explicit_admin"],
+                "user_has_approved": secure_export["user_has_approved"],
+                "user_can_request": secure_export["user_can_request"],
+                "user_can_approve": secure_export["user_can_approve"],
+                "user_can_download_pdf": secure_export["user_can_download_pdf"],
+                "user_can_download_json": secure_export["user_can_download_json"],
+                "remaining_seconds": secure_export["remaining_seconds"],
+            },
         }
         return JsonResponse(payload)
 

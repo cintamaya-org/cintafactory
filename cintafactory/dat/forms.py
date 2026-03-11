@@ -175,6 +175,13 @@ class DATForm(forms.ModelForm):
         if "status" in self.fields:
             self.fields["status"].disabled = True
             self.fields["status"].help_text = "(TMP) Le statut est defini automatiquement en fonction de l'avancement."
+        if "secure_export_requires_dual_admin_approval" in self.fields:
+            self.fields["secure_export_requires_dual_admin_approval"].label = (
+                "Sécurité double approbation pour l'export du DAT"
+            )
+            self.fields["secure_export_requires_dual_admin_approval"].help_text = (
+                "Si activé, 2 administrateurs DAT doivent approuver avant export JSON/PDF."
+            )
 
     @classmethod
     def participant_field_name(cls, role_slug: str) -> str:
@@ -382,7 +389,15 @@ class DATForm(forms.ModelForm):
 
     class Meta:
         model = DAT
-        fields = ["reference", "title", "application", "description", "status", "owner"]
+        fields = [
+            "reference",
+            "title",
+            "application",
+            "description",
+            "status",
+            "owner",
+            "secure_export_requires_dual_admin_approval",
+        ]
 
 
 def build_dat_part_field(entry: DATPart) -> forms.Field:
