@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from typing import Dict, List, Optional, Set
 
 from django import forms
@@ -8,6 +9,7 @@ from django.contrib.auth import get_user_model
 from django.core.validators import RegexValidator
 from django.urls import reverse, reverse_lazy
 from django.utils.safestring import mark_safe
+
 
 from users.models import Role
 
@@ -96,14 +98,28 @@ def _attach_drawio_support(entry: DATPart, widget: RepeatableTableWidget) -> Non
         return
     attrs = widget.attrs or {}
     attrs["data_drawio_create_url"] = reverse("dat:schema_create_diagram", args=[dat.pk])
-    edit_template = reverse("diagrams:edit", args=[0]).replace("/0/", "/{id}/")
-    detail_template = reverse("diagrams:detail", args=[0]).replace("/0/", "/{id}/")
+    placeholder_uuid = uuid.UUID(int=0)
+    placeholder_segment = f"/{placeholder_uuid}/"
+    edit_template = reverse("diagrams:edit", kwargs={"pk": placeholder_uuid}).replace(
+        placeholder_segment, "/{id}/"
+    )
+    detail_template = reverse("diagrams:detail", kwargs={"pk": placeholder_uuid}).replace(
+        placeholder_segment, "/{id}/"
+    )
     attrs["data_drawio_edit_template"] = edit_template
     attrs["data_drawio_detail_template"] = detail_template
-    import_template = reverse("diagrams:import_xml", args=[0]).replace("/0/", "/{id}/")
-    export_template = reverse("diagrams:export_xml", args=[0]).replace("/0/", "/{id}/")
+    import_template = reverse("diagrams:import_xml", kwargs={"pk": placeholder_uuid}).replace(
+        placeholder_segment, "/{id}/"
+    )
+    export_template = reverse("diagrams:export_xml", kwargs={"pk": placeholder_uuid}).replace(
+        placeholder_segment, "/{id}/"
+    )
     attrs["data_drawio_import_template"] = import_template
     attrs["data_drawio_export_template"] = export_template
+    attrs["data_likec4_export_template"] = reverse("diagrams:likec4_export")
+    attrs["data_likec4_views_template"] = reverse("diagrams:likec4_views")
+    attrs["data_likec4_import_url"] = reverse("diagrams:likec4_import")
+    attrs["data_likec4_png_public_prefix"] = reverse("diagrams:likec4_png")
     # Mark every Draw.io-enabled repeater so the bulk import UI can attach to it.
     attrs["data_schema_repeater"] = "true"
     widget.attrs = attrs
@@ -159,6 +175,13 @@ class DATForm(forms.ModelForm):
         if "status" in self.fields:
             self.fields["status"].disabled = True
             self.fields["status"].help_text = "(TMP) Le statut est defini automatiquement en fonction de l'avancement."
+        if "secure_export_requires_dual_admin_approval" in self.fields:
+            self.fields["secure_export_requires_dual_admin_approval"].label = (
+                "Sécurité double approbation pour l'export du DAT"
+            )
+            self.fields["secure_export_requires_dual_admin_approval"].help_text = (
+                "Si activé, 2 administrateurs DAT doivent approuver avant export JSON/PDF."
+            )
 
     @classmethod
     def participant_field_name(cls, role_slug: str) -> str:
@@ -251,6 +274,16 @@ class DATForm(forms.ModelForm):
         porteur_field_name = self._participant_field_names.get(DAT_PORTEUR_ROLE_SLUG)
         if porteur_field_name and DAT_PORTEUR_ROLE_SLUG not in self._roles_without_users:
             porteur_value = cleaned_data.get(porteur_field_name)
+            if porteur_field_name in self.data:
+                raw_value = self.data.get(porteur_field_name)
+                if raw_value not in (None, ""):
+                    try:
+                        selected = self.fields[porteur_field_name].queryset.get(pk=raw_value)
+                        if porteur_value is None or getattr(porteur_value, "pk", None) != selected.pk:
+                            porteur_value = selected
+                            cleaned_data[porteur_field_name] = selected
+                    except Exception:
+                        pass
             if porteur_value is None:
                 if self.instance.pk and self.instance.owner_id:
                     cleaned_data[porteur_field_name] = self.instance.owner
@@ -356,7 +389,15 @@ class DATForm(forms.ModelForm):
 
     class Meta:
         model = DAT
-        fields = ["reference", "title", "application", "description", "status", "owner"]
+        fields = [
+            "reference",
+            "title",
+            "application",
+            "description",
+            "status",
+            "owner",
+            "secure_export_requires_dual_admin_approval",
+        ]
 
 
 def build_dat_part_field(entry: DATPart) -> forms.Field:

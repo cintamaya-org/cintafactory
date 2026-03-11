@@ -12,11 +12,11 @@
     <div class="card cinta-card">
       <div class="card-content">
         <span class="card-title">Total des DAT</span>
-        <h4 style="margin-top:1rem;">{{ total_dats }}</h4>
+        <h4 class="u-mt-1">{{ total_dats }}</h4>
       </div>
       <div class="card-action">
-        <a href="/dat/manage/dats/crud/" class="btn waves-effect waves-light cinta-btn-primary">
-          <i class="material-icons left">settings</i>Ouvrir la console CRUD
+        <a href="{% url 'dat:admin_list' %}" class="btn waves-effect waves-light cinta-btn-primary">
+          <i class="material-icons left">settings</i>
         </a>
       </div>
     </div>
@@ -26,17 +26,17 @@
     <div class="card cinta-card">
       <div class="card-content">
         <span class="card-title">Activite mensuelle (6 derniers mois)</span>
-        <div style="height:220px; position:relative;">
-          <svg viewBox="0 0 100 100" preserveAspectRatio="none" style="width:100%; height:100%; background:linear-gradient(180deg, rgba(41,121,255,0.08), rgba(41,121,255,0)); border-radius:4px;">
+        <div class="dat-dashboard__chart">
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none" class="dat-dashboard__chart-bg">
             <polygon points="{{ monthly_chart_area_points|default:'0,100 100,100' }}" fill="rgba(41,121,255,0.2)"></polygon>
             <polyline points="{{ monthly_chart_points|default:'0,100 100,100' }}" fill="none" stroke="rgba(41,121,255,0.7)" stroke-width="2"></polyline>
           </svg>
         </div>
-        <div class="row" style="margin-top:1rem;">
+        <div class="row u-mt-1">
           {% for month in monthly_activity %}
-            <div class="col s6 m4" style="margin-bottom:0.75rem;">
-              <div style="font-size:0.95rem; color:#546e7a;">{{ month.label }}</div>
-              <div style="font-size:1.2rem; font-weight:600;">{{ month.count }}</div>
+            <div class="col s6 m4 dat-dashboard__month">
+              <div class="dat-dashboard__month-label">{{ month.label }}</div>
+              <div class="dat-dashboard__month-count">{{ month.count }}</div>
             </div>
           {% endfor %}
         </div>

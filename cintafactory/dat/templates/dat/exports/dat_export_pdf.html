@@ -113,6 +113,20 @@
   page-break-inside: avoid;
   break-inside: avoid;
 }
+.diagram-views {
+  margin-top: 6px;
+}
+.diagram-view {
+  margin-bottom: 8px;
+}
+.diagram-view:last-child {
+  margin-bottom: 0;
+}
+.diagram-view-label {
+  font-size: 10px;
+  color: #607d8b;
+  margin: 0 0 4px;
+}
 .diagram-preview img {
   width: 100%;
   max-width: 100%;
@@ -130,19 +144,34 @@
   font-size: 11px;
   color: #455a64;
 }
+    .pdf-header {
+      margin-bottom: 24px;
+    }
+    .pdf-header__meta {
+      margin: 4px 0 0;
+    }
+    .pdf-section {
+      margin-bottom: 24px;
+    }
+    .pdf-section--compact {
+      margin-bottom: 20px;
+    }
+    .pdf-muted-top-gap {
+      margin: 6px 0 0;
+    }
   </style>
 </head>
 <body>
   {% with meta=export.dat application=export.application owner=export.owner %}
-  <header style="margin-bottom:24px;">
+  <header class="pdf-header">
     <h1>DAT {{ meta.reference }} &mdash; {{ meta.title }}</h1>
-    <p class="muted" style="margin:4px 0 0;">
+    <p class="muted pdf-header__meta">
       Exporté le {{ export.exported_at_display }} &
       statut : {{ meta.status_label|default:meta.status }}
     </p>
   </header>
 
-  <section style="margin-bottom:20px;">
+  <section class="pdf-section pdf-section--compact">
     <h2>Informations générales</h2>
     <table class="meta-table">
       <tbody>
@@ -178,7 +207,7 @@
     </table>
   </section>
 
-  <section style="margin-bottom:24px;">
+  <section class="pdf-section">
     <h2>Participants</h2>
     {% if export.participants %}
       <table class="participants-table">
@@ -208,8 +237,8 @@
     <h2>Sections</h2>
     {% for section in export.sections %}
       <article class="section-card">
-        <h3>{{ section.title }}</h3>
-        {% if section.description %}<p>{{ section.description }}</p>{% endif %}
+        <h3>{{ section.metadata.title }}</h3>
+        {% if section.metadata.description %}<p>{{ section.metadata.description }}</p>{% endif %}
         <p class="muted">
           Responsables :
           {% if section.responsibles %}
@@ -272,30 +301,37 @@
                 {% elif not part.display_value %}
                   <p class="muted">Valeur non renseignée.</p>
                 {% endif %}
-                {% if part.key == "schemas" and part.display_value %}
+                {% if part.diagram_previews %}
                   <div class="schema-previews">
-                    {% for row in part.display_value %}
-                      {% with preview=row.drawio_diagram schema_name=row|get_item:"nom_schema" schema_desc=row|get_item:"description" %}
-                        {% if preview %}
-                          <div class="diagram-preview">
-                            <div class="diagram-meta">
-                              <strong>{{ schema_name|default:preview.title|default:"Schéma" }}</strong>
-                              {% if schema_desc %}
-                                <span>{{ schema_desc }}</span>
-                              {% endif %}
-                            </div>
-                            {% if preview.data_uri %}
-                              <img src="{{ preview.data_uri }}" alt="Schéma {{ preview.title|default:schema_name|default:'Schéma' }}">
-                            {% elif preview.thumbnail_url %}
-                              <img src="{{ preview.thumbnail_url }}" alt="Schéma {{ preview.title|default:schema_name|default:'Schéma' }}">
-                            {% else %}
-                              <p class="muted" style="margin:6px 0 0;">Miniature indisponible.</p>
+                    {% for preview in part.diagram_previews %}
+                      {% with diagram=preview.diagram %}
+                        <div class="diagram-preview">
+                          <div class="diagram-meta">
+                            <strong>{{ preview.title|default:"Schéma" }}</strong>
+                            {% if preview.description %}
+                              <span>{{ preview.description }}</span>
                             {% endif %}
                           </div>
-                        {% endif %}
+                          {% if diagram.images %}
+                            <div class="diagram-views">
+                              {% for image in diagram.images %}
+                                <div class="diagram-view">
+                                  {% if image.label %}
+                                    <div class="diagram-view-label">{{ image.label }}</div>
+                                  {% endif %}
+                                  <img src="{{ image.src }}" alt="Schéma {{ preview.title|default:'Schéma' }}">
+                                </div>
+                              {% endfor %}
+                            </div>
+                          {% elif diagram.data_uri %}
+                            <img src="{{ diagram.data_uri }}" alt="Schéma {{ preview.title|default:'Schéma' }}">
+                          {% elif diagram.thumbnail_url %}
+                            <img src="{{ diagram.thumbnail_url }}" alt="Schéma {{ preview.title|default:'Schéma' }}">
+                          {% else %}
+                            <p class="muted pdf-muted-top-gap">Miniature indisponible.</p>
+                          {% endif %}
+                        </div>
                       {% endwith %}
-                    {% empty %}
-                      <p class="muted">Aucun schéma disponible.</p>
                     {% endfor %}
                   </div>
                 {% endif %}

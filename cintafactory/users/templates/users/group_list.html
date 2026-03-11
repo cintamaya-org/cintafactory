@@ -3,15 +3,15 @@
 {% block content %}
 <div class="card cinta-card">
   <div class="card-content">
-    <div style="display:flex; align-items:center; justify-content:space-between; gap:1rem;">
-      <h5 style="margin:0;">Groupes métiers</h5>
+    <div class="page-header">
+      <h5 class="page-header__title">Groupes métiers</h5>
 
 {% if request.user.is_superuser %}
         <a href="crud/add/" class="btn waves-effect waves-light cinta-btn-primary">+ Ajouter un groupe</a>
       {% endif %}
     </div>
 
-    <div style="margin-top:1rem; overflow-x:auto;">
+    <div class="table-wrapper">
       <table class="highlight responsive-table">
         <thead>
           <tr>
@@ -21,7 +21,7 @@
             <th>Responsable</th>
             <th>Par défaut</th>
             <th>Utilisateurs</th>
-            <th style="width:1%; white-space:nowrap;">Actions</th>
+            <th class="table-actions-col">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -29,16 +29,16 @@
             {% for obj in object_list %}
               {% include "users/_group_row.html" %}
             {% empty %}
-              <tr><td colspan="7" style="color:#666;">Aucun groupe pour le moment.</td></tr>
+              <tr><td colspan="7" class="table-empty">Aucun groupe pour le moment.</td></tr>
             {% endfor %}
           {% elif page_obj %}
             {% for obj in page_obj.object_list %}
               {% include "users/_group_row.html" %}
             {% empty %}
-              <tr><td colspan="7" style="color:#666;">Aucun groupe pour le moment.</td></tr>
+              <tr><td colspan="7" class="table-empty">Aucun groupe pour le moment.</td></tr>
             {% endfor %}
           {% else %}
-            <tr><td colspan="7" style="color:#666;">Aucun groupe pour le moment.</td></tr>
+            <tr><td colspan="7" class="table-empty">Aucun groupe pour le moment.</td></tr>
           {% endif %}
         </tbody>
       </table>

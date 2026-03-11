@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, Optional, Tuple
 
 from django.contrib.auth import get_user_model
 from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
 
-from cintafactory.logging_utils import get_request_context, log_info
+from cintafactory.logging.logging_utils import get_request_context, log_info
 
-from .models import DAT, DATHistory, DATHistoryAction
+from .models import DAT, DATSection, DATSectionMetadata, DATHistory, DATHistoryAction
 from .sections import ensure_default_sections
 
 TRACKED_FIELDS = ("title", "description", "status", "owner_id")
@@ -91,14 +92,21 @@ def _create_history_entry(
     details: Optional[Dict[str, Any]] = None,
 ) -> None:
     payload = details or None
-    DATHistory.objects.create(
-        dat=instance,
-        action=action,
-        performed_by=actor if actor is not None else None,
-        performed_by_id=None if actor is not None else actor_id,
-        performed_by_display=actor_display or "",
-        details=payload,
-    )
+    if payload is not None:
+        try:
+            payload = json.loads(json.dumps(payload, ensure_ascii=False, default=str))
+        except (TypeError, ValueError):
+            payload = {"value": str(payload)}
+    kwargs = {
+        "dat": instance,
+        "action": action,
+        "performed_by": actor if actor is not None else None,
+        "performed_by_display": actor_display or "",
+        "details": payload,
+    }
+    if actor is None and actor_id is not None:
+        kwargs["performed_by_id"] = actor_id
+    DATHistory.objects.create(**kwargs)
 
 
 @receiver(pre_save, sender=DAT)
@@ -222,6 +230,19 @@ def log_dat_save(sender, instance: DAT, created: bool, **kwargs) -> None:
             actor_display=actor_display,
             details={"changes": other_changes},
         )
+
+
+@receiver(post_save, sender=DATSection)
+def sync_dat_section_metadata(sender, instance: DATSection, **kwargs) -> None:
+    metadata = getattr(instance, "metadata", None)
+    if metadata is not None:
+        return
+    placeholder = DATSectionMetadata.objects.create(
+        title=f"Section {instance.pk}",
+        slug=f"section-{instance.pk}",
+        description="",
+    )
+    DATSection.objects.filter(pk=instance.pk).update(metadata=placeholder)
 
     if hasattr(instance, "_original_dat_snapshot"):
         delattr(instance, "_original_dat_snapshot")

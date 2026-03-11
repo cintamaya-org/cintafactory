@@ -244,7 +244,7 @@ class DATImportService:
 
     def _build_section_map(self, dat: DAT):
         section_map: Dict[str, Dict[str, Any]] = {}
-        sections = dat.sections.prefetch_related("sub_sections__parts")
+        sections = dat.sections.select_related("metadata").prefetch_related("sub_sections__parts")
         for section in sections:
             sub_map: Dict[str, Dict[str, Any]] = {}
             for sub_section in section.sub_sections.all():

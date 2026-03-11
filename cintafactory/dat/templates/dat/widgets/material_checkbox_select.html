@@ -1,9 +1,9 @@
-<div class="material-checkbox-group" style="display:flex; flex-direction:column; gap:0.35rem;">
+<div class="material-checkbox-group">
   {% for group, options, index in widget.optgroups %}
     {% if group %}
-      <div class="material-checkbox-group__title" style="font-weight:600; color:#37474f;">{{ group }}</div>
+      <div class="material-checkbox-group__title">{{ group }}</div>
     {% endif %}
-    <div class="material-checkbox-group__options" style="display:flex; flex-direction:column; gap:0.5rem;">
+    <div class="material-checkbox-group__options">
       {% for option in options %}
         {% include option.template_name with widget=option %}
       {% endfor %}

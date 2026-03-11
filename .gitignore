@@ -54,3 +54,13 @@ Thumbs.db
 htmlcov/
 .cache/
 pytest_cache/
+
+.params_dev/
+params_dev
+params_dev/**
+params_dev/*
+/params_dev/**
+/params_dev/*
+
+# Local config
+/cintafactory/conf/

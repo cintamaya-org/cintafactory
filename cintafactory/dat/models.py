@@ -1,5 +1,6 @@
 import hashlib
 import json
+import uuid
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
@@ -17,7 +18,13 @@ class DATStatus(models.TextChoices):
     RESERVE = "reserve", "Reserve"
 
 
+class DATParticipantType(models.TextChoices):
+    RESPONSABLE = "responsable", "Responsable"
+    EXECUTANT = "executant", "Normal"
+
+
 class Application(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     code = models.SlugField(max_length=64, unique=True, verbose_name="Code")
     name = models.CharField(max_length=200, verbose_name="Nom")
     description = models.TextField(blank=True, verbose_name="Description")
@@ -58,6 +65,7 @@ class Application(models.Model):
 
 
 class DAT(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     reference = models.CharField(max_length=64, unique=True)
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
@@ -96,6 +104,10 @@ class DAT(models.Model):
         related_name="+",
     )
     pdf_export_requested_by_display = models.CharField(max_length=255, blank=True)
+    pdf_export_path = models.CharField(max_length=500, blank=True, default="")
+    pdf_export_content_type = models.CharField(max_length=120, blank=True, default="application/pdf")
+    pdf_export_size = models.PositiveBigIntegerField(default=0)
+    secure_export_requires_dual_admin_approval = models.BooleanField(default=True)
 
     class Meta:
         db_table = "dat_dat"
@@ -120,6 +132,7 @@ class DAT(models.Model):
 
 
 class DATParticipant(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     dat = models.ForeignKey(
         DAT,
         on_delete=models.CASCADE,
@@ -137,6 +150,12 @@ class DATParticipant(models.Model):
         on_delete=models.PROTECT,
         related_name="dat_participations",
         verbose_name="Utilisateur",
+    )
+    participant_type = models.CharField(
+        max_length=20,
+        choices=DATParticipantType.choices,
+        default=DATParticipantType.RESPONSABLE,
+        verbose_name="Type d'affectation",
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -171,6 +190,7 @@ class DATHistoryAction(models.TextChoices):
 
 
 class DATHistory(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     dat = models.ForeignKey(
         DAT,
         on_delete=models.CASCADE,
@@ -248,6 +268,7 @@ class DATReserveHistoryAction(models.TextChoices):
 
 
 class DATReserveHistory(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     dat = models.ForeignKey(
         DAT,
         on_delete=models.CASCADE,
@@ -296,16 +317,20 @@ class DATReserveHistory(models.Model):
 
 
 class DATSection(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     dat = models.ForeignKey(
         DAT,
         on_delete=models.CASCADE,
         related_name="sections",
         verbose_name="DAT",
     )
-    title = models.CharField(max_length=200, verbose_name="Titre")
-    slug = models.SlugField(max_length=100, verbose_name="Identifiant")
+    metadata = models.OneToOneField(
+        "DATSectionMetadata",
+        on_delete=models.PROTECT,
+        related_name="section",
+        verbose_name="Metadata",
+    )
     order = models.PositiveIntegerField(default=0, verbose_name="Ordre")
-    description = models.TextField(blank=True, verbose_name="Description")
     allowed_roles = models.ManyToManyField(
         "users.Role",
         related_name="editable_dat_sections",
@@ -318,41 +343,267 @@ class DATSection(models.Model):
     class Meta:
         db_table = "dat_section"
         ordering = ["order", "id"]
-        unique_together = (("dat", "slug"),)
         verbose_name = "Section de DAT"
         verbose_name_plural = "Sections de DAT"
 
     def __str__(self) -> str:
-        return f"{self.dat.reference} - {self.title}"
+        title = self.title or self.slug or "Section"
+        return f"{self.dat.reference} - {title}"
+
+    @property
+    def title(self) -> str:
+        metadata = getattr(self, "metadata", None)
+        return getattr(metadata, "title", "") or ""
+
+    @property
+    def slug(self) -> str:
+        metadata = getattr(self, "metadata", None)
+        return getattr(metadata, "slug", "") or ""
+
+    @property
+    def description(self) -> str:
+        metadata = getattr(self, "metadata", None)
+        return getattr(metadata, "description", "") or ""
 
     def can_user_edit(self, user) -> bool:
         if user is None or not getattr(user, "is_authenticated", False):
             return False
-        from .permissions import user_is_dat_admin
+        from .permissions import user_is_assigned_to_section
 
-        if user_is_dat_admin(user):
-            return True
-        role = getattr(user, "role", None)
-        if role is None:
-            return False
-        allowed_role_ids = getattr(self, "_allowed_role_ids_cache", None)
-        if allowed_role_ids is None:
-            allowed_role_ids = set(self.allowed_roles.values_list("pk", flat=True))
-            self._allowed_role_ids_cache = allowed_role_ids
-        if role.pk not in allowed_role_ids:
-            return False
-        participants = getattr(self.dat, "_participants_cache", None)
-        if participants is None:
-            participants = list(self.dat.participants.all())
-            self.dat._participants_cache = participants  # type: ignore[attr-defined]
-        user_id = getattr(user, "id", None)
-        for participant in participants:
-            if participant.user_id == user_id and participant.role_id == role.pk:
-                return True
-        return False
+        return user_is_assigned_to_section(self, user)
+
+
+class DATSectionResponsible(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    dat = models.ForeignKey(
+        DAT,
+        on_delete=models.CASCADE,
+        related_name="section_responsibles",
+        verbose_name="DAT",
+    )
+    section = models.OneToOneField(
+        DATSection,
+        on_delete=models.CASCADE,
+        related_name="responsible_assignment",
+        verbose_name="Section",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="dat_section_responsibilities",
+        verbose_name="Responsable",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Créé le")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Mis à jour le")
+
+    class Meta:
+        db_table = "dat_section_responsible"
+        ordering = ["section__order", "section__id"]
+        verbose_name = "Responsable de section DAT"
+        verbose_name_plural = "Responsables de section DAT"
+
+    def __str__(self) -> str:
+        section_title = getattr(self.section, "title", None) or getattr(self.section, "slug", None) or "Section"
+        return f"{self.dat.reference} - {section_title} - {self.user.get_username()}"
+
+
+class DATSectionParticipant(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    dat = models.ForeignKey(
+        DAT,
+        on_delete=models.CASCADE,
+        related_name="section_participants",
+        verbose_name="DAT",
+    )
+    section = models.OneToOneField(
+        DATSection,
+        on_delete=models.CASCADE,
+        related_name="participant_assignment",
+        verbose_name="Section",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="dat_section_participations",
+        verbose_name="Participant",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Créé le")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Mis à jour le")
+
+    class Meta:
+        db_table = "dat_section_participant"
+        ordering = ["section__order", "section__id"]
+        verbose_name = "Participant de section DAT"
+        verbose_name_plural = "Participants de section DAT"
+
+    def __str__(self) -> str:
+        section_title = getattr(self.section, "title", None) or getattr(self.section, "slug", None) or "Section"
+        return f"{self.dat.reference} - {section_title} - {self.user.get_username()}"
+
+
+class DATAdmin(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    dat = models.ForeignKey(
+        DAT,
+        on_delete=models.CASCADE,
+        related_name="dat_admins",
+        verbose_name="DAT",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="managed_dats",
+        verbose_name="Administrateur DAT",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Créé le")
+
+    class Meta:
+        db_table = "dat_admin"
+        ordering = ["dat_id", "created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["dat", "user"],
+                name="dat_admin_unique_user_per_dat",
+            ),
+        ]
+        verbose_name = "Administrateur DAT"
+        verbose_name_plural = "Administrateurs DAT"
+
+    def __str__(self) -> str:
+        return f"{self.dat.reference} - {self.user.get_username()}"
+
+
+class DATExportAccessRequestStatus(models.TextChoices):
+    PENDING = "pending", "En attente"
+    APPROVED = "approved", "Approuvée"
+    EXPIRED = "expired", "Expirée"
+
+
+class DATExportAccessEventType(models.TextChoices):
+    REQUEST_CREATED = "request_created", "Demande créée"
+    APPROVED = "approved", "Demande approuvée"
+    ACCESS_GRANTED = "access_granted", "Accès autorisé"
+    DOWNLOAD_PDF = "download_pdf", "Téléchargement PDF"
+    DOWNLOAD_JSON = "download_json", "Téléchargement JSON"
+    REQUEST_EXPIRED = "request_expired", "Demande expirée"
+    ACCESS_EXPIRED = "access_expired", "Accès expiré"
+
+
+class DATExportAccessRequest(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    dat = models.ForeignKey(
+        DAT,
+        on_delete=models.CASCADE,
+        related_name="export_access_requests",
+    )
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="dat_export_access_requests",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=DATExportAccessRequestStatus.choices,
+        default=DATExportAccessRequestStatus.PENDING,
+    )
+    requested_at = models.DateTimeField(auto_now_add=True)
+    approve_deadline_at = models.DateTimeField()
+    approved_at = models.DateTimeField(blank=True, null=True)
+    access_valid_until = models.DateTimeField(blank=True, null=True)
+    required_approvals = models.PositiveSmallIntegerField(default=2)
+
+    class Meta:
+        db_table = "dat_export_access_request"
+        ordering = ["-requested_at", "-id"]
+
+    def __str__(self) -> str:
+        return f"{self.dat.reference} - {self.get_status_display()}"
+
+
+class DATExportAccessApproval(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    request = models.ForeignKey(
+        DATExportAccessRequest,
+        on_delete=models.CASCADE,
+        related_name="approvals",
+    )
+    dat = models.ForeignKey(
+        DAT,
+        on_delete=models.CASCADE,
+        related_name="export_access_approvals",
+    )
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="dat_export_access_approvals",
+    )
+    approved_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "dat_export_access_approval"
+        ordering = ["approved_at", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["request", "approved_by"],
+                name="dat_export_access_approval_unique_request_user",
+            ),
+        ]
+
+
+class DATExportAccessHistory(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    dat = models.ForeignKey(
+        DAT,
+        on_delete=models.CASCADE,
+        related_name="export_access_history_entries",
+    )
+    request = models.ForeignKey(
+        DATExportAccessRequest,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="history_entries",
+    )
+    event_type = models.CharField(
+        max_length=32,
+        choices=DATExportAccessEventType.choices,
+    )
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="dat_export_access_history_entries",
+    )
+    details = models.JSONField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "dat_export_access_history"
+        ordering = ["-created_at", "-id"]
+
+
+class DATSectionMetadata(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    title = models.CharField(max_length=200, verbose_name="Titre")
+    slug = models.SlugField(max_length=100, verbose_name="Identifiant")
+    description = models.TextField(blank=True, verbose_name="Description")
+
+    class Meta:
+        db_table = "dat_section_metada"
+        verbose_name = "Metadata de section"
+        verbose_name_plural = "Metadata de sections"
+
+    def __str__(self) -> str:
+        return self.title or self.slug or f"Metadata #{self.pk}"
 
 
 class DATSubSection(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     section = models.ForeignKey(
         DATSection,
         on_delete=models.CASCADE,
@@ -389,32 +640,54 @@ class DATSubSection(models.Model):
             return False
         if not getattr(user, "is_authenticated", False):
             return False
-        from .permissions import user_is_dat_admin
+        from .permissions import user_is_assigned_to_section
 
-        if user_is_dat_admin(user):
-            return True
-        allowed_roles_qs = self.allowed_roles.all()
-        if not allowed_roles_qs.exists():
-            return self.section.can_user_edit(user)
-        role = getattr(user, "role", None)
-        if role is None:
-            return False
-        allowed_role_ids = getattr(self, "_allowed_role_ids_cache", None)
-        if allowed_role_ids is None:
-            allowed_role_ids = set(allowed_roles_qs.values_list("pk", flat=True))
-            self._allowed_role_ids_cache = allowed_role_ids
-        if role.pk not in allowed_role_ids:
-            return False
-        dat = self.section.dat
-        participants = getattr(dat, "_participants_cache", None)
-        if participants is None:
-            participants = list(dat.participants.all())
-            dat._participants_cache = participants  # type: ignore[attr-defined]
-        user_id = getattr(user, "id", None)
-        for participant in participants:
-            if participant.user_id == user_id and participant.role_id == role.pk:
-                return True
-        return False
+        return user_is_assigned_to_section(self.section, user)
+
+
+class DATSectionAttachment(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    section = models.ForeignKey(
+        DATSection,
+        on_delete=models.CASCADE,
+        related_name="attachments",
+        verbose_name="Section",
+    )
+    storage_path = models.CharField(max_length=512, verbose_name="Chemin de stockage")
+    original_name = models.CharField(max_length=255, verbose_name="Nom d'origine")
+    display_name = models.CharField(max_length=255, verbose_name="Nom affiché")
+    extension = models.CharField(max_length=16, verbose_name="Extension")
+    size = models.PositiveIntegerField(verbose_name="Taille")
+    content_type = models.CharField(max_length=100, blank=True, verbose_name="Type de contenu")
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="dat_section_attachments",
+        verbose_name="Déposé par",
+    )
+    uploaded_by_display = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Créé le")
+
+    class Meta:
+        db_table = "dat_section_attachment"
+        ordering = ["-created_at", "-id"]
+        verbose_name = "Pièce jointe de section"
+        verbose_name_plural = "Pièces jointes de section"
+
+    def __str__(self) -> str:
+        return f"{self.section.dat.reference} - {self.display_name}"
+
+    def uploader_name(self) -> str:
+        if self.uploaded_by_display:
+            return self.uploaded_by_display
+        if self.uploaded_by:
+            full_name = self.uploaded_by.get_full_name()
+            if full_name:
+                return full_name
+            return self.uploaded_by.get_username()
+        return "Système"
 
 
 class DATPartEntryType(models.TextChoices):
@@ -430,6 +703,7 @@ class DATPartEntryType(models.TextChoices):
 
 
 class DATPart(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     sub_section = models.ForeignKey(
         DATSubSection,
         on_delete=models.CASCADE,
@@ -620,6 +894,7 @@ class DATPart(models.Model):
 
 
 class DATPartEntry(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     payload = models.ForeignKey(
         "DATPartPayload",
         on_delete=models.PROTECT,
@@ -667,6 +942,7 @@ class DATPartEntry(models.Model):
 
 
 class DATPartPayload(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     hash = models.CharField(max_length=64, unique=True, db_index=True)
     data = models.JSONField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -691,15 +967,29 @@ class DATPartPayload(models.Model):
         if value is None:
             return "null"
         try:
-            return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-        except TypeError:
+            return json.dumps(
+                value,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                default=str,
+            )
+        except (TypeError, ValueError):
             return json.dumps(str(value), ensure_ascii=False)
+
+    @staticmethod
+    def _coerce_json_value(value):
+        try:
+            return json.loads(json.dumps(value, ensure_ascii=False, default=str))
+        except (TypeError, ValueError):
+            return str(value)
 
     @classmethod
     def get_or_create_for_value(cls, value):
         if value in (None, "", [], {}, ()):
             return None
-        normalized = cls._normalize_for_hash(value)
+        safe_value = cls._coerce_json_value(value)
+        normalized = cls._normalize_for_hash(safe_value)
         payload_hash = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
-        obj, _ = cls.objects.get_or_create(hash=payload_hash, defaults={"data": value})
+        obj, _ = cls.objects.get_or_create(hash=payload_hash, defaults={"data": safe_value})
         return obj

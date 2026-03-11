@@ -10,12 +10,12 @@
 {% with profile=user_obj|default:object %}
 <div class="card cinta-card">
   <div class="card-content">
-    <div style="display:flex; justify-content:space-between; gap:1rem; flex-wrap:wrap; align-items:center;">
+    <div class="page-header">
       <div>
-        <h5 style="margin:0;">Profil utilisateur</h5>
-        <p style="margin:0; color:#666;">Détails pour {{ profile.get_full_name|default:profile.username }}</p>
+        <h5 class="page-header__title">Profil utilisateur</h5>
+        <p class="page-header__subtitle">Détails pour {{ profile.get_full_name|default:profile.username }}</p>
       </div>
-      <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+      <div class="page-header__actions">
         <a href="{% url 'users:user_change' pk=profile.pk %}" class="btn waves-effect waves-light cinta-btn-primary">
           <i class="material-icons left">edit</i>Modifier
         </a>
@@ -25,12 +25,12 @@
       </div>
     </div>
 
-    <div class="divider" style="margin:1.5rem 0;"></div>
+    <div class="divider section-divider"></div>
 
     <div class="row">
       <div class="col s12 m6">
-        <h6 style="font-weight:600;">Identité</h6>
-        <ul class="collection" style="border:none;">
+        <h6 class="section-title">Identité</h6>
+        <ul class="collection collection--borderless">
           <li class="collection-item"><strong>Identifiant :</strong> {{ profile.username }}</li>
           <li class="collection-item"><strong>Email :</strong> {{ profile.email|default:"—" }}</li>
           <li class="collection-item"><strong>Prénom :</strong> {{ profile.first_name|default:"—" }}</li>
@@ -38,8 +38,8 @@
         </ul>
       </div>
       <div class="col s12 m6">
-        <h6 style="font-weight:600;">Rôle & directions</h6>
-        <ul class="collection" style="border:none;">
+        <h6 class="section-title">Rôle & directions</h6>
+        <ul class="collection collection--borderless">
           <li class="collection-item"><strong>Rôle :</strong> {% if profile.role %}{{ profile.role.name }}{% else %}—{% endif %}</li>
           <li class="collection-item"><strong>Direction technique (rôle) :</strong>
             {% if profile.role and profile.role.technical_direction %}
@@ -75,15 +75,15 @@
       </div>
     </div>
 
-    <div class="divider" style="margin:1.5rem 0;"></div>
+    <div class="divider section-divider"></div>
 
     <div>
-      <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:0.5rem; align-items:center;">
+      <div class="u-flex u-justify-between u-flex-wrap u-gap-0-5 u-items-center">
         <div>
-          <h6 style="font-weight:600; margin:0;">Dépendances utilisateur</h6>
-          <p style="margin:0; color:#666;">Visualise les liens entre ce profil, son rôle et les directions associées.</p>
+          <h6 class="section-title u-m-0">Dépendances utilisateur</h6>
+          <p class="u-m-0 text-muted">Visualise les liens entre ce profil, son rôle et les directions associées.</p>
         </div>
-        <span style="font-size:0.85rem; color:#777;">Les éléments sont cliquables pour accéder au détail.</span>
+        <span class="u-text-sm text-muted-secondary">Les éléments sont cliquables pour accéder au détail.</span>
       </div>
       <div id="user-dependency-graph"
            class="user-relationship-graph"
@@ -91,20 +91,20 @@
       </div>
     </div>
 
-    <div class="divider" style="margin:1.5rem 0;"></div>
+    <div class="divider section-divider"></div>
 
     <div class="row">
       <div class="col s12 m6">
-        <h6 style="font-weight:600;">Statut & accès</h6>
-        <ul class="collection" style="border:none;">
+        <h6 class="section-title">Statut & accès</h6>
+        <ul class="collection collection--borderless">
           <li class="collection-item"><strong>Actif :</strong> {% if profile.is_active %}Oui{% else %}Non{% endif %}</li>
           <li class="collection-item"><strong>Staff :</strong> {% if profile.is_staff %}Oui{% else %}Non{% endif %}</li>
           <li class="collection-item"><strong>Super administrateur :</strong> {% if profile.is_superuser %}Oui{% else %}Non{% endif %}</li>
         </ul>
       </div>
       <div class="col s12 m6">
-        <h6 style="font-weight:600;">Journal</h6>
-        <ul class="collection" style="border:none;">
+        <h6 class="section-title">Journal</h6>
+        <ul class="collection collection--borderless">
           <li class="collection-item"><strong>Dernière connexion :</strong>
             {% if profile.last_login %}
               {{ profile.last_login|date:"d/m/Y H:i" }}

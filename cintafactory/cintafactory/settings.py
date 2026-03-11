@@ -14,11 +14,16 @@ import os
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from .logging_utils import build_logging_dict
+from dotenv import load_dotenv
+
+from .logging.logging_utils import build_logging_dict
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 PROJECT_DIR = Path(__file__).resolve().parent
+
+load_dotenv(BASE_DIR / ".env", override=False)
+load_dotenv(BASE_DIR.parent / ".env", override=False)
 
 
 # Quick-start development settings - unsuitable for production
@@ -32,13 +37,18 @@ SECRET_KEY = os.getenv(
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DJANGO_DEBUG", "True").lower() in {"1", "true", "yes", "on"}
+STRICT_HTTP_SECURITY = os.getenv("DJANGO_ENFORCE_STRICT_HTTP", "0").lower() in {"1", "true", "yes", "on"}
 
 def _split_env_list(value: str | None, default: str = "") -> list[str]:
     raw = value if value is not None else default
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 
-ALLOWED_HOSTS = ["*"]
+_allowed_hosts_default = "localhost,127.0.0.1" if DEBUG else ""
+_allowed_hosts_env = os.environ.get("ALLOWED_HOSTS")
+if _allowed_hosts_env is None:
+    _allowed_hosts_env = os.environ.get("DJANGO_ALLOWED_HOSTS")
+ALLOWED_HOSTS = _split_env_list(_allowed_hosts_env, default=_allowed_hosts_default) or ["localhost"]
 _csrf_env_raw = os.environ.get("CSRF_TRUSTED")
 if _csrf_env_raw is None:
     _csrf_env_raw = os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS")
@@ -59,10 +69,10 @@ def _build_csrf_trusted_origins(hosts: list[str]) -> set[str]:
     return origins
 
 
-CSRF_TRUSTED_ORIGINS = sorted(
-    _build_csrf_trusted_origins(_csrf_trusted_env)
-    | _build_csrf_trusted_origins(ALLOWED_HOSTS)
-)
+_csrf_candidates = _build_csrf_trusted_origins(_csrf_trusted_env) | _build_csrf_trusted_origins(ALLOWED_HOSTS)
+if STRICT_HTTP_SECURITY:
+    _csrf_candidates = {origin for origin in _csrf_candidates if origin.startswith("https://")}
+CSRF_TRUSTED_ORIGINS = sorted(_csrf_candidates)
 
 # Honour reverse-proxy HTTPS headers so absolute URLs use the correct scheme.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
@@ -81,12 +91,18 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "oauth2_provider",
+    "rest_framework",
+    "drf_spectacular",
+
+    "cintafactory.apps.CintaFactoryConfig",
 
     # Your apps
     "diagrams.apps.DiagramsConfig",
     "workflows.apps.WorkflowsConfig",
     "users.apps.UsersConfig",
     "dat.apps.DatConfig",
+    "dat_viewflow.apps.DatViewflowConfig",
     "account.apps.AccountConfig",
     "configuration.apps.ConfigurationConfig",
 
@@ -98,15 +114,24 @@ LOGIN_REDIRECT_URL = "/account/profile/"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "cintafactory.middleware.AppSecurityHeadersMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "cintafactory.middleware.LoggingContextMiddleware",
+    "cintafactory.middleware.SLOBaselineMiddleware",
     "cintafactory.middleware.DynamicCsrfTrustedOriginsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "cintafactory.middleware.RateLimitMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+]
+
+FILE_UPLOAD_HANDLERS = [
+    "cintafactory.upload.upload_handlers.PerFileSizeLimitUploadHandler",
+    "django.core.files.uploadhandler.MemoryFileUploadHandler",
+    "django.core.files.uploadhandler.TemporaryFileUploadHandler",
 ]
 
 STATICFILES_STORAGE = "cintafactory.storage.WhiteNoiseStaticFilesStorage"
@@ -116,6 +141,37 @@ ROOT_URLCONF = 'cintafactory.urls'
 
 # Allow same-origin iframes (draw.io embed) while still blocking third-party framing.
 X_FRAME_OPTIONS = "SAMEORIGIN"
+
+# Browser/session transport hardening.
+SECURE_SSL_REDIRECT = STRICT_HTTP_SECURITY
+SECURE_HSTS_SECONDS = int(os.getenv("SECURE_HSTS_SECONDS", "31536000" if STRICT_HTTP_SECURITY else "0"))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = (
+    os.getenv("SECURE_HSTS_INCLUDE_SUBDOMAINS", "1" if STRICT_HTTP_SECURITY else "0").lower()
+    in {"1", "true", "yes", "on"}
+)
+SECURE_HSTS_PRELOAD = (
+    os.getenv("SECURE_HSTS_PRELOAD", "1" if STRICT_HTTP_SECURITY else "0").lower()
+    in {"1", "true", "yes", "on"}
+)
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = os.getenv("SECURE_REFERRER_POLICY", "strict-origin-when-cross-origin")
+SECURE_CROSS_ORIGIN_OPENER_POLICY = os.getenv("SECURE_CROSS_ORIGIN_OPENER_POLICY", "same-origin")
+SESSION_COOKIE_SECURE = (
+    os.getenv("SESSION_COOKIE_SECURE", "1" if STRICT_HTTP_SECURITY else "0").lower() in {"1", "true", "yes", "on"}
+)
+SESSION_COOKIE_HTTPONLY = (
+    os.getenv("SESSION_COOKIE_HTTPONLY", "1").lower() in {"1", "true", "yes", "on"}
+)
+SESSION_COOKIE_SAMESITE = os.getenv("SESSION_COOKIE_SAMESITE", "Lax")
+CSRF_COOKIE_SECURE = (
+    os.getenv("CSRF_COOKIE_SECURE", "1" if STRICT_HTTP_SECURITY else "0").lower() in {"1", "true", "yes", "on"}
+)
+CSRF_COOKIE_HTTPONLY = (
+    os.getenv("CSRF_COOKIE_HTTPONLY", "1").lower() in {"1", "true", "yes", "on"}
+)
+CSRF_COOKIE_SAMESITE = os.getenv("CSRF_COOKIE_SAMESITE", "Lax")
+CSRF_USE_SESSIONS = os.getenv("CSRF_USE_SESSIONS", "1").lower() in {"1", "true", "yes", "on"}
+CSRF_FAILURE_VIEW = "cintafactory.csrf.csrf_failure"
 
 TEMPLATES = [
     {
@@ -132,6 +188,7 @@ TEMPLATES = [
                 'django.template.context_processors.csrf',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                "cintafactory.context_processors.frontend_dev_logger",
                 "material.frontend.context_processors.modules",
                 "workflows.context_processors.workflow_notifications",
             ],
@@ -202,6 +259,109 @@ STATIC_ROOT = Path(os.getenv("DJANGO_STATIC_ROOT", BASE_DIR / "staticfiles"))
 MEDIA_URL = "/media/"
 MEDIA_ROOT = Path(os.getenv("DJANGO_MEDIA_ROOT", BASE_DIR / "media"))
 
+# Email (SMTP relay)
+EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
+EMAIL_HOST = os.getenv("EMAIL_HOST", "localhost")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "25"))
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "0").lower() in {"1", "true", "yes", "on"}
+EMAIL_USE_SSL = os.getenv("EMAIL_USE_SSL", "0").lower() in {"1", "true", "yes", "on"}
+EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "10"))
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER or "webmaster@localhost")
+SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
+
+# External notification backends (webhooks, APIs, email, etc.)
+EXTERNAL_NOTIFICATION_BACKENDS: list[str | dict] = []
+EXTERNAL_NOTIFICATION_BACKEND_CONFIG: dict[str, dict] = {}
+
+SEAWEEDFS_FILER_URL = os.getenv("SEAWEEDFS_FILER_URL", "http://seaweedfs:8888").rstrip("/")
+SEAWEEDFS_PUBLIC_URL = os.getenv("SEAWEEDFS_PUBLIC_URL", SEAWEEDFS_FILER_URL).rstrip("/")
+SEAWEEDFS_PUBLIC_URL_PP = os.getenv("SEAWEEDFS_PUBLIC_URL_PP", "http://localhost:8888").rstrip("/")
+SEAWEEDFS_BASE_DIR = os.getenv("SEAWEEDFS_BASE_DIR", "media").strip("/")
+SEAWEEDFS_TIMEOUT = int(os.getenv("SEAWEEDFS_TIMEOUT", "30"))
+LIKEC4_METADATA_TOKEN = os.getenv("LIKEC4_METADATA_TOKEN", "").strip()
+LIKEC4_API_TOKEN = os.getenv("LIKEC4_API_TOKEN", "").strip()
+LIKEC4_EDITOR_URL = os.getenv("LIKEC4_EDITOR_URL", "http://likec4:4173").rstrip("/")
+LIKEC4_EXPORT_URL = os.getenv("LIKEC4_EXPORT_URL", "")
+LIKEC4_EXPORT_TIMEOUT = int(os.getenv("LIKEC4_EXPORT_TIMEOUT", "60"))
+LIKEC4_EXPORT_DELETE_OLD = os.getenv("LIKEC4_EXPORT_DELETE_OLD", "1").lower() in {"1", "true", "yes", "on"}
+LIKEC4_EXPORT_ENABLED = os.getenv("LIKEC4_EXPORT_ENABLED", "1").lower() in {"1", "true", "yes", "on"}
+
+CLAMAV_HOST = os.getenv("CLAMAV_HOST", "clamav")
+CLAMAV_PORT = int(os.getenv("CLAMAV_PORT", "3310"))
+CLAMAV_TIMEOUT = int(os.getenv("CLAMAV_TIMEOUT", "30"))
+CLAMAV_RETRY_COUNT = int(os.getenv("CLAMAV_RETRY_COUNT", "5"))
+CLAMAV_RETRY_DELAY = float(os.getenv("CLAMAV_RETRY_DELAY", "1.0"))
+CLAMAV_SCAN_DIR = os.getenv("CLAMAV_SCAN_DIR", "/clamav_scan")
+
+OAUTH_HTTP_TIMEOUT = int(os.getenv("OAUTH_HTTP_TIMEOUT", "10"))
+OAUTH_ALLOW_EMAIL_LINKING = os.getenv("OAUTH_ALLOW_EMAIL_LINKING", "1").lower() in {"1", "true", "yes", "on"}
+ENDPOINT_RATE_LIMIT_PER_IP_PER_MINUTE = int(os.getenv("ENDPOINT_RATE_LIMIT_PER_IP_PER_MINUTE", "30"))
+MICROSOFT_OAUTH_TENANT_ID = os.getenv("MICROSOFT_OAUTH_TENANT_ID", "common").strip() or "common"
+OKTA_OAUTH_DOMAIN = os.getenv("OKTA_OAUTH_DOMAIN", "").rstrip("/")
+OAUTH_PROVIDERS = {
+    "google": {
+        "label": "Google",
+        "client_id": os.getenv("GOOGLE_OAUTH_CLIENT_ID", ""),
+        "client_secret": os.getenv("GOOGLE_OAUTH_CLIENT_SECRET", ""),
+        "authorize_url": "https://accounts.google.com/o/oauth2/v2/auth",
+        "token_url": "https://oauth2.googleapis.com/token",
+        "userinfo_url": "https://openidconnect.googleapis.com/v1/userinfo",
+        "scopes": ("openid", "email", "profile"),
+        "extra_authorize_params": {
+            "access_type": "offline",
+            "prompt": "consent",
+            "include_granted_scopes": "true",
+        },
+    },
+    "microsoft": {
+        "label": "Microsoft",
+        "client_id": os.getenv("MICROSOFT_OAUTH_CLIENT_ID", ""),
+        "client_secret": os.getenv("MICROSOFT_OAUTH_CLIENT_SECRET", ""),
+        "authorize_url": f"https://login.microsoftonline.com/{MICROSOFT_OAUTH_TENANT_ID}/oauth2/v2.0/authorize",
+        "token_url": f"https://login.microsoftonline.com/{MICROSOFT_OAUTH_TENANT_ID}/oauth2/v2.0/token",
+        "userinfo_url": "https://graph.microsoft.com/oidc/userinfo",
+        "scopes": ("openid", "email", "profile"),
+        "extra_authorize_params": {},
+    },
+    "amazon": {
+        "label": "Amazon",
+        "client_id": os.getenv("AMAZON_OAUTH_CLIENT_ID", ""),
+        "client_secret": os.getenv("AMAZON_OAUTH_CLIENT_SECRET", ""),
+        "authorize_url": "https://www.amazon.com/ap/oa",
+        "token_url": "https://api.amazon.com/auth/o2/token",
+        "userinfo_url": "https://api.amazon.com/user/profile",
+        "scopes": ("profile", "profile:user_id"),
+        "extra_authorize_params": {},
+        "userinfo_mapping": {
+            "user_id": "user_id",
+            "email": "email",
+            "full_name": "name",
+        },
+    },
+    "okta": {
+        "label": "Okta",
+        "client_id": os.getenv("OKTA_OAUTH_CLIENT_ID", ""),
+        "client_secret": os.getenv("OKTA_OAUTH_CLIENT_SECRET", ""),
+        "authorize_url": f"{OKTA_OAUTH_DOMAIN}/oauth2/default/v1/authorize" if OKTA_OAUTH_DOMAIN else "",
+        "token_url": f"{OKTA_OAUTH_DOMAIN}/oauth2/default/v1/token" if OKTA_OAUTH_DOMAIN else "",
+        "userinfo_url": f"{OKTA_OAUTH_DOMAIN}/oauth2/default/v1/userinfo" if OKTA_OAUTH_DOMAIN else "",
+        "scopes": ("openid", "email", "profile"),
+        "extra_authorize_params": {},
+    },
+    "cintamaya": {
+        "label": "Cintamaya",
+        "client_id": os.getenv("CINTAMAYA_OAUTH_CLIENT_ID", ""),
+        "client_secret": os.getenv("CINTAMAYA_OAUTH_CLIENT_SECRET", ""),
+        "authorize_url": "https://auth.CINTAMAYA.com/authorize",
+        "token_url": "https://auth.CINTAMAYA.com/token",
+        "userinfo_url": "https://auth.CINTAMAYA.com/userinfo",
+        "scopes": ("openid", "email", "profile"),
+        "extra_authorize_params": {},
+    }
+}
+
 DRAWIO_BASE_URL = os.getenv("DRAWIO_BASE_URL", "http://drawio:8080").rstrip("/")
 if not DRAWIO_BASE_URL:
     DRAWIO_BASE_URL = "http://drawio:8080"
@@ -217,6 +377,7 @@ DRAWIO_CLIBS = tuple(
     if item.strip()
 )
 DRAWIO_EXPORT_URL = "http://drawio-export:8000/export"
+DRAWIO_EXPORT_DELETE_OLD = os.getenv("DRAWIO_EXPORT_DELETE_OLD", "1").lower() in {"1", "true", "yes", "on"}
 
 def _origin_from_url(url: str) -> str:
     parts = urlsplit(url)
@@ -225,14 +386,35 @@ def _origin_from_url(url: str) -> str:
     return url
 
 
-DRAWIO_PUBLIC_ORIGIN = _origin_from_url(DRAWIO_PUBLIC_URL)
+# Keep CSP bound to the in-app Draw.io service origin (internal URL),
+DRAWIO_PUBLIC_ORIGIN = _origin_from_url(DRAWIO_BASE_URL)
 
 # Content Security Policy (effective when django-csp is installed)
 CSP_FRAME_SRC = ["'self'", DRAWIO_PUBLIC_ORIGIN]
 CSP_CONNECT_SRC = ["'self'", DRAWIO_PUBLIC_ORIGIN]
 CSP_IMG_SRC = ["'self'", "data:", "blob:"]
-CSP_SCRIPT_SRC = ["'self'"]
-CSP_STYLE_SRC = ["'self'", "'unsafe-inline'"]
+CSP_SCRIPT_SRC = ["'self'", "https://cdnjs.cloudflare.com"]
+CSP_STYLE_SRC = ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://cdnjs.cloudflare.com"]
+CSP_FONT_SRC = ["'self'", "https://fonts.gstatic.com"]
+
+# Django REST Framework
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework.authentication.SessionAuthentication",
+        "oauth2_provider.contrib.rest_framework.OAuth2Authentication",
+    ),
+    "DEFAULT_PERMISSION_CLASSES": (
+        "cintafactory.api.permissions.GranularModelPermissions",
+    ),
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "CintaFactory API",
+    "DESCRIPTION": "API documentation for CintaFactory.",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+}
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -240,5 +422,5 @@ CSP_STYLE_SRC = ["'self'", "'unsafe-inline'"]
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Observability / logging
-LOGGING_CONFIG = "cintafactory.logging_utils.configure_logging"
+LOGGING_CONFIG = "cintafactory.logging.logging_utils.configure_logging"
 LOGGING = build_logging_dict(BASE_DIR)

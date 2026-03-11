@@ -3,6 +3,7 @@
     "slug": "informations-generales",
     "title": "INFORMATIONS GÉNÉRALES",
     "description": "Informations de référence partagées avec l'ensemble des acteurs.",
+    "attachments_enabled": false,
     "allowed_roles": [
       "porteur-demande",
       "architecte-referent"
@@ -281,14 +282,62 @@
               "columns": [
                 {
                   "key": "nom_schema",
-                  "label": "Nom du schéma",
+                  "label": "Nom du diagramme",
                   "type": "text"
                 },
                 {
-                  "key": "diagramme_id",
-                  "label": "Diagramme Draw.io",
+                  "key": "schema_systeme",
+                  "label": "Outil",
+                  "type": "select",
+                  "choices": [
+                    {
+                      "value": "drawio",
+                      "label": "Draw.io (intégré, configuré)",
+                      "enabled": true
+                    },
+                    {
+                      "value": "likec4",
+                      "label": "LikeC4 (intégré, configuré)",
+                      "enabled": true
+                    },
+                    {
+                      "value": "lucidchart",
+                      "label": "Lucidchart (non configuré)",
+                      "enabled": false
+                    },
+                    {
+                      "value": "visio",
+                      "label": "Microsoft Visio (non configuré)",
+                      "enabled": false
+                    },
+                    {
+                      "value": "mermaid",
+                      "label": "Mermaid (non configuré)",
+                      "enabled": false
+                    },
+                    {
+                      "value": "plantuml",
+                      "label": "PlantUML (non configuré)",
+                      "enabled": false
+                    },
+                    {
+                      "value": "autre",
+                      "label": "Autre (non configuré)",
+                      "enabled": false
+                    }
+                  ]
+                },
+                {
+                  "key": "schema_reference",
+                  "label": "Référence externe",
                   "type": "text",
-                  "placeholder": "ID du diagramme (ex: 42)",
+                  "placeholder": "URL ou identifiant externe"
+                },
+                {
+                  "key": "diagramme_id",
+                  "label": "Diagramme (Draw.io)",
+                  "type": "text",
+                  "placeholder": "ID Draw.io (ex: 42)",
                   "render": "drawio_diagram",
                   "drawio": true,
                   "drawio_name_key": "nom_schema",
@@ -368,6 +417,10 @@
                   "type": "select",
                   "choices": [
                     {
+                      "value": "",
+                      "label": "-"
+                    },
+                    {
                       "value": "oui",
                       "label": "Oui"
                     },
@@ -382,6 +435,10 @@
                   "label": "Authentification",
                   "type": "select",
                   "choices": [
+                    {
+                      "value": "",
+                      "label": "-"
+                    },
                     {
                       "value": "oui",
                       "label": "Oui"
@@ -471,6 +528,7 @@
       {
         "slug": "presentation-generale",
         "title": "Présentation Générale",
+        "tooltip": "Définit succinctement l'objet du dossier",
         "entries": [
           {
             "key": "presentation_generale",
@@ -485,6 +543,7 @@
       {
         "slug": "hebergement-environnements",
         "title": "Hébergement & Environnements",
+        "tooltip": "Décrit les différents environnements de la solution (production, préproduction, hors production, qualification, PRA, etc.)",
         "entries": [
           {
             "key": "hebergements",
@@ -568,6 +627,7 @@
       {
         "slug": "solutions-utilisees",
         "title": "Solutions Utilisées",
+        "tooltip": "Liste les solutions applicatives utilisées dans le dossier",
         "entries": [
           {
             "key": "solutions",
@@ -613,6 +673,21 @@
                   "placeholder": "ERP, ESB, API Gateway..."
                 },
                 {
+                  "key": "version",
+                  "label": "Version",
+                  "type": "text"
+                },
+                {
+                  "key": "license",
+                  "label": "License",
+                  "type": "text"
+                },
+                {
+                  "key": "etat",
+                  "label": "Etat",
+                  "type": "text"
+                },
+                {
                   "key": "localisation",
                   "label": "Localisation",
                   "type": "text"
@@ -633,6 +708,7 @@
       {
         "slug": "briques-techniques",
         "title": "Briques (Composants Techniques)",
+        "tooltip": "Liste les briques techniques présentes dans le dossier",
         "entries": [
           {
             "key": "briques",
@@ -665,6 +741,7 @@
       {
         "slug": "gestion-identites-acces",
         "title": "Gestion des Identités et des Accès",
+        "tooltip": "Décrit les outils de gestion des accès (annuaire, IAM, etc.)",
         "entries": [
           {
             "key": "gouvernance_identites",
@@ -735,14 +812,52 @@
               "columns": [
                 {
                   "key": "nom_schema",
-                  "label": "Nom du schéma",
+                  "label": "Nom du diagramme",
                   "type": "text"
                 },
                 {
-                  "key": "diagramme_id",
-                  "label": "Diagramme Draw.io",
+                  "key": "schema_systeme",
+                  "label": "Outil",
+                  "type": "select",
+                  "choices": [
+                    {
+                      "value": "drawio",
+                      "label": "Draw.io",
+                      "enabled": true
+                    },
+                    {
+                      "value": "likec4",
+                      "label": "LikeC4",
+                      "enabled": true
+                    },
+                    {
+                      "value": "visio",
+                      "label": "Microsoft Visio",
+                      "enabled": false
+                    },
+                    {
+                      "value": "mermaid",
+                      "label": "Mermaid",
+                      "enabled": false
+                    },
+                    {
+                      "value": "autre",
+                      "label": "Autre",
+                      "enabled": false
+                    }
+                  ]
+                },
+                {
+                  "key": "schema_reference",
+                  "label": "Référence externe",
                   "type": "text",
-                  "placeholder": "ID du diagramme (ex: 42)",
+                  "placeholder": "URL ou identifiant externe"
+                },
+                {
+                  "key": "diagramme_id",
+                  "label": "Diagramme (Draw.io)",
+                  "type": "text",
+                  "placeholder": "ID Draw.io (ex: 42)",
                   "render": "drawio_diagram",
                   "drawio": true,
                   "drawio_name_key": "nom_schema",
@@ -764,6 +879,7 @@
       {
         "slug": "flux",
         "title": "Flux",
+        "tooltip": "Liste les flux composant le dossier",
         "entries": [
           {
             "key": "flux",
@@ -899,6 +1015,7 @@
       {
         "slug": "derogations-pssi",
         "title": "Dérogation(s) à la PSSI",
+        "tooltip":"Détail et justification des dérogations à la PSSI nécessaires",
         "entries": [
           {
             "key": "derogations_pssi",
@@ -954,6 +1071,7 @@
       {
         "slug": "risques",
         "title": "Risques",
+        "tooltip":"Détail des risques identifiés, des mesures de traitement en place ou à prévoir, et des risques résiduels",
         "entries": [
           {
             "key": "analyse_risques",
@@ -987,14 +1105,112 @@
                 },
                 {
                   "key": "derniere_etude",
-                  "label": "Dernière étude",
+                  "label": "Date d'étude",
                   "type": "date"
                 },
                 {
                   "key": "descriptif",
                   "label": "Descriptif",
+                  "type": "textarea", 
+                  "rows": 2
+                }
+              ]
+            }
+          },
+          {
+            "key": "mesures_traitement_risques",
+            "label": "Mesures de traitement des risques",
+            "type": "repeater",
+            "config": {
+              "columns": [
+                {
+                  "key": "id",
+                  "label": "ID",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "label": "Description",
                   "type": "textarea",
                   "rows": 2
+                },
+                {
+                  "key": "impact_mesure",
+                  "label": "Impact de la mesure",
+                  "type": "text"
+                },
+                {
+                  "key": "statut",
+                  "label": "Statut",
+                  "type": "select",
+                  "choices": [
+                    {
+                      "value": "en_place",
+                      "label": "En place"
+                    },
+                    {
+                      "value": "a_mettre_en_place",
+                      "label": "À mettre en place"
+                    },
+                    {
+                      "value": "en_cours_de_mise_en_place",
+                      "label": "En cours de mise en place"
+                    }
+                  ]
+                },
+                {
+                  "key": "criticite_residuelle",
+                  "label": "Criticité résiduelle",
+                  "type": "select",
+                  "choices": [
+                    {
+                      "value": "nulle",
+                      "label": "Nulle"
+                    },
+                    {
+                      "value": "mineure",
+                      "label": "Mineure"
+                    },
+                    {
+                      "value": "majeure",
+                      "label": "Majeure"
+                    },
+                    {
+                      "value": "critique",
+                      "label": "Critique"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "key": "risques_residuels",
+            "label": "Risques résiduels",
+            "type": "repeater",
+            "config": {
+              "columns": [
+                {
+                  "key": "id",
+                  "label": "ID",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "label": "Description",
+                  "type": "textarea",
+                  "rows": 2
+                },
+                {
+                  "key": "mesure_attenuation",
+                  "label": "Mesure d'atténuation",
+                  "type": "textarea",
+                  "rows": 2
+                },
+                {
+                  "key": "action",
+                  "label": "Action",
+                  "type": "text"
                 }
               ]
             }
@@ -1004,6 +1220,7 @@
       {
         "slug": "plan-traitement-risques",
         "title": "Plan de Traitement des Risques",
+        "tooltip":"Détail du plan de traitement à mettre en place",
         "entries": [
           {
             "key": "plan_traitement_risques",
@@ -1872,6 +2089,7 @@
     "slug": "validation",
     "title": "VALIDATION",
     "description": "Synthèse des validations et arbitrages.",
+    "attachments_enabled": false,
     "allowed_roles": [],
     "parts": [
       {

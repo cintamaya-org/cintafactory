@@ -14,9 +14,30 @@ services:
       DRAWIO_PUBLIC_URL: "${PROD_DRAWIO_PUBLIC_URL:-}"
       DRAWIO_LIBS: "${PROD_DRAWIO_LIBS:-general}"
       DRAWIO_CLIBS: "${PROD_DRAWIO_CLIBS:-}"
+      SEAWEEDFS_FILER_URL: "${PROD_SEAWEEDFS_FILER_URL:-http://seaweedfs:8888}"
+      SEAWEEDFS_PUBLIC_URL: "${PROD_SEAWEEDFS_PUBLIC_URL:-http://seaweedfs:8888}"
+      SEAWEEDFS_BASE_DIR: "${PROD_SEAWEEDFS_BASE_DIR:-media}"
+      SEAWEEDFS_TIMEOUT: "${PROD_SEAWEEDFS_TIMEOUT:-30}"
+      CLAMAV_HOST: "${PROD_CLAMAV_HOST:-clamav}"
+      CLAMAV_PORT: "${PROD_CLAMAV_PORT:-3310}"
+      CLAMAV_TIMEOUT: "${PROD_CLAMAV_TIMEOUT:-30}"
+      DJANGO_ENFORCE_STRICT_SECRETS: "1"
+      DJANGO_ENFORCE_STRICT_HTTP: "1"
+      LIKEC4_METADATA_TOKEN: "${LIKEC4_METADATA_TOKEN:?Set LIKEC4_METADATA_TOKEN in deploy/env/prod.env}"
+      LIKEC4_API_TOKEN: "${LIKEC4_API_TOKEN:?Set LIKEC4_API_TOKEN in deploy/env/prod.env}"
     volumes:
       - cinta_prod_static:/archifactory/cintafactory/staticfiles
       - cinta_prod_media:/archifactory/cintafactory/media
+
+  likec4:
+    environment:
+      LIKEC4_METADATA_TOKEN: "${LIKEC4_METADATA_TOKEN:?Set LIKEC4_METADATA_TOKEN in deploy/env/prod.env}"
+      LIKEC4_API_TOKEN: "${LIKEC4_API_TOKEN:?Set LIKEC4_API_TOKEN in deploy/env/prod.env}"
+
+  likec4-exporter:
+    environment:
+      LIKEC4_METADATA_TOKEN: "${LIKEC4_METADATA_TOKEN:?Set LIKEC4_METADATA_TOKEN in deploy/env/prod.env}"
+      LIKEC4_API_TOKEN: "${LIKEC4_API_TOKEN:?Set LIKEC4_API_TOKEN in deploy/env/prod.env}"
 
 volumes:
   cinta_prod_static:

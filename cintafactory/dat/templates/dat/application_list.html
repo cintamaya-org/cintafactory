@@ -3,19 +3,19 @@
 {% block content %}
   <div class="card cinta-card">
     <div class="card-content">
-      <div style="display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap;">
+      <div class="page-header">
         <div>
-          <h5 style="margin:0;">Applications</h5>
-          <p style="margin:0; color:#666;">{{ total_applications }} élément{{ total_applications|pluralize:"s" }}</p>
+          <h5 class="page-header__title">Applications</h5>
+          <p class="page-header__subtitle">{{ total_applications }} élément{{ total_applications|pluralize:"s" }}</p>
         </div>
-        <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
+        <div class="u-flex u-gap-0-75 u-flex-wrap">
           <a href="/dat/manage/applications/crud/add/" class="btn waves-effect waves-light cinta-btn-primary">
             <i class="material-icons left" aria-hidden="true">add</i>Créer une application
           </a>
         </div>
       </div>
 
-      <div style="margin-top:1.5rem; overflow-x:auto;">
+      <div class="u-mt-1-5 u-overflow-x-auto">
         <table class="highlight responsive-table">
           <thead>
             <tr>
@@ -39,7 +39,7 @@
                 <td>{{ app.description|default:"—" }}</td>
                 <td>{{ app.created_at|date:"d/m/Y" }} à {{ app.created_at|time:"H\\hi" }}</td>
                 <td>{{ app.updated_at|date:"d/m/Y" }} à {{ app.updated_at|time:"H\\hi" }}</td>
-                <td style="white-space:nowrap;">
+                <td class="u-nowrap">
                   <a href="/dat/manage/applications/crud/{{ app.pk }}/detail/" class="btn-flat waves-effect">Voir</a>
                   <a href="/dat/manage/applications/crud/{{ app.pk }}/change/" class="btn-flat waves-effect">Modifier</a>
                 </td>

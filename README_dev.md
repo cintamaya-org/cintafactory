@@ -1,106 +1,168 @@
+# CintaFactory Developer Guide
 
+## Stack Packs
+Use these packs depending on what you need to work on.
 
-#  CintaFactory — Developer Guide
+1. `core-dev` pack
+- Compose file: `docker-compose.dev.yml`
+- Includes: Django web, Postgres, drawio, drawio-export, likec4, likec4-exporter, clamav, seaweedfs
+- Use for: normal feature development
 
+2. `scaling` pack
+- Compose file: `docker-compose.scaling.dev.yml`
+- Includes: traefik, web, worker, pgbouncer, exporters, db, storage/scanner
+- Use for: scale, readiness, worker and network topology validation
 
----
+3. `observability` pack
+- Compose file: `cintafactory/docker-compose.observability.dev.yml`
+- Includes: Grafana, Prometheus, Loki, Promtail, cAdvisor
+- Use for: dashboards, metrics, logs, capacity monitoring
 
-##  Launch the Development Stack
+4. `full-platform` pack
+- Start `scaling` pack, then `observability` pack
+- Use for: end-to-end ops/reliability validation
 
-Run the development containers using the dedicated `docker-compose.dev.yml` file.
-
-```bash
-docker compose -f docker-compose.dev.yml up
-````
-
-You can access the app locally at:
-
- [http://localhost:8101](http://localhost:8101)
-
-The bundled draw.io editor is exposed via the `drawio` service, and previews export locally through the companion `drawio-export` service:
-
-- Web UI / embed endpoint: [http://localhost:8102](http://localhost:8102)
-- Export server health check: [http://localhost:8103](http://localhost:8103)
-- Optional environment variables:
-  - `DRAWIO_LIBS` to tweak the built-in palettes (defaults to `general`).
-  - `DRAWIO_CLIBS` with a comma-separated list of HTTP URLs pointing to custom XML libraries (for example `http://web:8000/static/drawio/mes-formes.xml` served by Django). Leave it unset to auto-load any XML files bundled in `static/diagrams`.
-- If you expose draw.io under a different hostname, override `DRAWIO_PUBLIC_URL`; otherwise, the defaults work out of the box.
-
-To ship a local library, copy the XML file into the Django static directory (e.g. `cintafactory/static/drawio/mes-formes.xml`), make sure the file is included in your Docker image or mounted as a volume, then set `DRAWIO_CLIBS` accordingly in your `.env` or compose overrides. The application handles the `clibs` URL-encoding automatically when building the iframe.
-
----
-
-##  Rebuild When Dependencies Change (rare)
-
-If you modify `requirements.txt` or the `Dockerfile`, rebuild your image once:
-
+## Command Pack: core-dev
+Start:
 ```bash
 docker compose -f docker-compose.dev.yml up -d --build
 ```
 
->  You **don’t** need to rebuild for normal code changes — only when installing or removing Python packages.
+Stop:
+```bash
+docker compose -f docker-compose.dev.yml down
+```
 
----
+Logs:
+```bash
+docker compose -f docker-compose.dev.yml logs -f
+```
 
-##  Create a Superuser (Admin Account)
+Migrate:
+```bash
+docker compose -f docker-compose.dev.yml exec -T web python manage.py migrate
+```
 
-If this is your first run and you need an admin account for Django:
-
+Create admin:
 ```bash
 docker compose -f docker-compose.dev.yml exec web python manage.py createsuperuser
 ```
 
-
-Once created, you can log in to the Django admin panel:
-
-👉 [http://localhost:8101/admin/](http://localhost:8101/admin/)
-
----
-
-## 🧹 Useful Commands
-
-| Action                                  | Command                                                                                      |
-| --------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Stop the stack                          | `docker compose -f docker-compose.dev.yml down`                                              |
-| View logs                               | `docker compose -f docker-compose.dev.yml logs -f`                                           |
-| Access a shell inside the web container | `docker compose -f docker-compose.dev.yml exec web bash`                                     |
-| Apply migrations manually               | `docker compose -f docker-compose.dev.yml exec web python manage.py migrate`                 |
-
-
-docker compose -f docker-compose.dev.yml exec web python manage.py migrate
-
-
-| Collect static files (if needed)        | `docker compose -f docker-compose.dev.yml exec web python manage.py collectstatic --noinput` |
-| --------------------------------------- | -------------------------------------------------------------------------------------------- |
-
-
-
----
-
-## Logging & Observability
-
-- Django routes every log through `cintafactory.logging_utils`, enriching records with request identifiers and user data when available. Prefer the helpers (`log_info`, `log_warning`, etc.) over raw `logging` calls to keep structured extras aligned.
-- Console output stays human-readable and structured JSON now streams to stdout/stderr by default so `docker compose logs` shows everything. If you prefer on-disk rotation locally, set `DJANGO_LOG_TO_STDOUT=0` to reactivate `logs/application.jsonl`.
-- Attach a webhook with `LOG_CRITICAL_WEBHOOK=https://hooks/...` to receive critical alerts; if unset, the handler falls back to stderr so nothing is lost.
-- Keep sensitive payloads out of log messages. The sanitiser masks common keys but cannot protect secrets accidentally written into the message text—log identifiers instead of raw data.
-- All events flow through the queue with no sampling so you can rely on complete traces; adjust `DJANGO_LOG_LEVEL` or specific logger levels if noise creeps in.
-- After deploys, run `python manage.py shell -c "from cintafactory.logging_utils import log_info; log_info('log-pipeline-check')"` to verify the pipeline end-to-end.
-
----
-
-## DAT Exports (PDF & JSON)
-
-- The DAT detail page exposes three actions: launch a new PDF export in the background (`dat:my_export_pdf_trigger`), download the last generated PDF (`dat:my_export_pdf_download`), and export JSON (`dat:my_export_json`). Cached PDFs are stored once per DAT under `media/dat_exports/<dat_id>/` so users can re-download without regenerating. While a generation is running, the UI shows who started it and the CTA stays disabled until completion.
-- Both exports share a configurable builder defined in `cintafactory/dat/exporters.py`. Override the structure by subclassing `DATExportModelBuilder` and referencing it through the `DAT_EXPORT_MODEL_BUILDER` Django setting:
-
-```python
-# settings.py
-DAT_EXPORT_MODEL_BUILDER = "myproject.exports.MyCustomDatExportBuilder"
+Run all tests:
+```bash
+docker compose -f docker-compose.dev.yml exec -T web python manage.py test --keepdb --noinput
 ```
 
-Your subclass can override any method (e.g. `build_sections`, `build_participants`) to add/remove fields. The returned payload feeds both the JSON response and the PDF template.
-- To tweak the PDF rendering, edit `templates/dat/exports/dat_export_pdf.html`. The template receives the computed payload as `export`. For JSON-only adjustments, only change the builder.
-- PDF regeneration overwrites the previous cached file to save space. The download button stays disabled until at least one PDF has been generated.
-- PDF generation uses [WeasyPrint](https://weasyprint.org/); install its OS-level dependencies (Cairo, Pango, etc.) when deploying the new feature.
+URLs:
+- App: `http://localhost:8101`
+- Traefik dashboard: `http://localhost:8101/traefik/dashboard/`
+- draw.io UI: `http://localhost:8102`
+- draw.io export: `http://localhost:8103`
 
----
+## Command Pack: scaling
+Start:
+```bash
+docker compose -f docker-compose.scaling.dev.yml up -d --build
+```
+
+Stop:
+```bash
+docker compose -f docker-compose.scaling.dev.yml down
+```
+
+Logs:
+```bash
+docker compose -f docker-compose.scaling.dev.yml logs -f
+```
+
+Scale example:
+```bash
+docker compose -f docker-compose.scaling.dev.yml up -d --scale web=2 --scale worker=2 --scale likec4-exporter=2 --scale drawio-export=2
+```
+
+Readiness check:
+```bash
+docker compose -f docker-compose.scaling.dev.yml exec -T web python manage.py check_runtime_dependencies --profile web --json-output
+```
+
+Targeted scaling tests:
+```bash
+docker compose -f docker-compose.scaling.dev.yml exec -T web python manage.py test --keepdb --noinput cintafactory.tests_ops.tests_health cintafactory.tests_ops.tests_async_worker
+```
+
+URL:
+- Through Traefik: `http://localhost:8101`
+
+## Command Pack: observability
+Important:
+- Start `core-dev` or `scaling` first.
+- Observability stack expects Docker network `cintaarchifactory_app` unless overridden with `APP_MONITORING_NETWORK`.
+
+Start:
+```bash
+docker compose -f cintafactory/docker-compose.observability.dev.yml up -d
+```
+
+Stop:
+```bash
+docker compose -f cintafactory/docker-compose.observability.dev.yml down
+```
+
+Logs:
+```bash
+docker compose -f cintafactory/docker-compose.observability.dev.yml logs -f
+```
+
+Dashboard asset validation:
+```bash
+deploy/scripts/test_dashboard_assets.sh
+```
+
+Dashboard test suite:
+```bash
+docker compose -f docker-compose.dev.yml exec -T web python manage.py test --keepdb --noinput cintafactory.tests_ops.tests_dashboard_assets
+```
+
+URLs:
+- Grafana: `http://localhost:3000` (`admin` / `admin`)
+- Prometheus: `http://localhost:9090`
+- Loki ready: `http://localhost:3100/ready`
+- cAdvisor: `http://localhost:8088`
+
+Prometheus alerts:
+- Rule file path: `cintafactory/deploy/observability/prometheus/rules/cinta-alerts.yml`
+- Check active alerts: `http://localhost:9090/alerts`
+
+Grafana folder:
+- `Cinta Platform`
+
+## Command Pack: full-platform
+Start everything (recommended order):
+```bash
+docker compose -f docker-compose.scaling.dev.yml up -d --build
+docker compose -f cintafactory/docker-compose.observability.dev.yml up -d
+```
+
+Stop everything:
+```bash
+docker compose -f cintafactory/docker-compose.observability.dev.yml down
+docker compose -f docker-compose.scaling.dev.yml down
+```
+
+Smoke checks:
+```bash
+docker compose -f docker-compose.scaling.dev.yml exec -T web python manage.py check_runtime_dependencies --profile web --json-output
+curl -fsS http://localhost:3000/api/health >/dev/null && echo grafana_ok
+curl -fsS http://localhost:9090/-/healthy >/dev/null && echo prometheus_ok
+curl -fsS http://localhost:3100/ready >/dev/null && echo loki_ok
+```
+
+## App Health and Metrics Endpoints
+- Liveness: `http://localhost:8101/health/live`
+- Readiness: `http://localhost:8101/health/ready`
+- Metrics: `http://localhost:8101/metrics`
+
+## References
+- `params_dev/PLAN6_DASHBOARD_RUNBOOK.md`
+- `params_dev/PLAN5_ALERTING_RUNBOOK.md`
+- `params_dev/PLAN5_BACKUP_DR_RUNBOOK.md`

@@ -1,0 +1,52 @@
+{% extends current_module.base_template %}
+
+{% block content %}
+  <div class="card cinta-card">
+    <div class="card-content">
+      <div class="page-header">
+        <div>
+          <h5 class="page-header__title">Mes Applications</h5>
+          <p class="page-header__subtitle">{{ total_applications }} élément{{ total_applications|pluralize:"s" }}</p>
+        </div>
+      </div>
+
+      <div class="u-mt-1-5 u-overflow-x-auto">
+        <table class="highlight responsive-table">
+          <thead>
+            <tr>
+              <th>Code</th>
+              <th>Nom</th>
+              <th>Direction métier</th>
+              <th>Description</th>
+              <th>Créé le</th>
+              <th>Mis à jour le</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for app in object_list %}
+              <tr>
+                <td>
+                  <a href="/dat/manage/applications/crud/{{ app.pk }}/detail/">{{ app.code }}</a>
+                </td>
+                <td>{{ app.name }}</td>
+                <td>{{ app.business_direction|default:"—" }}</td>
+                <td>{{ app.description|default:"—" }}</td>
+                <td>{{ app.created_at|date:"d/m/Y" }} à {{ app.created_at|time:"H\\hi" }}</td>
+                <td>{{ app.updated_at|date:"d/m/Y" }} à {{ app.updated_at|time:"H\\hi" }}</td>
+                <td class="u-nowrap">
+                  <a href="/dat/manage/applications/crud/{{ app.pk }}/detail/" class="btn-flat waves-effect">Voir</a>
+                  <a href="{% url 'dat:my_list' %}?application={{ app.pk }}" class="btn-flat waves-effect">Mes DAT</a>
+                </td>
+              </tr>
+            {% empty %}
+              <tr>
+                <td colspan="7">Aucune application associée.</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+{% endblock %}

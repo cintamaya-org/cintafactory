@@ -1,4 +1,4 @@
-<label style="display:flex; align-items:center; gap:0.65rem; margin:0;">
+<label class="material-checkbox-option">
   <input type="checkbox"
          name="{{ widget.name }}"
          value="{{ widget.value }}"
@@ -6,5 +6,5 @@
          class="filled-in"
          {% if widget.selected %}checked{% endif %}
          {% include "django/forms/widgets/attrs.html" %}>
-  <span style="color:#263238;">{{ widget.label }}</span>
+  <span class="material-checkbox-option__label">{{ widget.label }}</span>
 </label>

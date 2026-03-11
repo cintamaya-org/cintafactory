@@ -1,9 +1,22 @@
 from django.contrib.auth import get_user_model
+from io import BytesIO
+
 from django.core.exceptions import ValidationError
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
 
 from .models import BusinessDirection, BusinessGroup, TechnicalDirection, Role
+from .oauth_providers import OAuthProvider, list_enabled_oauth_providers
+from .oauth_service import build_authorize_url, resolve_oauth_user
+from .profile_pictures import (
+    DEFAULT_PROFILE_EXTENSION,
+    _extract_extension,
+    build_profile_picture_storage_name,
+    process_profile_picture_upload,
+)
+
+from PIL import Image
 
 
 class UserDetailViewTests(TestCase):
@@ -16,6 +29,11 @@ class UserDetailViewTests(TestCase):
         )
         self.tech_direction = TechnicalDirection.objects.create(name="Tech Dir", slug="tech-dir-detail")
         self.business_direction = BusinessDirection.objects.create(name="Direction Métier", slug="business-dir-detail")
+        self.role = Role.objects.create(
+            name="Architecte Détail",
+            slug="architecte-detail",
+            technical_direction=self.tech_direction,
+        )
         self.group = BusinessGroup.objects.create(
             name="Groupe Détail",
             direction=self.tech_direction,
@@ -23,10 +41,8 @@ class UserDetailViewTests(TestCase):
             business_direction=self.business_direction,
         )
         self.superuser.business_group = self.group
-        self.superuser.save(update_fields=["business_group"])
-        self.role = Role.objects.create(name="Architecte Détail", slug="architecte-detail", technical_direction=self.tech_direction)
         self.superuser.role = self.role
-        self.superuser.save(update_fields=["role"])
+        self.superuser.save(update_fields=["business_group", "role"])
         self.target_user = self.UserModel.objects.create_user(
             username="detail-user",
             password="pwd",
@@ -131,3 +147,127 @@ class UserModelConstraintTests(TestCase):
         user.set_password("pwd")
         with self.assertRaises(ValidationError):
             user.full_clean()
+
+
+class OAuthProviderTests(TestCase):
+    def test_list_enabled_oauth_providers_filters_missing_credentials(self):
+        self.assertEqual(list_enabled_oauth_providers(), [])
+        with self.settings(
+            OAUTH_PROVIDERS={
+                "demo": {
+                    "client_id": "id",
+                    "client_secret": "secret",
+                    "authorize_url": "https://example.com/auth",
+                    "token_url": "https://example.com/token",
+                    "userinfo_url": "https://example.com/user",
+                    "scopes": ["profile", "email"],
+                },
+                "disabled": {
+                    "client_id": "",
+                    "client_secret": "",
+                },
+            }
+        ):
+            providers = list_enabled_oauth_providers()
+        self.assertEqual(len(providers), 1)
+        self.assertEqual(providers[0].slug, "demo")
+
+    def test_build_authorize_url_includes_scopes(self):
+        provider = OAuthProvider(
+            slug="demo",
+            label="Demo",
+            client_id="client",
+            client_secret="secret",
+            authorize_url="https://example.com/authorize",
+            token_url="https://example.com/token",
+            userinfo_url="https://example.com/userinfo",
+            scopes=("email", "profile"),
+            extra_authorize_params={"prompt": "consent"},
+            userinfo_mapping={},
+        )
+        url = build_authorize_url(provider, "https://app.local/callback", "state123")
+        self.assertIn("client_id=client", url)
+        self.assertIn("redirect_uri=https%3A%2F%2Fapp.local%2Fcallback", url)
+        self.assertIn("scope=email+profile", url)
+        self.assertIn("prompt=consent", url)
+
+
+class OAuthServiceTests(TestCase):
+    def setUp(self):
+        self.UserModel = get_user_model()
+        self.provider = OAuthProvider(
+            slug="demo",
+            label="Demo",
+            client_id="client",
+            client_secret="secret",
+            authorize_url="https://example.com/authorize",
+            token_url="https://example.com/token",
+            userinfo_url="https://example.com/userinfo",
+            scopes=("email",),
+            extra_authorize_params={},
+            userinfo_mapping={"user_id": "sub", "email": "email"},
+        )
+
+    def test_resolve_oauth_user_links_existing_account(self):
+        user = self.UserModel.objects.create_user(username="existing", email="existing@example.com", password="pwd")
+        account = user.oauth_accounts.create(
+            provider=self.provider.slug,
+            provider_user_id="abc123",
+            email=user.email,
+        )
+        resolved_user, resolved_account = resolve_oauth_user(
+            self.provider,
+            {"sub": "abc123", "email": user.email},
+            {"access_token": "token"},
+        )
+        self.assertEqual(resolved_user, user)
+        self.assertEqual(resolved_account.id, account.id)
+        resolved_account.refresh_from_db()
+        self.assertEqual(resolved_account.access_token, "token")
+
+    def test_resolve_oauth_user_links_by_email(self):
+        user = self.UserModel.objects.create_user(username="linked", email="link@example.com", password="pwd")
+        resolved_user, resolved_account = resolve_oauth_user(
+            self.provider,
+            {"sub": "unique", "email": "link@example.com", "email_verified": True},
+            {"access_token": "token"},
+        )
+        self.assertEqual(resolved_user, user)
+        self.assertEqual(resolved_account.user, user)
+
+    def test_resolve_oauth_user_creates_new_user(self):
+        resolved_user, resolved_account = resolve_oauth_user(
+            self.provider,
+            {"sub": "provider-user", "email": ""},
+            {"access_token": "token"},
+        )
+        self.assertEqual(resolved_account.user, resolved_user)
+        self.assertTrue(resolved_user.username.startswith("provider-user") or resolved_user.username.startswith("demo-user"))
+
+
+class ProfilePictureTests(TestCase):
+    def test_extract_extension_handles_paths(self):
+        self.assertEqual(_extract_extension("avatar.JPG"), ".jpg")
+        self.assertEqual(_extract_extension("/tmp/avatar.png"), ".png")
+        self.assertEqual(_extract_extension(""), "")
+
+    def test_storage_name_falls_back_on_invalid_extension(self):
+        name = build_profile_picture_storage_name(None, "avatar.txt")
+        self.assertTrue(name.endswith(DEFAULT_PROFILE_EXTENSION))
+
+    def test_process_profile_picture_upload_resizes_and_converts(self):
+        image = Image.new("RGB", (800, 600), color="red")
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+        buffer.seek(0)
+        upload = SimpleUploadedFile("avatar.png", buffer.read(), content_type="image/png")
+        processed = process_profile_picture_upload(upload)
+        self.assertEqual(processed.content_type, "image/png")
+        processed.seek(0)
+        processed_image = Image.open(processed)
+        self.assertEqual(processed_image.size, (350, 350))
+
+    def test_process_profile_picture_upload_rejects_extension(self):
+        upload = SimpleUploadedFile("avatar.txt", b"not an image", content_type="text/plain")
+        with self.assertRaises(ValidationError):
+            process_profile_picture_upload(upload)

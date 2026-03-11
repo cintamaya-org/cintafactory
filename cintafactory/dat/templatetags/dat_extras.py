@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import random
+import uuid
+from pathlib import Path
 from typing import List, Tuple
+from urllib.parse import urlencode
 
 from django import template
-from django.urls import NoReverseMatch, reverse
 
-from diagrams.models import Diagram
+from django.urls import NoReverseMatch, reverse
+from diagrams.models import DrawIODiagram
+from dat.sections import SECTION_BLUEPRINT_MAP
 
 register = template.Library()
 
@@ -121,6 +125,19 @@ def section_part_icon(section_slug, part_slug):
     return _normalise_icon_config(icon)
 
 
+@register.filter
+def section_part_tooltip(section_slug, part_slug):
+    if not section_slug or not part_slug:
+        return ""
+    section = SECTION_BLUEPRINT_MAP.get(str(section_slug))
+    if not section:
+        return ""
+    for part in section.get("parts", ()):
+        if part.get("slug") == str(part_slug):
+            return part.get("tooltip") or ""
+    return ""
+
+
 @register.simple_tag
 def section_status_icon(status_value=None):
     icon = SECTION_STATUS_ICON_MAP.get(status_value) or SECTION_STATUS_ICON_DEFAULT
@@ -131,23 +148,36 @@ def section_status_icon(status_value=None):
     }
 
 
+def _extract_diagram_identifier(diagram_id):
+    if diagram_id in (None, ""):
+        return None, None
+    if isinstance(diagram_id, dict):
+        for key in ("id", "pk", "diagram_id", "diagramme_id"):
+            if key in diagram_id and diagram_id[key] not in (None, ""):
+                return diagram_id[key], diagram_id.get("title")
+        return None, diagram_id.get("title")
+    if hasattr(diagram_id, "pk"):
+        return getattr(diagram_id, "pk", None), getattr(diagram_id, "title", None)
+    return diagram_id, None
+
+
 @register.simple_tag
 def diagram_links(diagram_id):
-    if diagram_id in (None, ""):
+    raw_identifier, provided_title = _extract_diagram_identifier(diagram_id)
+    if raw_identifier in (None, ""):
         return None
     try:
-        pk = int(str(diagram_id).strip())
-    except (TypeError, ValueError):
+        pk = raw_identifier if isinstance(raw_identifier, uuid.UUID) else uuid.UUID(str(raw_identifier).strip())
+    except (TypeError, ValueError, AttributeError):
         return None
-    if pk < 1:
-        return None
-    diagram = Diagram.objects.filter(pk=pk).only("pk", "title").first()
+    diagram = DrawIODiagram.objects.filter(pk=pk).only("pk", "title").first()
     if diagram is None:
         return None
+    title = str(provided_title).strip() if provided_title not in (None, "") else diagram.title
     try:
         return {
             "pk": diagram.pk,
-            "title": diagram.title,
+            "title": title,
             "detail_url": reverse("diagrams:detail", args=[diagram.pk]),
             "edit_url": reverse("diagrams:edit", args=[diagram.pk]),
             "import_url": reverse("diagrams:import_xml", args=[diagram.pk]),
@@ -155,6 +185,31 @@ def diagram_links(diagram_id):
         }
     except NoReverseMatch:
         return None
+
+
+def _normalize_likec4_path(raw_path):
+    if not raw_path:
+        return ""
+    cleaned = str(raw_path).strip().lstrip("/")
+    if not cleaned or not cleaned.lower().endswith(".c4"):
+        return ""
+    parts = Path(cleaned).parts
+    if any(part in (".", "..") for part in parts):
+        return ""
+    return cleaned
+
+
+@register.simple_tag
+def likec4_png_url(storage_path):
+    normalized = _normalize_likec4_path(storage_path)
+    if not normalized:
+        return ""
+    try:
+        base = reverse("diagrams:likec4_png")
+        query = urlencode({"file": normalized})
+        return f"{base}?{query}" if query else base
+    except Exception:
+        return ""
 
 
 @register.filter

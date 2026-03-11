@@ -14,12 +14,12 @@
   <td>{% if obj.is_default %}Oui{% else %}Non{% endif %}</td>
   <td>{{ obj.member_count }}</td>
   <td>
-    <div style="display:flex; gap:0.3rem; flex-wrap:wrap;">
+    <div class="u-flex u-gap-0-3 u-flex-wrap">
       <a href="{% url 'users:group_detail' pk=obj.pk %}" class="btn-flat waves-effect">Détails</a>
       {% if request.user.is_superuser %}
         <a href="{% url 'users:businessgroup_change' pk=obj.pk %}" class="btn-flat waves-effect">Modifier</a>
       {% else %}
-        <span title="Aucune permission" style="color:#888;">—</span>
+        <span title="Aucune permission" class="text-muted-light">—</span>
       {% endif %}
     </div>
   </td>

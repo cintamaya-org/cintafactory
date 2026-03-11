@@ -16,13 +16,13 @@
       <div class="card cinta-card">
         <div class="card-content">
           <span class="card-title">Créer un diagramme</span>
-          <p class="grey-text text-darken-1" style="margin-bottom:1.5rem;">
+          <p class="grey-text text-darken-1 diagram-create__intro">
             Donnez un nom à votre diagramme pour l'identifier facilement.
           </p>
           <form method="post">
             {% csrf_token %}
             {% form form=form %}{% endform %}
-            <div class="right-align" style="margin-top:1.5rem;">
+            <div class="right-align diagram-create__actions">
               <a class="btn-flat waves-effect" href="{% url 'diagrams:list' %}">Annuler</a>
               <button class="btn waves-effect waves-light cinta-btn-primary" type="submit">
                 <i class="material-icons left">check</i>Créer

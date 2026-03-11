@@ -3,6 +3,33 @@
 **CintaFactory** is a TODO Describe the product
 ---
 
+## Quick Start (Docker)
+For the full developer operations guide, use `README_dev.md`.
+
+Start app stack:
+```bash
+docker compose -f docker-compose.dev.yml up -d --build
+```
+
+Apply migrations:
+```bash
+docker compose -f docker-compose.dev.yml exec -T web python manage.py migrate
+```
+
+Main app URL:
+- `http://localhost:8101`
+
+Start observability stack (Grafana/Prometheus/Loki/cAdvisor):
+```bash
+docker compose -f cintafactory/docker-compose.observability.dev.yml up -d
+```
+
+Observability URLs:
+- Grafana: `http://localhost:3000`
+- Prometheus: `http://localhost:9090`
+- Loki: `http://localhost:3100/ready`
+- cAdvisor: `http://localhost:8088`
+
 ## Technology Stack
 
 | Component           | Technology           |
@@ -22,17 +49,31 @@ git clone https://github.com/your-org/cintafactory.git
 cd cintafactory
 ```
 
+### Install uv
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
 ### Create and activate a virtual environment
 
 ```bash
-python -m venv .venv
+uv venv .venv
 source .venv/bin/activate
 ```
 
 ### Install dependencies
 
 ```bash
-pip install -r requirements.txt
+uv sync --frozen
+```
+
+Dependencies are managed via `pyproject.toml` and `uv.lock`.
+
+If you add or update dependencies, run:
+
+```bash
+uv lock
 ```
 
 ### Apply migrations

@@ -1,142 +1,16 @@
 {% extends "material/frontend/base_module.html" %}
 
 {% block content %}
-<style>
-  .wf-notifications-card {
-    border-radius: 24px;
-  }
-  .wf-notifications-card .card-content {
-    padding: 2rem;
-  }
-  @media (max-width: 600px) {
-    .wf-notifications-card .card-content {
-      padding: 1.25rem;
-    }
-  }
-  .wf-notifications {
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
-  }
-  .wf-notifications__header {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-  }
-  .wf-notifications__header h1 {
-    margin: 0;
-    font-size: 2rem;
-  }
-  .wf-notifications__summary {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    align-items: center;
-  }
-  .wf-notifications__summary form {
-    margin: 0;
-  }
-  .wf-notifications__list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-  }
-  .wf-notification {
-    border: 1px solid #ececec;
-    border-radius: 16px;
-    padding: 1.25rem;
-    background: #fff;
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.04);
-    display: flex;
-    gap: 1rem;
-    transition: border-color 0.2s, box-shadow 0.2s;
-  }
-  .wf-notification--unread {
-    border-color: #f44336;
-    box-shadow: 0 10px 25px rgba(244, 67, 54, 0.12);
-  }
-  .wf-notification__icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: #f5f5f5;
-    flex-shrink: 0;
-    font-size: 1.75rem;
-    color: #546e7a;
-  }
-  .wf-notification--unread .wf-notification__icon {
-    background: rgba(244, 67, 54, 0.12);
-    color: #c62828;
-  }
-  .wf-notification__body {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-  }
-  .wf-notification__title {
-    font-size: 1rem;
-    font-weight: 600;
-    margin: 0;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.35rem;
-    align-items: center;
-  }
-  .wf-notification__meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    color: #607d8b;
-    font-size: 0.9rem;
-    align-items: center;
-  }
-  .wf-notification__details {
-    margin-top: 0.35rem;
-    color: #37474f;
-    line-height: 1.4;
-  }
-  .wf-notification__details ul {
-    margin: 0.4rem 0 0 1.2rem;
-    padding: 0;
-  }
-  .wf-notification__status-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-    margin-top: 0.35rem;
-  }
-  .wf-notifications__empty {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    align-items: center;
-    justify-content: center;
-    padding: 3rem 1rem;
-    border: 2px dashed #cfd8dc;
-    border-radius: 16px;
-    text-align: center;
-    color: #607d8b;
-  }
-</style>
 <div class="card wf-notifications-card">
   <div class="card-content">
     <div class="wf-notifications">
       <div class="wf-notifications__header">
         <div>
           <h1>Notifications</h1>
-          <p style="margin:0; color:#546e7a;">Suivez les derniers événements liés à vos DAT et à vos workflows.</p>
+          <p class="wf-notifications__subtitle">Suivez les derniers événements liés à vos DAT et à vos workflows.</p>
         </div>
         <div class="wf-notifications__summary">
-          <span class="chip red darken-1 white-text" style="font-weight:600;">
+          <span class="chip {% if notifications_unread_count %}red darken-1 white-text{% else %}grey lighten-2 grey-text text-darken-2{% endif %}">
             {{ notifications_unread_count }} non lus
           </span>
           <span class="chip grey lighten-3">
@@ -146,7 +20,7 @@
             <form method="post" action="{% url 'workflows:notifications' %}">
               {% csrf_token %}
               <input type="hidden" name="mark_all" value="1">
-              <button type="submit" class="btn-flat" style="padding-left:0;">
+              <button type="submit" class="btn-flat">
                 Tout marquer comme lu
               </button>
             </form>
@@ -272,15 +146,15 @@
                     {% endwith %}
                   {% else %}
                     {% if notification.message %}
-                      <p style="margin:0;">{{ notification.message|linebreaksbr }}</p>
+                      <p>{{ notification.message|linebreaksbr }}</p>
                     {% endif %}
                     {% if notification.target_url %}
-                      <p style="margin:0.35rem 0 0;">
-                        <a href="{{ notification.target_url }}" class="btn-flat" style="padding-left:0;">Consulter</a>
+                      <p>
+                        <a href="{{ notification.target_url }}" class="btn-flat">Consulter</a>
                       </p>
                     {% elif notification.dat_link %}
-                      <p style="margin:0.35rem 0 0;">
-                        <a href="{{ notification.dat_link }}" class="btn-flat" style="padding-left:0;">Voir le DAT</a>
+                      <p>
+                        <a href="{{ notification.dat_link }}" class="btn-flat">Voir le DAT</a>
                       </p>
                     {% endif %}
                   {% endif %}
@@ -291,7 +165,7 @@
         </ul>
       {% else %}
         <div class="wf-notifications__empty">
-          <i class="material-icons" style="font-size:3rem;" aria-hidden="true">notifications_none</i>
+          <i class="material-icons wf-notifications__empty-icon" aria-hidden="true">notifications_none</i>
           <p>Aucune notification à afficher pour le moment. Dès qu'un événement vous concernant sera enregistré, il apparaîtra ici.</p>
         </div>
       {% endif %}

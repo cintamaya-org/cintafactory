@@ -4,6 +4,7 @@ import json
 from typing import Any, Dict, Iterable, Tuple, Optional
 
 from django.db import transaction
+from django.db.models import F
 
 from .config.section_blueprints import SECTION_BLUEPRINTS
 
@@ -19,6 +20,15 @@ def section_has_status(section_slug: str) -> bool:
     if not section_slug:
         return False
     return section_slug not in SECTION_STATUS_DISABLED_SLUGS and section_slug != "validation"
+
+
+def section_has_attachments(section_slug: str) -> bool:
+    if not section_slug:
+        return False
+    blueprint = SECTION_BLUEPRINT_MAP.get(section_slug)
+    if not blueprint:
+        return True
+    return bool(blueprint.get("attachments_enabled", True))
 
 
 def _build_placeholder_parts(section_slug: str) -> Tuple[Dict[str, Any], ...]:
@@ -61,6 +71,7 @@ DEFAULT_DAT_SECTION_DEFINITIONS: Tuple[Dict[str, Any], ...] = tuple(
         "slug": blueprint["slug"],
         "title": blueprint["title"],
         "description": blueprint.get("description", ""),
+        "attachments_enabled": blueprint.get("attachments_enabled", True),
         "allowed_roles": blueprint.get("allowed_roles", []),
         "parts": _normalise_parts(blueprint["slug"], blueprint.get("parts")),
     }
@@ -85,6 +96,7 @@ def _find_blueprint_part(section_slug: str, part_slug: str) -> Optional[Dict[str
 def _resolve_models(apps=None):
     if apps is not None:
         DATSectionModel = apps.get_model("dat", "DATSection")
+        DATSectionMetadataModel = apps.get_model("dat", "DATSectionMetadata")
         try:
             DATSubSectionModel = apps.get_model("dat", "DATSubSection")
         except LookupError:
@@ -99,9 +111,10 @@ def _resolve_models(apps=None):
 
         from .models import DATPart as DATPartModel  # noqa: WPS433
         from .models import DATSection as DATSectionModel  # noqa: WPS433
+        from .models import DATSectionMetadata as DATSectionMetadataModel  # noqa: WPS433
         from .models import DATSubSection as DATSubSectionModel  # noqa: WPS433
 
-    return DATSectionModel, DATSubSectionModel, DATPartModel, RoleModel
+    return DATSectionModel, DATSectionMetadataModel, DATSubSectionModel, DATPartModel, RoleModel
 
 
 def _section_sub_section_manager(section):
@@ -147,7 +160,11 @@ def _initialise_validation_statuses(entry, section) -> None:
             continue
         stale_rows = True
     try:
-        sections = dat.sections.exclude(slug="validation").order_by("order", "id").values("slug", "title")
+        sections = (
+            dat.sections.exclude(metadata__slug="validation")
+            .order_by("order", "id")
+            .values(slug=F("metadata__slug"), title=F("metadata__title"))
+        )
     except Exception:
         sections = ()
     updated_rows: list[dict[str, object]] = []
@@ -218,28 +235,67 @@ def ensure_default_sections(dat, *, apps=None) -> None:
     """
     Ensure the default DAT sections structure exists for the given DAT instance.
     """
-    DATSectionModel, DATSubSectionModel, DATPartModel, RoleModel = _resolve_models(apps)
+    DATSectionModel, DATSectionMetadataModel, DATSubSectionModel, DATPartModel, RoleModel = _resolve_models(apps)
     part_fk_field = _dat_part_fk_field(DATPartModel)
     db_alias = getattr(dat._state, "db", None) or "default"
 
     with transaction.atomic(using=db_alias):
+        existing_sections = (
+            DATSectionModel.objects.using(db_alias)
+            .select_related("metadata")
+            .filter(dat_id=dat.pk)
+        )
+        existing_section_map = {}
+        for section in existing_sections:
+            metadata = getattr(section, "metadata", None)
+            if metadata and metadata.slug:
+                existing_section_map[metadata.slug] = section
         for section_order, section_definition in enumerate(DEFAULT_DAT_SECTION_DEFINITIONS):
-            section_defaults = {
+            metadata_defaults = {
                 "title": section_definition["title"],
                 "description": section_definition.get("description", ""),
-                "order": section_order,
             }
-            section, _ = DATSectionModel.objects.using(db_alias).get_or_create(
-                dat_id=dat.pk,
-                slug=section_definition["slug"],
-                defaults=section_defaults,
-            )
+            section = existing_section_map.get(section_definition["slug"])
+            if section is None:
+                metadata = DATSectionMetadataModel.objects.using(db_alias).create(
+                    slug=section_definition["slug"],
+                    **metadata_defaults,
+                )
+                section = DATSectionModel.objects.using(db_alias).create(
+                    dat_id=dat.pk,
+                    metadata=metadata,
+                    order=section_order,
+                )
+                existing_section_map[section_definition["slug"]] = section
+            else:
+                if section.metadata_id is None:
+                    metadata = DATSectionMetadataModel.objects.using(db_alias).create(
+                        slug=section_definition["slug"],
+                        **metadata_defaults,
+                    )
+                    section.metadata = metadata
+                else:
+                    metadata = section.metadata
+                meta_updates = []
+                if metadata and metadata.title != metadata_defaults["title"]:
+                    metadata.title = metadata_defaults["title"]
+                    meta_updates.append("title")
+                if metadata and metadata.description != metadata_defaults["description"]:
+                    metadata.description = metadata_defaults["description"]
+                    meta_updates.append("description")
+                if metadata and metadata.slug != section_definition["slug"]:
+                    metadata.slug = section_definition["slug"]
+                    meta_updates.append("slug")
+                if meta_updates:
+                    metadata.save(update_fields=meta_updates)
 
             section_updates = []
-            for field, value in section_defaults.items():
-                if getattr(section, field) != value:
-                    setattr(section, field, value)
-                    section_updates.append(field)
+            if getattr(section, "order", None) != section_order:
+                section.order = section_order
+                section_updates.append("order")
+            if section.metadata_id is None and metadata is not None:
+                section.metadata = metadata
+                section_updates.append("metadata")
             if section_updates:
                 section.save(update_fields=section_updates)
 
@@ -342,16 +398,22 @@ def dat_sections_need_sync(dat) -> bool:
     """
     expected_section_order = [blueprint["slug"] for blueprint in SECTION_BLUEPRINTS]
     actual_section_order = list(
-        dat.sections.order_by("order", "id").values_list("slug", flat=True)
+        dat.sections.order_by("order", "id").values_list("metadata__slug", flat=True)
     )
     if actual_section_order != expected_section_order[: len(actual_section_order)] or len(actual_section_order) != len(expected_section_order):
         return True
 
-    sections = dat.sections.all()
+    sections = dat.sections.select_related("metadata").all()
     for section in sections:
         blueprint = SECTION_BLUEPRINT_MAP.get(section.slug)
         if not blueprint:
             continue
+        expected_title = blueprint.get("title", "")
+        expected_description = blueprint.get("description", "")
+        if section.title != expected_title:
+            return True
+        if section.description != expected_description:
+            return True
         blueprint_parts = blueprint.get("parts", ())
         if not blueprint_parts:
             continue

@@ -1,17 +1,17 @@
-import os
+import json
 import shutil
 import tempfile
 from unittest.mock import patch
+from urllib.error import HTTPError
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
-from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
-from .models import Diagram
-from .validation import sanitize_diagram_title, validate_drawio_xml
+from .models import DrawIODiagram
+from .validation import sanitize_diagram_title
 
 
 class DiagramTitleValidationTest(SimpleTestCase):
@@ -27,20 +27,6 @@ class DiagramTitleValidationTest(SimpleTestCase):
             sanitize_diagram_title("Schema\x08Name")
 
 
-class DrawioXmlValidationTest(SimpleTestCase):
-    def test_accepts_mxfile_payload(self):
-        xml = "<mxfile><diagram id=\"test\"></diagram></mxfile>"
-        self.assertEqual(validate_drawio_xml(xml), xml)
-
-    def test_rejects_non_drawio_root(self):
-        with self.assertRaises(ValidationError):
-            validate_drawio_xml("<svg></svg>")
-
-    def test_rejects_doctype(self):
-        with self.assertRaises(ValidationError):
-            validate_drawio_xml("<!DOCTYPE html><mxfile></mxfile>")
-
-
 class DiagramImportViewTest(TestCase):
     def setUp(self) -> None:
         super().setUp()
@@ -49,7 +35,7 @@ class DiagramImportViewTest(TestCase):
         self._media_override = self.settings(MEDIA_ROOT=self._media_dir)
         self._media_override.enable()
         self.user = get_user_model().objects.create_user(username="importer", password="pwd")
-        self.diagram = Diagram.objects.create(title="Test diagram", owner=self.user)
+        self.diagram = DrawIODiagram.objects.create(title="Test diagram", owner=self.user)
         self.url = reverse("diagrams:import_xml", args=[self.diagram.pk])
 
     def tearDown(self) -> None:
@@ -65,14 +51,9 @@ class DiagramImportViewTest(TestCase):
         self.assertFalse(data.get("ok"))
         self.assertEqual(data.get("error"), "invalid_diagram")
 
-    @patch("diagrams.views._regenerate_drawio_thumbnail")
-    def test_imports_valid_drawio_file(self, mock_regenerate):
-        def fake_regen(diagram, xml_payload):
-            diagram.thumbnail.save("thumb.png", ContentFile(b"fake image"), save=False)
-            diagram.save(update_fields=["thumbnail"])
-            return True
-
-        mock_regenerate.side_effect = fake_regen
+    @patch("diagrams.views.enqueue_drawio_export_job")
+    def test_imports_valid_drawio_file(self, mock_enqueue_job):
+        mock_enqueue_job.return_value = type("Job", (), {"id": "33333333-3333-3333-3333-333333333333", "status": "queued"})()
         self.client.force_login(self.user)
         xml = "<mxGraphModel><root><mxCell id=\"0\" /></root></mxGraphModel>"
         payload = SimpleUploadedFile("schema.drawio", xml.encode("utf-8"), content_type="application/xml")
@@ -81,12 +62,12 @@ class DiagramImportViewTest(TestCase):
         data = response.json()
         self.assertTrue(data.get("ok"))
         self.assertIn("thumbnail_url", data.get("diagram", {}))
-        self.assertTrue(data["diagram"]["thumbnail_url"].endswith("/thumb.png"))
-        mock_regenerate.assert_called_once()
-        args, _ = mock_regenerate.call_args
-        self.assertEqual(args[1], xml)
+        self.assertIsNone(data["diagram"]["thumbnail_url"])
+        self.assertIn("job", data)
+        self.assertEqual(data["job"]["status"], "queued")
+        mock_enqueue_job.assert_called_once()
         self.diagram.refresh_from_db()
-        self.assertEqual(self.diagram.xml, xml)
+        self.assertEqual(self.diagram.read_xml(), xml)
 
 
 class DiagramViewerContextTest(TestCase):
@@ -97,28 +78,223 @@ class DiagramViewerContextTest(TestCase):
         self._media_override = self.settings(MEDIA_ROOT=self._media_dir)
         self._media_override.enable()
         self.user = get_user_model().objects.create_user(username="viewer", password="pwd")
-        self.diagram = Diagram.objects.create(title="Diag", owner=self.user, xml="<mxGraphModel/>")
+        self.diagram = DrawIODiagram.objects.create(title="Diag", owner=self.user)
+        self.diagram.write_xml("<mxGraphModel/>")
         self.url = reverse("diagrams:viewer_context", args=[self.diagram.pk])
 
     def tearDown(self) -> None:
         self._media_override.disable()
         super().tearDown()
 
-    @patch("diagrams.views._regenerate_drawio_thumbnail")
-    def test_regenerates_missing_thumbnail_on_view(self, mock_regenerate):
+    @patch("diagrams.views.enqueue_drawio_export_job")
+    def test_enqueues_missing_thumbnail_on_view(self, mock_enqueue_job):
         self.client.force_login(self.user)
-        self.diagram.thumbnail.save("thumb.png", ContentFile(b"stale"), save=True)
-        stale_path = self.diagram.thumbnail.path
-        os.remove(stale_path)
-
-        def fake_regen(diagram, xml_payload):
-            diagram.thumbnail.save("thumb.png", ContentFile(b"fresh"), save=False)
-            diagram.save(update_fields=["thumbnail"])
-            return True
-
-        mock_regenerate.side_effect = fake_regen
+        mock_enqueue_job.return_value = type("Job", (), {"id": "44444444-4444-4444-4444-444444444444", "status": "queued"})()
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertTrue(data["diagram"]["thumbnail_url"].endswith("/thumb.png"))
-        mock_regenerate.assert_called_once_with(self.diagram, "<mxGraphModel/>")
+        self.assertIsNone(data["diagram"]["thumbnail_url"])
+        self.assertIn("job", data)
+        self.assertEqual(data["job"]["status"], "queued")
+        mock_enqueue_job.assert_called_once_with(
+            self.diagram.pk,
+            xml_payload="<mxGraphModel/>",
+            requested_by=self.user,
+            source="viewer_context",
+        )
+
+
+class DiagramSaveXmlAsyncTest(TestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.user = get_user_model().objects.create_user(username="save-xml-user", password="pwd")
+        self.diagram = DrawIODiagram.objects.create(title="Save xml diagram", owner=self.user)
+        self.url = reverse("diagrams:save_xml", args=[self.diagram.pk])
+
+    @patch("diagrams.views.enqueue_drawio_export_job")
+    def test_save_xml_enqueues_drawio_job(self, mock_enqueue_job):
+        mock_enqueue_job.return_value = type("Job", (), {"id": "66666666-6666-6666-6666-666666666666", "status": "queued"})()
+        self.client.force_login(self.user)
+        xml = "<mxGraphModel><root><mxCell id=\"1\" /></root></mxGraphModel>"
+        response = self.client.post(
+            self.url,
+            data=json.dumps({"xml": xml}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["ok"])
+        self.assertIn("job", payload)
+        self.assertEqual(payload["job"]["status"], "queued")
+        mock_enqueue_job.assert_called_once_with(
+            self.diagram.pk,
+            xml_payload=xml,
+            requested_by=self.user,
+            source="save_xml",
+        )
+
+
+class LikeC4MetadataAuthTest(TestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.url = reverse("diagrams:likec4_metadata")
+        self.payload = {
+            "path": "diagrams/123/likec4.c4",
+            "size": 10,
+            "content_type": "text/plain",
+        }
+
+    @patch("diagrams.views.emit_baseline_metric")
+    def test_requires_auth_or_token(self, emit_metric):
+        with self.settings(LIKEC4_METADATA_TOKEN="secret-token"):
+            response = self.client.post(
+                self.url,
+                data=json.dumps(self.payload),
+                content_type="application/json",
+            )
+        self.assertEqual(response.status_code, 403)
+        data = response.json()
+        self.assertFalse(data.get("ok"))
+        self.assertEqual(data.get("error"), "unauthorized")
+        emit_metric.assert_called_once()
+        _, kwargs = emit_metric.call_args
+        self.assertEqual(kwargs["dimensions"]["surface"], "likec4_metadata")
+        self.assertEqual(kwargs["dimensions"]["outcome"], "unauthorized")
+        self.assertFalse(kwargs["success"])
+
+    @patch("diagrams.views.enqueue_likec4_export_job")
+    def test_allows_valid_token(self, mock_enqueue):
+        mock_enqueue.return_value = type("Job", (), {"id": "11111111-1111-1111-1111-111111111111", "status": "queued"})()
+        payload = dict(self.payload, token="secret-token")
+        with self.settings(LIKEC4_METADATA_TOKEN="secret-token"):
+            response = self.client.post(
+                self.url,
+                data=json.dumps(payload),
+                content_type="application/json",
+            )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data.get("ok"))
+        self.assertIn("job", data)
+        self.assertEqual(data["job"]["status"], "queued")
+        mock_enqueue.assert_called_once()
+
+    @patch("diagrams.views.enqueue_likec4_export_job")
+    def test_allows_authenticated_user(self, mock_enqueue):
+        mock_enqueue.return_value = type("Job", (), {"id": "22222222-2222-2222-2222-222222222222", "status": "queued"})()
+        user = get_user_model().objects.create_user(username="meta-auth", password="pwd")
+        self.client.force_login(user)
+        with self.settings(LIKEC4_METADATA_TOKEN="secret-token"):
+            response = self.client.post(
+                self.url,
+                data=json.dumps(self.payload),
+                content_type="application/json",
+            )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data.get("ok"))
+        self.assertIn("job", data)
+        self.assertEqual(data["job"]["status"], "queued")
+        mock_enqueue.assert_called_once()
+
+
+class LikeC4ExportBaselineTests(SimpleTestCase):
+    @patch("diagrams.likec4_exports.emit_baseline_metric")
+    def test_enqueue_emits_success_metric(self, emit_metric):
+        class Response:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        with self.settings(
+            LIKEC4_EXPORT_ENABLED=True,
+            LIKEC4_EXPORT_URL="http://example.local/export",
+            LIKEC4_EXPORT_TIMEOUT=1,
+            LIKEC4_API_TOKEN="",
+        ):
+            with patch("diagrams.likec4_exports.urlopen", return_value=Response()):
+                from .likec4_exports import enqueue_likec4_export
+
+                result = enqueue_likec4_export("diagrams/1/likec4.c4", source="test")
+
+        self.assertTrue(result)
+        emit_metric.assert_called_once()
+        _, kwargs = emit_metric.call_args
+        self.assertEqual(kwargs["dimensions"]["outcome"], "ok")
+
+    @patch("diagrams.likec4_exports.emit_baseline_metric")
+    def test_enqueue_emits_failure_metric(self, emit_metric):
+        with self.settings(
+            LIKEC4_EXPORT_ENABLED=True,
+            LIKEC4_EXPORT_URL="http://example.local/export",
+            LIKEC4_EXPORT_TIMEOUT=1,
+            LIKEC4_API_TOKEN="",
+        ):
+            with patch(
+                "diagrams.likec4_exports.urlopen",
+                side_effect=HTTPError(
+                    url="http://example.local/export",
+                    code=503,
+                    msg="Service Unavailable",
+                    hdrs=None,
+                    fp=None,
+                ),
+            ):
+                from .likec4_exports import enqueue_likec4_export
+
+                result = enqueue_likec4_export("diagrams/1/likec4.c4", source="test")
+
+        self.assertFalse(result)
+        emit_metric.assert_called_once()
+        _, kwargs = emit_metric.call_args
+        self.assertEqual(kwargs["dimensions"]["outcome"], "http_error")
+
+
+class ProxySecurityTests(TestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.user = get_user_model().objects.create_user(username="proxy-user", password="pwd")
+
+    def test_drawio_proxy_blocks_absolute_url_path(self):
+        with self.settings(DRAWIO_BASE_URL="http://drawio:8080"):
+            with patch("diagrams.views.urlopen") as mock_urlopen:
+                response = self.client.get("/diagrams/drawio/proxy/http://evil.example/")
+        self.assertEqual(response.status_code, 404)
+        mock_urlopen.assert_not_called()
+
+    def test_drawio_proxy_blocks_non_allowlisted_upstream_host(self):
+        with self.settings(
+            DRAWIO_BASE_URL="http://drawio:8080",
+            DRAWIO_PROXY_ALLOWED_UPSTREAM_HOSTS="allowed.internal",
+        ):
+            with patch("diagrams.views.urlopen") as mock_urlopen:
+                response = self.client.get(reverse("diagrams:drawio_proxy_root"))
+        self.assertEqual(response.status_code, 404)
+        mock_urlopen.assert_not_called()
+
+    def test_likec4_proxy_blocks_path_traversal(self):
+        self.client.force_login(self.user)
+        with self.settings(LIKEC4_EDITOR_URL="http://likec4:4173"):
+            with patch("diagrams.views.urlopen") as mock_urlopen:
+                response = self.client.get("/diagrams/likec4/editor/..%2fsecrets")
+        self.assertEqual(response.status_code, 404)
+        mock_urlopen.assert_not_called()
+
+    def test_likec4_proxy_blocks_oversized_post_payload(self):
+        self.client.force_login(self.user)
+        with self.settings(
+            LIKEC4_EDITOR_URL="http://likec4:4173",
+            LIKEC4_PROXY_MAX_BODY_BYTES=4,
+        ):
+            with patch("diagrams.views.urlopen") as mock_urlopen:
+                response = self.client.post(
+                    reverse("diagrams:likec4_proxy_root"),
+                    data=b"abcdef",
+                    content_type="application/json",
+                )
+        self.assertEqual(response.status_code, 413)
+        mock_urlopen.assert_not_called()

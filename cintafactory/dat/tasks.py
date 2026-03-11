@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import logging
 import traceback
-from threading import Thread
+from threading import current_thread, main_thread
 
 from django.db import close_old_connections
 from django.urls import reverse
 from django.utils import timezone
+
+from cintafactory.async_jobs import enqueue_pdf_export_job
 
 from .models import DAT
 from .pdf import generate_dat_pdf
@@ -16,10 +18,10 @@ from workflows.notifications import create_user_notification
 logger = logging.getLogger(__name__)
 
 
-def schedule_dat_pdf_generation(dat: DAT, user, *, base_url: str | None = None) -> bool:
+def schedule_dat_pdf_generation(dat: DAT, user, *, base_url: str | None = None):
     """
     Start an asynchronous PDF export for the given DAT if none is running.
-    Returns True when the job has been scheduled, False otherwise.
+    Returns the async job when scheduled, None otherwise.
     """
     requester = user if getattr(user, "is_authenticated", False) else None
     now = timezone.now()
@@ -33,24 +35,26 @@ def schedule_dat_pdf_generation(dat: DAT, user, *, base_url: str | None = None) 
     if not updated:
         print(f"[DAT PDF] generation deja en cours (dat_id={dat.pk}).", flush=True)
         logger.info("Generation PDF DAT %s deja en cours, demande ignoree.", dat.pk)
-        return False
+        return None
     print(f"[DAT PDF] generation planifiee (dat_id={dat.pk}, demandeur={display}).", flush=True)
     logger.info(
         "Generation PDF DAT planifiee (dat_id=%s, demandeur=%s).",
         dat.pk,
         display,
     )
-    thread = Thread(
-        target=_run_pdf_generation,
-        args=(dat.pk, base_url),
-        daemon=True,
+    job = enqueue_pdf_export_job(
+        dat.pk,
+        requested_by=requester,
+        base_url=base_url,
+        source="dat_trigger",
     )
-    thread.start()
-    return True
+    return job
 
 
 def _run_pdf_generation(dat_id: int, base_url: str | None):
-    close_old_connections()
+    success = False
+    if current_thread() is not main_thread():
+        close_old_connections()
     try:
         dat = (
             DAT.objects.select_related("application", "owner")
@@ -61,7 +65,7 @@ def _run_pdf_generation(dat_id: int, base_url: str | None):
         print(f"[DAT PDF] dat introuvable pour generation (dat_id={dat_id}).", flush=True)
         logger.warning("DAT %s introuvable pour la génération PDF.", dat_id)
         _mark_export_finished(dat_id)
-        return
+        return False
     reference = dat.reference or dat.title or f"DAT #{dat.pk}"
     print(f"[DAT PDF] generation lancee ({reference}).", flush=True)
     logger.info("Generation PDF DAT %s lancee.", reference)
@@ -74,6 +78,7 @@ def _run_pdf_generation(dat_id: int, base_url: str | None):
         )
         logger.info("PDF DAT %s enregistre (%s octets) dans %s.", reference, len(pdf_content), path)
         _notify_pdf_export_ready(dat)
+        success = True
     except Exception as exc:  # pragma: no cover - log unexpected errors
         print(
             f"[DAT PDF] erreur generation (dat_id={dat_id}, type={type(exc).__name__}, msg={exc}).",
@@ -83,7 +88,9 @@ def _run_pdf_generation(dat_id: int, base_url: str | None):
         logger.exception("Erreur lors de la génération PDF du DAT %s", dat_id)
     finally:
         _mark_export_finished(dat_id)
-        close_old_connections()
+        if current_thread() is not main_thread():
+            close_old_connections()
+    return success
 
 
 def _mark_export_finished(dat_id: int):

@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LikeC4 Live Editor</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Crect width='120' height='120' rx='18' fill='%231e1e1e'/%3E%3Cpath d='M24 30h72v12H24zM36 54h48v12H36zM48 78h24v12H48z' fill='%23b3f180'/%3E%3C/svg%3E" />
+  <style>
+    :root {
+      --bg: #111318;
+      --panel: #1e1e1e;
+      --border: #2c2c2c;
+      --accent: #3ba55d;
+      --text: #e5e5e5;
+      --muted: #9da6b5;
+      --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+      --font: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at 20% 20%, rgba(59, 165, 93, 0.08), transparent 30%),
+                  radial-gradient(circle at 80% 0%, rgba(70, 172, 255, 0.05), transparent 32%),
+                  var(--bg);
+      color: var(--text);
+      font-family: "Inter", "Segoe UI", sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: linear-gradient(90deg, #1f1f1f, #1b1b1f);
+      border-bottom: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      gap: 12px;
+    }
+    .title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+      letter-spacing: 0.2px;
+    }
+    .title span {
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 500;
+    }
+    .badge {
+      background: rgba(59, 165, 93, 0.14);
+      color: #b3f180;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      border: 1px solid rgba(59, 165, 93, 0.3);
+    }
+    .actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .view-picker {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--muted);
+      font-family: var(--font);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+    .view-picker select {
+      background: #252830;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-family: var(--font);
+      font-size: 12px;
+    }
+    button {
+      background: var(--accent);
+      color: #0c150f;
+      border: 1px solid #2f8d4b;
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.05s ease, box-shadow 0.15s ease, background 0.2s ease;
+      font-family: var(--font);
+      letter-spacing: 0.1px;
+      box-shadow: 0 8px 20px rgba(59, 165, 93, 0.25);
+    }
+    button.secondary {
+      background: #252830;
+      color: var(--text);
+      border-color: var(--border);
+      box-shadow: none;
+    }
+    button:hover { transform: translateY(-1px); }
+    button:active { transform: translateY(0); }
+    .layout {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1.1fr 1fr;
+      grid-template-rows: 1fr;
+      gap: 1px;
+      background: var(--border);
+      min-height: 0;
+    }
+    .pane {
+      background: var(--panel);
+      position: relative;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .pane h2 {
+      margin: 0;
+      padding: 12px 14px;
+      font-size: 13px;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      letter-spacing: 0.2px;
+    }
+    #editor {
+      flex: 1;
+      min-height: 0;
+    }
+    .status {
+      padding: 10px 14px;
+      font-size: 12px;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+      background: #181a1f;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-family: var(--font);
+    }
+    .status strong { color: #b3f180; }
+    iframe {
+      border: none;
+      width: 100%;
+      flex: 1;
+      background: #0f1115;
+    }
+    @media (max-width: 1024px) {
+      .layout { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+    }
+  </style>
+  </head>
+<body>
+  <header>
+    <div class="title">
+      <img src="Cintamaya_Logo.png" alt="Cintamaya logo" style="height:28px; width:auto; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.35));" />
+      Cintamaya - LikeC4 Editor
+      <span>Code + Diagram</span>
+    </div>
+    <div class="actions">
+      <div class="view-picker">
+        <label for="viewSelect">View</label>
+        <select id="viewSelect"></select>
+      </div>
+      <button id="saveBtn">Save &amp; Render ⟳</button>
+      <button class="secondary" id="flowBtn">Flux JSON</button>
+      <button class="secondary" id="reloadBtn">Reload Viewer</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <section class="pane editor">
+      <h2>editable file</h2>
+      <div id="editor"></div>
+      <div class="status" id="status">Ctrl + S to save &amp; render</div>
+    </section>
+    <section class="pane diagram">
+      <h2>Diagrams</h2>
+      <iframe id="diagramFrame" title="LikeC4 Diagram" src="about:blank"></iframe>
+    </section>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs/loader.js"></script>
+  <script>
+    const statusEl = document.getElementById('status');
+    const saveBtn = document.getElementById('saveBtn');
+    const flowBtn = document.getElementById('flowBtn');
+    const reloadBtn = document.getElementById('reloadBtn');
+    const iframe = document.getElementById('diagramFrame');
+    const viewSelect = document.getElementById('viewSelect');
+    const params = new URLSearchParams(window.location.search);
+    const initialFileParam = params.get('file');
+    const initialViewParam = params.get('view');
+    let activeFile = initialFileParam ? String(initialFileParam).trim() : '';
+    let activeView = initialViewParam ? String(initialViewParam).trim() : '';
+    let currentBundleUrl = '';
+
+    const getFileLabel = () => activeFile || 'likec4/default.c4';
+    const getFileQuery = () => (activeFile ? `?file=${encodeURIComponent(activeFile)}` : '');
+    const getViewLabel = () => activeView || (viewSelect && viewSelect.value) || 'index';
+
+    const updateFileContext = (nextFile) => {
+      const normalized = nextFile ? String(nextFile).trim() : '';
+      if (!normalized || normalized === activeFile) {
+        return;
+      }
+      activeFile = normalized;
+      const url = new URL(window.location.href);
+      url.searchParams.set('file', activeFile);
+      window.history.replaceState({}, '', url.toString());
+      document.title = `LikeC4 - ${getFileLabel()}`;
+    };
+
+    const updateViewContext = (nextView) => {
+      const normalized = nextView ? String(nextView).trim() : '';
+      if (!normalized) {
+        return;
+      }
+      activeView = normalized;
+      const url = new URL(window.location.href);
+      url.searchParams.set('view', activeView);
+      window.history.replaceState({}, '', url.toString());
+    };
+
+    if (activeFile) {
+      document.title = `LikeC4 - ${getFileLabel()}`;
+    }
+
+    const buildViewerUrl = (bundleUrl, viewId, cacheBust = false) => {
+      const viewerUrl = new URL('viewer.html', window.location.href);
+      if (viewId) {
+        viewerUrl.searchParams.set('view', viewId);
+      }
+      if (bundleUrl) {
+        viewerUrl.searchParams.set('bundle', bundleUrl);
+      }
+      if (cacheBust) {
+        viewerUrl.searchParams.set('t', Date.now());
+      }
+      return viewerUrl.toString();
+    };
+
+    const setViewerSrc = (bundleUrl, cacheBust = false) => {
+      if (bundleUrl) {
+        currentBundleUrl = bundleUrl;
+      }
+      const viewId = getViewLabel();
+      const bundle = currentBundleUrl || 'likec4-webcomponent.js';
+      iframe.src = buildViewerUrl(bundle, viewId, cacheBust);
+    };
+
+    const setStatus = (text, accent = false) => {
+      statusEl.innerHTML = accent ? '<strong>' + text + '</strong>' : text;
+    };
+
+    const reloadDiagram = () => {
+      setViewerSrc(currentBundleUrl, true);
+    };
+
+    const getFilenameFromDisposition = (header) => {
+      if (!header) return null;
+      const utf8 = header.match(/filename\*=UTF-8''([^;]+)/i);
+      if (utf8?.[1]) return decodeURIComponent(utf8[1]);
+      const fallback = header.match(/filename="?([^";]+)"?/i);
+      return fallback ? fallback[1] : null;
+    };
+
+    const getCookie = (name) => {
+      const prefix = `${name}=`;
+      const cookies = document.cookie ? document.cookie.split(';') : [];
+      for (const raw of cookies) {
+        const trimmed = raw.trim();
+        if (trimmed.startsWith(prefix)) {
+          return decodeURIComponent(trimmed.slice(prefix.length));
+        }
+      }
+      return '';
+    };
+
+    const getCsrfToken = () => getCookie('csrftoken');
+
+    const downloadFlowMatrix = async () => {
+      setStatus('Génération du tableau de flux...');
+      try {
+        const res = await fetch(`flow-matrix${getFileQuery()}`);
+        if (!res.ok) throw new Error('Export flux échoué');
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        const filename = getFilenameFromDisposition(res.headers.get('Content-Disposition')) || 'flux.json';
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+        setStatus(`Flux exportés: ${filename}`, true);
+      } catch (err) {
+        setStatus(err.message);
+      }
+    };
+
+    const stripComments = (text) =>
+      String(text || '')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .split('\n')
+        .map(line => line.replace(/\/\/.*$/, ''))
+        .join('\n');
+
+    const extractViews = (content) => {
+      const cleaned = stripComments(content);
+      const regex = /\bview\s+([A-Za-z_][\w-]*)\b/g;
+      const seen = new Set();
+      const views = [];
+      let match;
+      while ((match = regex.exec(cleaned)) !== null) {
+        const name = match[1];
+        if (name === 'of') continue;
+        if (!seen.has(name)) {
+          seen.add(name);
+          views.push(name);
+        }
+      }
+      if (!views.length) {
+        views.push('index');
+      }
+      views.sort((a, b) => {
+        if (a === 'index') return -1;
+        if (b === 'index') return 1;
+        return a.localeCompare(b);
+      });
+      return views;
+    };
+
+    const updateViewOptions = (content) => {
+      if (!viewSelect) return;
+      const views = extractViews(content);
+      const current = activeView || viewSelect.value;
+      viewSelect.innerHTML = '';
+      views.forEach((view) => {
+        const option = document.createElement('option');
+        option.value = view;
+        option.textContent = view;
+        viewSelect.appendChild(option);
+      });
+      const next = views.includes(current) ? current : views[0];
+      viewSelect.value = next;
+      updateViewContext(next);
+    };
+
+    const loadContent = async (editor) => {
+      const res = await fetch(`c4${getFileQuery()}`);
+      const data = await res.json();
+      editor.setValue(data.content || '');
+      updateViewOptions(data.content || '');
+      if (data.bundle_url) {
+        currentBundleUrl = data.bundle_url;
+      }
+      setViewerSrc(currentBundleUrl, true);
+      setStatus(`Loaded ${getFileLabel()}`);
+      if (data.render_error) {
+        setStatus(`Render error: ${data.render_error}`);
+      }
+    };
+
+    const sendMetadataToParent = (content, response) => {
+      const size = new TextEncoder().encode(content || '').length;
+      const contentType = (response && response.content_type) || 'text/plain';
+      const resolvedFile = response && response.file ? response.file : activeFile;
+      const payload = {
+        source: 'likec4-editor',
+        event: 'saved',
+        file: resolvedFile || '',
+        size,
+        content_type: contentType,
+      };
+      if (response && response.png_path) {
+        payload.png_path = response.png_path;
+      }
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage(payload, '*');
+      }
+    };
+
+    const saveContent = async (editor) => {
+      setStatus('Saving...');
+      const headers = { 'Content-Type': 'application/json' };
+      const csrfToken = getCsrfToken();
+      if (csrfToken) {
+        headers['X-CSRFToken'] = csrfToken;
+      }
+      const res = await fetch(`save${getFileQuery()}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ content: editor.getValue() }),
+      });
+      if (!res.ok) throw new Error('Save failed');
+      const responsePayload = await res.json().catch(() => ({}));
+      if (responsePayload && responsePayload.file) {
+        updateFileContext(responsePayload.file);
+      }
+      updateViewOptions(editor.getValue());
+      if (responsePayload.bundle_url) {
+        currentBundleUrl = responsePayload.bundle_url;
+      }
+      setStatus('Saved. Rendering diagram...', true);
+      setViewerSrc(currentBundleUrl, true);
+      if (responsePayload.render_error) {
+        setStatus(`Render error: ${responsePayload.render_error}`);
+      }
+      sendMetadataToParent(editor.getValue(), responsePayload);
+    };
+
+    const registerC4Language = () => {
+      monaco.languages.register({ id: 'c4' });
+      monaco.languages.setLanguageConfiguration('c4', {
+        comments: { lineComment: '//', blockComment: ['/*', '*/'] },
+        brackets: [['{', '}'], ['[', ']'], ['(', ')']],
+        autoClosingPairs: [
+          { open: '{', close: '}' },
+          { open: '[', close: ']' },
+          { open: '(', close: ')' },
+          { open: '"', close: '"', notIn: ['string'] },
+          { open: '\'', close: '\'', notIn: ['string', 'comment'] },
+        ],
+      });
+      monaco.languages.setMonarchTokensProvider('c4', {
+        defaultToken: '',
+        tokenPostfix: '.c4',
+        keywords: [
+          'specification',
+          'model',
+          'views',
+          'view',
+          'element',
+          'system',
+          'container',
+          'component',
+          'actor',
+          'tag',
+          'include',
+          'style',
+          'title',
+        ],
+        operators: ['->', '<-'],
+        symbols: /->|<-|[#{}()\[\]]/,
+        tokenizer: {
+          root: [
+            [/#[a-zA-Z_][\w-]*/, 'tag'], // tags like #ui
+            [/[a-zA-Z_][\w-]*/, {
+              cases: {
+                '@keywords': 'keyword',
+                '@default': 'identifier'
+              }
+            }],
+            { include: '@whitespace' },
+            [/"([^"\\]|\\.)*$/, 'string.invalid' ],
+            [/"/, { token: 'string.quote', bracket: '@open', next: '@string' }],
+            [/'([^'\\]|\\.)*$/, 'string.invalid' ],
+            [/'/, { token: 'string.quote', bracket: '@open', next: '@sstring' }],
+            [/@symbols/, 'delimiter'],
+            [/[\d]+/, 'number'],
+          ],
+          string: [
+            [/[^\\"]+/, 'string'],
+            [/\\./, 'string.escape'],
+            [/"/, { token: 'string.quote', bracket: '@close', next: '@pop' }],
+          ],
+          sstring: [
+            [/[^\\']+/, 'string'],
+            [/\\./, 'string.escape'],
+            [/'/, { token: 'string.quote', bracket: '@close', next: '@pop' }],
+          ],
+          whitespace: [
+            [/[ \t\r\n]+/, 'white'],
+            [/\/\/.*$/, 'comment'],
+            [/\/\*/, 'comment', '@comment'],
+          ],
+          comment: [
+            [/[^/*]+/, 'comment' ],
+            [/\*\//, 'comment', '@pop' ],
+            [/[\/*]/, 'comment' ]
+          ],
+        },
+      });
+    };
+
+    require.config({ paths: { 'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      registerC4Language();
+      const editor = monaco.editor.create(document.getElementById('editor'), {
+        value: '',
+        language: 'c4',
+        theme: 'vs-dark',
+        fontFamily: 'Cascadia Code, Fira Code, "Fira Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace',
+        fontSize: 14,
+        automaticLayout: true,
+        minimap: { enabled: true },
+        scrollBeyondLastLine: false,
+        wordWrap: 'on',
+      });
+
+      loadContent(editor);
+
+      saveBtn.addEventListener('click', () => saveContent(editor).catch(err => setStatus(err.message)));
+      flowBtn.addEventListener('click', () => downloadFlowMatrix().catch(err => setStatus(err.message)));
+      viewSelect.addEventListener('change', () => {
+        updateViewContext(viewSelect.value);
+        setViewerSrc(currentBundleUrl, true);
+      });
+      reloadBtn.addEventListener('click', () => {
+        setStatus('Reloading viewer...');
+        reloadDiagram();
+      });
+
+      window.addEventListener('keydown', (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+          e.preventDefault();
+          saveContent(editor).catch(err => setStatus(err.message));
+        }
+      });
+    });
+  </script>
+</body>
+</html>

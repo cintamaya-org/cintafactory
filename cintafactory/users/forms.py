@@ -1,6 +1,10 @@
 from django import forms
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
+from django.core.files.uploadedfile import UploadedFile
 
 from .models import BusinessDirection, BusinessGroup, TechnicalDirection, Role, User
+from .profile_pictures import process_profile_picture_upload
 
 
 class RoleSelect(forms.Select):
@@ -59,12 +63,13 @@ class UserForm(forms.ModelForm):
             "email",
             "first_name",
             "last_name",
+            "profile_picture",
             "role",
             "business_group",
             "is_active",
             "is_staff",
             "is_superuser",
-    ]
+        ]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -75,7 +80,7 @@ class UserForm(forms.ModelForm):
             role_field.help_text = (
                 "Si le rôle est rattaché à une direction technique, l'utilisateur doit appartenir à un groupe de cette direction."
             )
-            role_field.required = True
+            role_field.required = not bool(getattr(self.instance, "pk", None))
         business_group = self.fields.get("business_group")
         if business_group:
             business_group.required = False
@@ -84,6 +89,11 @@ class UserForm(forms.ModelForm):
             business_group.help_text = (
                 "Sélectionnez un groupe uniquement si le rôle choisi est associé à une direction technique."
             )
+        profile_picture = self.fields.get("profile_picture")
+        if profile_picture:
+            profile_picture.required = False
+            profile_picture.label = "Photo de profil"
+            profile_picture.help_text = "Image redimensionnee en 350x350 (JPG, PNG ou WEBP)."
 
     def clean(self):
         cleaned_data = super().clean()
@@ -111,7 +121,7 @@ class UserForm(forms.ModelForm):
                 "business_group",
                 "Les rôles sans direction technique ne peuvent pas être associés à un groupe.",
             )
-        elif not role:
+        elif not role and not getattr(self.instance, "pk", None):
             self.add_error("role", "Chaque utilisateur doit avoir un rôle.")
 
         if password1 or password2:
@@ -121,8 +131,25 @@ class UserForm(forms.ModelForm):
                 self.add_error("password2", "Veuillez confirmer le mot de passe.")
             if password1 and password2 and password1 != password2:
                 self.add_error("password2", "Les mots de passe ne correspondent pas.")
+            if password1 and password2 and password1 == password2:
+                user_for_validation = self.instance
+                for field in ("username", "email", "first_name", "last_name"):
+                    if field in cleaned_data:
+                        setattr(user_for_validation, field, cleaned_data.get(field))
+                try:
+                    validate_password(password1, user=user_for_validation)
+                except ValidationError as exc:
+                    self.add_error("password1", exc)
 
         return cleaned_data
+
+    def clean_profile_picture(self):
+        picture = self.cleaned_data.get("profile_picture")
+        if picture in (None, False):
+            return picture
+        if not isinstance(picture, UploadedFile):
+            return picture
+        return process_profile_picture_upload(picture, field_name="profile_picture")
 
     def save(self, commit=True):
         user = super().save(commit=False)

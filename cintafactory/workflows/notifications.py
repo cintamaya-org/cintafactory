@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Iterable, List, Sequence, Set
@@ -14,6 +15,7 @@ from .models import HistoryNotificationSeen, NotificationMessage, NotificationTy
 
 
 DEFAULT_NOTIFICATION_LIMIT = 99
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -205,6 +207,16 @@ def create_user_notification(
         created_by_display=resolved_display,
         extra_data=extra_data or None,
     )
+    try:
+        from cintafactory.notifications.external import (
+            build_event_from_user_notification,
+            dispatch_external_notification,
+        )
+
+        event = build_event_from_user_notification(notification)
+        dispatch_external_notification(event)
+    except Exception:
+        logger.exception("Failed to dispatch external notifications.")
     return notification
 
 

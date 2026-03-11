@@ -1,3 +1,5 @@
+from collections import Counter
+
 from django.contrib.auth import logout
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import PasswordChangeDoneView, PasswordChangeView
@@ -6,6 +8,7 @@ from django.views import View
 from django.views.generic import TemplateView
 
 from .forms import AccountPasswordChangeForm
+from users.oauth_providers import list_oauth_providers
 
 
 class AccountProfileView(LoginRequiredMixin, TemplateView):
@@ -14,10 +17,32 @@ class AccountProfileView(LoginRequiredMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         user = self.request.user
+        icon_map = {
+            "google": "imgs/google_logo.svg",
+            "microsoft": "imgs/microsoft_logo.svg",
+            "amazon": "imgs/amazon_logo.svg",
+            "okta": "imgs/okta_logo.svg",
+            "cintamaya": "imgs/cintamaya_logo.svg",
+        }
+        connected_counts = Counter(user.oauth_accounts.values_list("provider", flat=True))
+        providers = []
+        for provider in list_oauth_providers():
+            connected_count = connected_counts.get(provider.slug, 0)
+            providers.append(
+                {
+                    "slug": provider.slug,
+                    "label": provider.label,
+                    "enabled": provider.enabled,
+                    "connected": connected_count > 0,
+                    "connected_count": connected_count,
+                    "icon": icon_map.get(provider.slug, ""),
+                }
+            )
         context.update(
             {
                 "user_obj": user,
                 "role": getattr(user, "role", None),
+                "oauth_providers": providers,
             }
         )
         return context

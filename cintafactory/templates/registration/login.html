@@ -3,133 +3,15 @@
 
 {% block title %}{% trans "Connexion" %}{% endblock %}
 
+{% block css %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'css/login.css' %}">
+{% endblock css %}
+
 {% block bodyclass %}login-body{% endblock %}
 
 {% block extrahead %}
     {{ block.super }}
-    <style>
-        .login-page {
-            min-height: 100vh;
-            display: flex;
-            flex-direction: row;
-            background: linear-gradient(135deg, #0f172a 0%, #1f2937 40%, #111827 100%);
-            color: #0f172a;
-        }
-
-        .login-page__form {
-            flex: 1;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 3rem 2rem;
-            background-color: #0b2239;
-            background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%201000%201000%22%20preserveAspectRatio%3D%22none%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22hexagonGradient%22%20gradientUnits%3D%22userSpaceOnUse%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221000%22%20y2%3D%221000%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22rgba%2843%2C114%2C188%2C1%29%22/%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22rgba%28116%2C176%2C255%2C1%29%22/%3E%3C/linearGradient%3E%3Cmask%20id%3D%22hexagonMask%22%3E%3Crect%20width%3D%221000%22%20height%3D%221000%22%20fill%3D%22%23fff%22/%3E%3C/mask%3E%3C/defs%3E%3Cg%20mask%3D%22url%28%23hexagonMask%29%22%20fill%3D%22none%22%3E%3Cpath%20d%3D%22M70.16%20366.96L114.33%20392.46%20114.33%20443.46%2070.16%20468.96%2025.99%20443.46%2025.99%20392.46zM70.16%20519.96L114.33%20545.46%20114.33%20596.46%2070.16%20621.96%2025.99%20596.46%2025.99%20545.46zM70.16%20672.96L114.33%20698.46%20114.33%20749.46%2070.16%20774.96%2025.99%20749.46%2025.99%20698.46zM158.5%2060.96L202.66%2086.46%20202.66%20137.46%20158.5%20162.96%20114.33%20137.46%20114.33%2086.46zM114.33%20137.46L158.5%20162.96%20158.5%20213.96%20114.33%20239.46%2070.16%20213.96%2070.16%20162.96zM114.33%20443.46L158.5%20468.96%20158.5%20519.96%20114.33%20545.46%2070.16%20519.96%2070.16%20468.96zM114.33%20902.46L158.5%20927.96%20158.5%20978.96%20114.33%201004.46%2070.16%20978.96%2070.16%20927.96zM202.66%20290.46L246.83%20315.96%20246.83%20366.96%20202.66%20392.46%20158.5%20366.96%20158.5%20315.96zM202.66%20596.46L246.83%20621.96%20246.83%20672.96%20202.66%20698.46%20158.5%20672.96%20158.5%20621.96zM202.66%20902.46L246.83%20927.96%20246.83%20978.96%20202.66%201004.46%20158.5%20978.96%20158.5%20927.96zM335.17%20366.96L379.34%20392.46%20379.34%20443.46%20335.17%20468.96%20291%20443.46%20291%20392.46zM335.17%20825.96L379.34%20851.46%20379.34%20902.46%20335.17%20927.96%20291%20902.46%20291%20851.46zM335.17%20978.96L379.34%201004.46%20379.34%201055.46%20335.17%201080.96%20291%201055.46%20291%201004.46zM379.34%20137.46L423.51%20162.96%20423.51%20213.96%20379.34%20239.46%20335.17%20213.96%20335.17%20162.96zM379.34%20290.46L423.51%20315.96%20423.51%20366.96%20379.34%20392.46%20335.17%20366.96%20335.17%20315.96zM379.34%20596.46L423.51%20621.96%20423.51%20672.96%20379.34%20698.46%20335.17%20672.96%20335.17%20621.96zM423.51%20672.96L467.68%20698.46%20467.68%20749.46%20423.51%20774.96%20379.34%20749.46%20379.34%20698.46zM511.84%2060.96L556.01%2086.46%20556.01%20137.46%20511.84%20162.96%20467.68%20137.46%20467.68%2086.46zM467.68%20137.46L511.84%20162.96%20511.84%20213.96%20467.68%20239.46%20423.51%20213.96%20423.51%20162.96zM556.01%20443.46L600.18%20468.96%20600.18%20519.96%20556.01%20545.46%20511.84%20519.96%20511.84%20468.96zM600.18%20978.96L644.35%201004.46%20644.35%201055.46%20600.18%201080.96%20556.01%201055.46%20556.01%201004.46zM644.35%20137.46L688.52%20162.96%20688.52%20213.96%20644.35%20239.46%20600.18%20213.96%20600.18%20162.96zM688.52%20213.96L732.69%20239.46%20732.69%20290.46%20688.52%20315.96%20644.35%20290.46%20644.35%20239.46zM644.35%20596.46L688.52%20621.96%20688.52%20672.96%20644.35%20698.46%20600.18%20672.96%20600.18%20621.96zM688.52%20978.96L732.69%201004.46%20732.69%201055.46%20688.52%201080.96%20644.35%201055.46%20644.35%201004.46zM776.86%20213.96L821.02%20239.46%20821.02%20290.46%20776.86%20315.96%20732.69%20290.46%20732.69%20239.46zM732.69%20596.46L776.86%20621.96%20776.86%20672.96%20732.69%20698.46%20688.52%20672.96%20688.52%20621.96zM732.69%20749.46L776.86%20774.96%20776.86%20825.96%20732.69%20851.46%20688.52%20825.96%20688.52%20774.96zM821.02%20137.46L865.19%20162.96%20865.19%20213.96%20821.02%20239.46%20776.86%20213.96%20776.86%20162.96zM865.19%20672.96L909.36%20698.46%20909.36%20749.46%20865.19%20774.96%20821.02%20749.46%20821.02%20698.46zM953.53%20672.96L997.7%20698.46%20997.7%20749.46%20953.53%20774.96%20909.36%20749.46%20909.36%20698.46zM953.53%20978.96L997.7%201004.46%20997.7%201055.46%20953.53%201080.96%20909.36%201055.46%20909.36%201004.46zM997.7%20-15.54L1041.87%209.96%201041.87%2060.96%20997.7%2086.46%20953.53%2060.96%20953.53%209.96zM997.7%20137.46L1041.87%20162.96%201041.87%20213.96%20997.7%20239.46%20953.53%20213.96%20953.53%20162.96zM1041.87%20213.96L1086.04%20239.46%201086.04%20290.46%201041.87%20315.96%20997.7%20290.46%20997.7%20239.46zM1041.87%20366.96L1086.04%20392.46%201086.04%20443.46%201041.87%20468.96%20997.7%20443.46%20997.7%20392.46zM997.7%20443.46L1041.87%20468.96%201041.87%20519.96%20997.7%20545.46%20953.53%20519.96%20953.53%20468.96zM1041.87%20672.96L1086.04%20698.46%201086.04%20749.46%201041.87%20774.96%20997.7%20749.46%20997.7%20698.46z%22%20stroke%3D%22url%28%23hexagonGradient%29%22%20stroke-width%3D%222%22/%3E%3C/g%3E%3C/svg%3E");
-            background-repeat: no-repeat;
-            background-size: cover;
-            background-position: center;
-        }
-
-        .login-card__title {
-            margin: 0;
-            font-size: 2rem;
-            font-weight: 600;
-            color: #0f172a;
-            text-align: center;
-        }
-
-        .login-card__subtitle {
-            margin: 0.75rem 0 2.5rem;
-            text-align: center;
-            color: #4b5563;
-            font-size: 1rem;
-        }
-
-        .login-form .input-field {
-            margin-bottom: 1.75rem;
-        }
-
-        .login-form .input-field label {
-            display: block;
-            margin-bottom: 0.5rem;
-            font-weight: 600;
-            color: #1f2937;
-            position: static;
-            transform: none;
-            transform-origin: initial;
-            font-size: 0.95rem;
-        }
-
-        .login-form .input-field input {
-            background: #f9fafb;
-            border-radius: 8px;
-            border: 1px solid #d1d5db;
-            padding: 0 0.75rem;
-            height: 3.25rem;
-            box-shadow: none;
-        }
-
-        .login-form .input-field input:focus {
-            border-color: #2563eb;
-            box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
-        }
-
-        .login-errors {
-            margin-bottom: 1.5rem;
-            padding: 0.75rem 1rem;
-            border-left: 4px solid #dc2626;
-            background: rgba(220, 38, 38, 0.08);
-            border-radius: 8px;
-            color: #991b1b;
-        }
-
-        .login-errors p {
-            margin: 0.25rem 0;
-        }
-
-        .login-page__illustration {
-            flex: 1;
-            background: #ffffff;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 3rem;
-        }
-
-        .login-page__illustration img {
-            max-width: min(480px, 100%);
-            width: 100%;
-            height: auto;
-            object-fit: contain;
-        }
-
-        @media (max-width: 1024px) {
-            .login-page {
-                flex-direction: column-reverse;
-            }
-
-            .login-page__form,
-            .login-page__illustration {
-                flex: initial;
-                width: 100%;
-                max-width: none;
-            }
-
-            .login-page__illustration {
-                padding: 2rem 1.5rem 1rem;
-                background: transparent;
-            }
-        }
-
-        @media (max-width: 640px) {
-            .login-card__title {
-                font-size: 1.75rem;
-            }
-
-            .login-card__subtitle {
-                font-size: 0.95rem;
-            }
-        }
-    </style>
 {% endblock %}
 
 {% block body %}
@@ -166,7 +48,7 @@
                         {{ form.password }}
                     </div>
 
-                    <div class="input-field" style="margin-top: 1.75rem;">
+                    <div class="input-field login-form__actions">
                         <button type="submit" class="btn waves-effect waves-light cinta-btn-primary cinta-btn-primary--block">
                             {% trans "Se connecter" %}
                         </button>
@@ -176,6 +58,34 @@
                         <input type="hidden" name="next" value="{{ next }}">
                     {% endif %}
                 </form>
+                {% if oauth_providers %}
+                    <div class="login-divider">{% trans "Ou" %}</div>
+                    <div class="login-oauth">
+                        {% for provider in oauth_providers %}
+                            {% if provider.enabled %}
+                                {% blocktrans with label=provider.label asvar provider_login_label %}Se connecter avec {{ label }}{% endblocktrans %}
+                                <a href="{{ provider.login_url }}"
+                                   class="btn waves-effect waves-light cinta-btn-secondary login-oauth__button login-oauth__button--icon"
+                                   aria-label="{{ provider_login_label }}"
+                                   title="{{ provider_login_label }}">
+                                    {% if provider.icon %}
+                                        <img src="{% static provider.icon %}" class="login-oauth__icon" alt="" aria-hidden="true">
+                                    {% endif %}
+                                </a>
+                            {% else %}
+                                {% blocktrans with label=provider.label asvar provider_login_label %}Se connecter avec {{ label }}{% endblocktrans %}
+                                <span class="btn waves-effect waves-light cinta-btn-secondary login-oauth__button login-oauth__button--icon login-oauth__button--disabled"
+                                      aria-disabled="true"
+                                      aria-label="{{ provider_login_label }}"
+                                      title="{{ provider_login_label }}">
+                                    {% if provider.icon %}
+                                        <img src="{% static provider.icon %}" class="login-oauth__icon" alt="" aria-hidden="true">
+                                    {% endif %}
+                                </span>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                {% endif %}
             </div>
         </section>
         <aside class="login-page__illustration">

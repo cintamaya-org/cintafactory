@@ -7,12 +7,12 @@
 {% with members_count=members|length %}
 <div class="card cinta-card">
   <div class="card-content">
-    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+    <div class="page-header">
       <div>
-        <h5 style="margin:0;">Rôle</h5>
-        <p style="margin:0; color:#666;">Détails pour {{ role.name }}</p>
+        <h5 class="page-header__title">Rôle</h5>
+        <p class="page-header__subtitle">Détails pour {{ role.name }}</p>
       </div>
-      <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+      <div class="page-header__actions">
         <a href="{% url 'users:role_change' pk=role.pk %}" class="btn waves-effect waves-light cinta-btn-primary">
           <i class="material-icons left">edit</i>Modifier
         </a>
@@ -22,12 +22,12 @@
       </div>
     </div>
 
-    <div class="divider" style="margin:1.5rem 0;"></div>
+    <div class="divider section-divider"></div>
 
     <div class="row">
       <div class="col s12 m6">
-        <h6 style="font-weight:600;">Informations générales</h6>
-        <ul class="collection" style="border:none;">
+        <h6 class="section-title">Informations générales</h6>
+        <ul class="collection collection--borderless">
           <li class="collection-item"><strong>Nom :</strong> {{ role.name }}</li>
           <li class="collection-item"><strong>Slug :</strong> {{ role.slug }}</li>
           <li class="collection-item"><strong>Direction technique :</strong>
@@ -45,23 +45,23 @@
         </ul>
       </div>
       <div class="col s12 m6">
-        <h6 style="font-weight:600;">Statistiques</h6>
-        <ul class="collection" style="border:none;">
+        <h6 class="section-title">Statistiques</h6>
+        <ul class="collection collection--borderless">
           <li class="collection-item"><strong>Utilisateurs rattachés :</strong> {{ members_count }}</li>
         </ul>
       </div>
     </div>
 
-    <div class="divider" style="margin:1.5rem 0;"></div>
+    <div class="divider section-divider"></div>
 
-    <div class="divider" style="margin:1.5rem 0;"></div>
+    <div class="divider section-divider"></div>
 
     <div>
-      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
-        <h6 style="font-weight:600; margin:0;">Utilisateurs avec ce rôle</h6>
-        <span style="color:#777;">{{ members_count }} utilisateur{% if members_count != 1 %}s{% endif %}</span>
+      <div class="u-flex u-justify-between u-items-center u-flex-wrap u-gap-0-5">
+        <h6 class="section-title u-m-0">Utilisateurs avec ce rôle</h6>
+        <span class="text-muted-secondary">{{ members_count }} utilisateur{% if members_count != 1 %}s{% endif %}</span>
       </div>
-      <div style="margin-top:1rem; overflow-x:auto;">
+      <div class="table-wrapper">
         <table class="highlight responsive-table">
           <thead>
             <tr>
@@ -70,7 +70,7 @@
               <th>Groupe</th>
               <th>Direction (groupe)</th>
               <th>Actif</th>
-              <th style="width:1%; white-space:nowrap;">Actions</th>
+              <th class="table-actions-col">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -101,7 +101,7 @@
               {% endfor %}
             {% else %}
               <tr>
-                <td colspan="6" style="color:#666; text-align:center;">Aucun utilisateur pour ce rôle.</td>
+                <td colspan="6" class="table-empty table-empty--center">Aucun utilisateur pour ce rôle.</td>
               </tr>
             {% endif %}
           </tbody>
