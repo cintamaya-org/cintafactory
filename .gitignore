@@ -64,5 +64,5 @@ params_dev/*
 
 # Local config
 /cintafactory/conf/
-
+.codex
 
