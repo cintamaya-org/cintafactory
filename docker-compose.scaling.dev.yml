@@ -33,6 +33,7 @@ services:
       dockerfile: cintafactory/dockerfile
     environment:
       DJANGO_SETTINGS_MODULE: cintafactory.settings
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-${SECRET_KEY:?Set DJANGO_SECRET_KEY in .env}}
       DEBUG: 1
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}
       DATABASE_HOST: pgbouncer
@@ -105,6 +106,7 @@ services:
       dockerfile: cintafactory/dockerfile
     environment:
       DJANGO_SETTINGS_MODULE: cintafactory.settings
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-${SECRET_KEY:?Set DJANGO_SECRET_KEY in .env}}
       DEBUG: 1
       DATABASE_HOST: pgbouncer
       DATABASE_PORT: 6432
