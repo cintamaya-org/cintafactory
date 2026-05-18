@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 from .logging.logging_utils import build_logging_dict
@@ -29,11 +30,19 @@ load_dotenv(BASE_DIR.parent / ".env", override=False)
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
+
+def _required_secret(*env_names: str) -> str:
+    for env_name in env_names:
+        value = os.getenv(env_name)
+        if value and value.strip():
+            return value.strip()
+
+    names = " or ".join(env_names)
+    raise ImproperlyConfigured(f"{names} must be set in the .env file before Django can start.")
+
+
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv(
-    "DJANGO_SECRET_KEY",
-    "django-insecure-m3*wk1omhr%_7ky#c^s9i6&q@f$19+y&1-lh^1b)+tm$hcz+s1",
-)
+SECRET_KEY = _required_secret("DJANGO_SECRET_KEY", "SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DJANGO_DEBUG", "True").lower() in {"1", "true", "yes", "on"}

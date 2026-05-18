@@ -34,10 +34,22 @@ jobs:
 
       - name: Deploy on VPS (docker compose up -d) as demo_factory
         shell: bash
+        env:
+          DEMO_DJANGO_SECRET_KEY: ${{ secrets.DEMO_DJANGO_SECRET_KEY }}
+          DEMO_LIKEC4_METADATA_TOKEN: ${{ secrets.DEMO_LIKEC4_METADATA_TOKEN }}
+          DEMO_LIKEC4_API_TOKEN: ${{ secrets.DEMO_LIKEC4_API_TOKEN }}
         run: |
-          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} bash -lc '
+          set -euo pipefail
+          : "${DEMO_DJANGO_SECRET_KEY:?Missing DEMO_DJANGO_SECRET_KEY secret}"
+
+          DEMO_DJANGO_SECRET_KEY_B64="$(printf '%s' "${DEMO_DJANGO_SECRET_KEY}" | base64 -w0)"
+          DEMO_LIKEC4_METADATA_TOKEN_B64="$(printf '%s' "${DEMO_LIKEC4_METADATA_TOKEN}" | base64 -w0)"
+          DEMO_LIKEC4_API_TOKEN_B64="$(printf '%s' "${DEMO_LIKEC4_API_TOKEN}" | base64 -w0)"
+
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
+            "DEMO_DJANGO_SECRET_KEY_B64='${DEMO_DJANGO_SECRET_KEY_B64}' DEMO_LIKEC4_METADATA_TOKEN_B64='${DEMO_LIKEC4_METADATA_TOKEN_B64}' DEMO_LIKEC4_API_TOKEN_B64='${DEMO_LIKEC4_API_TOKEN_B64}' bash -se" <<'REMOTE'
             set -euo pipefail
-            docker network create swag-network || true
+            docker network inspect swag-network >/dev/null 2>&1 || docker network create swag-network
             cd /opt/cintafactory/demo
 
             # === Variables de la stack DEMO (demo_factory) ===
@@ -45,9 +57,9 @@ jobs:
             export DJANGO_SETTINGS_MODULE="cintafactory.settings"
             export APP_MODULE="cintafactory.wsgi:application"
             export DEBUG=0
-            export SECRET_KEY="${{ secrets.DEMO_DJANGO_SECRET_KEY }}"
-            export LIKEC4_METADATA_TOKEN="${{ secrets.DEMO_LIKEC4_METADATA_TOKEN }}"
-            export LIKEC4_API_TOKEN="${{ secrets.DEMO_LIKEC4_API_TOKEN }}"
+            export SECRET_KEY="$(printf '%s' "${DEMO_DJANGO_SECRET_KEY_B64}" | base64 -d)"
+            export LIKEC4_METADATA_TOKEN="$(printf '%s' "${DEMO_LIKEC4_METADATA_TOKEN_B64}" | base64 -d)"
+            export LIKEC4_API_TOKEN="$(printf '%s' "${DEMO_LIKEC4_API_TOKEN_B64}" | base64 -d)"
             export ALLOWED_HOSTS="*"
             export APP_PORT=8000
             export HOST_PORT=8102          # HTTP externe app DEMO
@@ -58,5 +70,5 @@ jobs:
             export DATABASE_HOST="${APP_NAME}_db"
             export DATABASE_PORT="5432"
 
-            docker compose -p ${APP_NAME} up -d --build
-          '
+            docker compose -p "${APP_NAME}" up -d --build
+          REMOTE
