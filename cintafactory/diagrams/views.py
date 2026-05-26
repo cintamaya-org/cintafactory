@@ -973,6 +973,7 @@ def drawio_proxy(request, path: str = ""):
 
 @xframe_options_exempt
 @ensure_csrf_cookie
+@csrf_exempt
 @login_required
 @require_http_methods(["GET", "HEAD", "POST"])
 def likec4_proxy(request, path: str = ""):

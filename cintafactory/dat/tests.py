@@ -53,7 +53,7 @@ from .permissions import (
 )
 from .drawio_parser import _clean_model_xml, dedupe_architecture_rows, extract_drawio_pages, parse_architecture_diagram
 from .tasks import _run_pdf_generation
-from .utils import format_user_display
+from .utils import dat_pdf_export_exists, dat_pdf_export_modified_at, format_user_display, open_dat_pdf_export
 from workflows.models import UserNotification
 
 def get_default_business_direction():
@@ -1722,6 +1722,26 @@ class DatPdfExportNotificationTest(TestCase):
         self.assertEqual(notification.dat, self.dat)
         self.assertEqual(notification.level, "success")
         self.assertIn("prêt", notification.message)
+
+    @mock.patch("dat.utils.get_dat_export_storage")
+    def test_pdf_export_helpers_tolerate_storage_outage(self, get_storage):
+        storage = mock.Mock()
+        storage.exists.side_effect = OSError("temporary storage outage")
+        get_storage.return_value = storage
+
+        self.assertFalse(dat_pdf_export_exists(self.dat))
+        self.assertIsNone(dat_pdf_export_modified_at(self.dat))
+        self.assertIsNone(open_dat_pdf_export(self.dat))
+
+    @mock.patch("dat.utils.get_dat_export_storage")
+    def test_dat_detail_tolerates_pdf_storage_outage(self, get_storage):
+        storage = mock.Mock()
+        storage.exists.side_effect = OSError("temporary storage outage")
+        get_storage.return_value = storage
+
+        response = self.client.get(reverse("dat:my_detail", args=[self.dat.pk]))
+
+        self.assertEqual(response.status_code, 200)
 
 
 class DatSecureExportAccessTest(TestCase):
