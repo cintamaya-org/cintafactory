@@ -42,7 +42,8 @@ services:
       DRAWIO_CLIBS: ${DRAWIO_CLIBS:-}
       GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
       GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
-      LIKEC4_METADATA_TOKEN: ${LIKEC4_METADATA_TOKEN:-}
+      LIKEC4_METADATA_TOKEN: ${LIKEC4_METADATA_TOKEN:-dev_token_idHaf}
+      LIKEC4_API_TOKEN: ${LIKEC4_API_TOKEN:-dev_likec4_api_token_change_me}
     volumes:
       # IMPORTANT: mount your app folder (which contains manage.py AND templates/)
       - ./cintafactory:/app
@@ -100,7 +101,8 @@ services:
       SEAWEEDFS_FILER_URL: ${SEAWEEDFS_FILER_URL:-http://seaweedfs:8888}
       SEAWEEDFS_BASE_DIR: ${SEAWEEDFS_BASE_DIR:-media}
       LIKEC4_METADATA_URL: http://web:8000/diagrams/likec4/metadata/
-      LIKEC4_METADATA_TOKEN: ${LIKEC4_METADATA_TOKEN:-}
+      LIKEC4_METADATA_TOKEN: ${LIKEC4_METADATA_TOKEN:-dev_token_idHaf}
+      LIKEC4_API_TOKEN: ${LIKEC4_API_TOKEN:-dev_likec4_api_token_change_me}
     ports:
       - "${LIKEC4_DEV_HOST_PORT:-5173}:5173"
       - "${LIKEC4_HMR_HOST_PORT:-24678}:24678"
@@ -131,7 +133,8 @@ services:
       SEAWEEDFS_FILER_URL: ${SEAWEEDFS_FILER_URL:-http://seaweedfs:8888}
       SEAWEEDFS_BASE_DIR: ${SEAWEEDFS_BASE_DIR:-media}
       LIKEC4_METADATA_URL: http://web:8000/diagrams/likec4/metadata/
-      LIKEC4_METADATA_TOKEN: ${LIKEC4_METADATA_TOKEN:-}
+      LIKEC4_METADATA_TOKEN: ${LIKEC4_METADATA_TOKEN:-dev_token_idHaf}
+      LIKEC4_API_TOKEN: ${LIKEC4_API_TOKEN:-dev_likec4_api_token_change_me}
     volumes:
       - likec4_exports_dev:/var/likec4-exports
     depends_on:

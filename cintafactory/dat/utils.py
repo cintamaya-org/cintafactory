@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 from functools import lru_cache
 from typing import Any, Dict
@@ -10,6 +11,8 @@ from django.utils import timezone
 from django.utils.text import slugify
 
 from cintafactory.storage.seaweedfs_storage import SeaweedFSStorage
+
+logger = logging.getLogger(__name__)
 
 def format_user_display(user) -> str:
     """
@@ -106,17 +109,27 @@ def store_dat_pdf_export(dat, content: bytes, *, refresh_modified: bool = True) 
 def dat_pdf_export_exists(dat) -> bool:
     storage = get_dat_export_storage()
     path = dat.pdf_export_path or get_dat_pdf_export_path(dat)
-    return storage.exists(path)
+    try:
+        return storage.exists(path)
+    except Exception as exc:  # pragma: no cover - defensive guard for runtime storage outages
+        logger.warning("Unable to check PDF export availability for DAT %s: %s", dat.pk, exc)
+        return False
 
 
 def dat_pdf_export_modified_at(dat):
     storage = get_dat_export_storage()
     path = dat.pdf_export_path or get_dat_pdf_export_path(dat)
-    if not storage.exists(path):
+    try:
+        exists = storage.exists(path)
+    except Exception as exc:  # pragma: no cover - defensive guard for runtime storage outages
+        logger.warning("Unable to check PDF export modified time for DAT %s: %s", dat.pk, exc)
+        return None
+    if not exists:
         return None
     try:
         modified = storage.get_modified_time(path)
-    except (OSError, NotImplementedError):
+    except (OSError, NotImplementedError) as exc:
+        logger.warning("Unable to read PDF export modified time for DAT %s: %s", dat.pk, exc)
         return None
     return timezone.localtime(modified)
 
@@ -124,6 +137,15 @@ def dat_pdf_export_modified_at(dat):
 def open_dat_pdf_export(dat):
     storage = get_dat_export_storage()
     path = dat.pdf_export_path or get_dat_pdf_export_path(dat)
-    if not storage.exists(path):
+    try:
+        exists = storage.exists(path)
+    except Exception as exc:
+        logger.warning("Unable to check PDF export before opening DAT %s: %s", dat.pk, exc)
         return None
-    return storage.open(path, "rb")
+    if not exists:
+        return None
+    try:
+        return storage.open(path, "rb")
+    except Exception as exc:
+        logger.warning("Unable to open PDF export for DAT %s: %s", dat.pk, exc)
+        return None

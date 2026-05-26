@@ -44,15 +44,32 @@ class AppSecurityHeadersMiddleware:
         img_sources = "'self' data: blob:"
         if public_media_origin:
             img_sources = f"{img_sources} {public_media_origin}"
-        csp_policy = (
-            "default-src 'self'; frame-ancestors 'self'; "
-            f"img-src {img_sources}; "
-            "script-src 'self' https://cdnjs.cloudflare.com; "
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; "
-            "font-src 'self' https://fonts.gstatic.com; "
-            f"frame-src 'self' {settings.DRAWIO_PUBLIC_ORIGIN}; "
-            f"connect-src 'self' {settings.DRAWIO_PUBLIC_ORIGIN}"
-        )
+        if request.path.startswith("/diagrams/likec4/editor"):
+            csp_policy = (
+                "default-src 'self' data: blob: http: https:; "
+                "frame-ancestors 'self'; "
+                "img-src 'self' data: blob: http: https:; "
+                "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: "
+                "https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; "
+                "script-src-elem 'self' 'unsafe-inline' blob: "
+                "https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; "
+                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com "
+                "https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; "
+                "font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net; "
+                "frame-src 'self' data: blob: http: https:; "
+                "worker-src 'self' data: blob:; "
+                "connect-src 'self' data: blob: http: https: ws: wss:"
+            )
+        else:
+            csp_policy = (
+                "default-src 'self'; frame-ancestors 'self'; "
+                f"img-src {img_sources}; "
+                "script-src 'self' https://cdnjs.cloudflare.com; "
+                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; "
+                "font-src 'self' https://fonts.gstatic.com; "
+                f"frame-src 'self' {settings.DRAWIO_PUBLIC_ORIGIN}; "
+                f"connect-src 'self' {settings.DRAWIO_PUBLIC_ORIGIN}"
+            )
         response.setdefault("Content-Security-Policy", csp_policy)
         response.setdefault("X-Content-Type-Options", "nosniff")
         response.setdefault("Referrer-Policy", settings.SECURE_REFERRER_POLICY)

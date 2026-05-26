@@ -17,6 +17,10 @@ const LIKEC4_METADATA_URL = process.env.LIKEC4_METADATA_URL || '';
 const LIKEC4_METADATA_TOKEN = process.env.LIKEC4_METADATA_TOKEN || 'dev_token_idHaf';
 const LIKEC4_API_TOKEN = (process.env.LIKEC4_API_TOKEN || 'dev_likec4_api_token_change_me').trim();
 const PUBLIC_DIR = join(ROOT_DIR, 'ui');
+const ROOT_PUBLIC_ASSETS = new Map([
+  ['Cintamaya_Logo.png', join(ROOT_DIR, 'Cintamaya_Logo.png')],
+  ['Cintamaya_Logo.svg', join(ROOT_DIR, 'Cintamaya_Logo.svg')],
+]);
 const LIKEC4_BIN = (process.env.LIKEC4_BIN || 'likec4').trim() || 'likec4';
 const LIKEC4_WEBCOMPONENT_OUTPUT = process.env.LIKEC4_WEBCOMPONENT_OUTPUT || join(PUBLIC_DIR, 'likec4-webcomponent.js');
 const LIKEC4_RENDER_TIMEOUT_MS = Number.parseInt(process.env.LIKEC4_RENDER_TIMEOUT_MS || '120000', 10);
@@ -656,7 +660,9 @@ const server = createServer(async (req, res) => {
     decodedPath = url;
   }
   const requestPath = decodedPath.replace(/^\//, '');
-  const filePath = url === '/' ? join(PUBLIC_DIR, 'index.html') : safePublicPath(requestPath);
+  const filePath = url === '/'
+    ? join(PUBLIC_DIR, 'index.html')
+    : ROOT_PUBLIC_ASSETS.get(requestPath) || safePublicPath(requestPath);
   if (!filePath) {
     send(res, 404, 'Not Found');
     return;

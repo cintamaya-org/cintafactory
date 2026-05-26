@@ -298,3 +298,55 @@ class ProxySecurityTests(TestCase):
                 )
         self.assertEqual(response.status_code, 413)
         mock_urlopen.assert_not_called()
+
+    def test_likec4_proxy_uses_editor_csp(self):
+        class Response:
+            status = 200
+            headers = {"Content-Type": "text/html; charset=utf-8"}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return b"<html></html>"
+
+        self.client.force_login(self.user)
+        with self.settings(LIKEC4_EDITOR_URL="http://likec4:4173"):
+            with patch("diagrams.views.urlopen", return_value=Response()):
+                response = self.client.get(reverse("diagrams:likec4_proxy_root"))
+
+        self.assertEqual(response.status_code, 200)
+        csp = response["Content-Security-Policy"]
+        self.assertIn("'unsafe-inline'", csp)
+        self.assertIn("'unsafe-eval'", csp)
+        self.assertIn("https://cdn.jsdelivr.net", csp)
+
+    def test_likec4_proxy_post_adds_api_token(self):
+        class Response:
+            status = 200
+            headers = {"Content-Type": "application/json"}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return b'{"ok": true}'
+
+        self.client.force_login(self.user)
+        with self.settings(LIKEC4_EDITOR_URL="http://likec4:4173", LIKEC4_API_TOKEN="proxy-token"):
+            with patch("diagrams.views.urlopen", return_value=Response()) as mock_urlopen:
+                response = self.client.post(
+                    reverse("diagrams:likec4_proxy", args=["save"]),
+                    data=b'{"content": ""}',
+                    content_type="application/json",
+                )
+
+        self.assertEqual(response.status_code, 200)
+        forwarded_request = mock_urlopen.call_args.args[0]
+        self.assertEqual(forwarded_request.get_header("X-likec4-token"), "proxy-token")
