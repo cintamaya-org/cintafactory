@@ -9,7 +9,11 @@
       var url = new URL(path, window.location.origin);
       var pathname = url.pathname || "/";
       if (pathname.length > 1 && pathname.endsWith("/")) {
-        pathname = pathname.replace(/\/+$/, "");
+        var end = pathname.length;
+        while (end > 1 && pathname[end - 1] === "/") {
+          end -= 1;
+        }
+        pathname = pathname.slice(0, end);
       }
       return pathname || "/";
     } catch (error) {

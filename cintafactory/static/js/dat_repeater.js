@@ -141,7 +141,10 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
     if (!prefix || !filePath) {
       return "";
     }
-    const normalizedPrefix = String(prefix).replace(/\/+$/, "");
+    let normalizedPrefix = String(prefix);
+    while (normalizedPrefix.endsWith("/")) {
+      normalizedPrefix = normalizedPrefix.slice(0, -1);
+    }
     if (normalizedPrefix.includes("/likec4/png")) {
       return buildLikeC4Url(normalizedPrefix, filePath);
     }
@@ -1130,13 +1133,42 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
     if (!value) {
       return "";
     }
-    return String(value)
-      .trim()
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "");
+    const normalized = String(value).trim().toLowerCase().normalize("NFD");
+    let slug = "";
+    let needsSeparator = false;
+
+    for (const character of normalized) {
+      const code = character.charCodeAt(0);
+      if (code >= 0x0300 && code <= 0x036f) {
+        continue;
+      }
+      const isAsciiLetter = code >= 97 && code <= 122;
+      const isDigit = code >= 48 && code <= 57;
+      if (isAsciiLetter || isDigit) {
+        if (needsSeparator && slug) {
+          slug += "-";
+        }
+        slug += character;
+        needsSeparator = false;
+      } else {
+        needsSeparator = Boolean(slug);
+      }
+    }
+
+    return slug;
+  }
+
+  function generateLikeC4ReferenceId() {
+    const cryptoApi = window.crypto || window.msCrypto;
+    if (cryptoApi && typeof cryptoApi.randomUUID === "function") {
+      return cryptoApi.randomUUID();
+    }
+    if (cryptoApi && typeof cryptoApi.getRandomValues === "function") {
+      const values = new Uint32Array(4);
+      cryptoApi.getRandomValues(values);
+      return Array.from(values, (value) => value.toString(16).padStart(8, "0")).join("-");
+    }
+    throw new Error("Web Crypto API indisponible pour générer une référence LikeC4.");
   }
 
   function ensureLikeC4Reference(row, column) {
@@ -1152,12 +1184,7 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
     if (referenceValue) {
       return referenceValue;
     }
-    const nameKey = column.drawio_name_key || column.drawioNameKey || "nom_schema";
-    const nameInput = row.querySelector(`[data-column-key="${nameKey}"]`);
-    const nameValue = nameInput ? String(nameInput.value || nameInput.textContent || "").trim() : "";
-    const uniqueId = `${Date.now()}${Math.floor(Math.random() * 1000)
-      .toString()
-      .padStart(3, "0")}`;
+    const uniqueId = generateLikeC4ReferenceId();
     referenceValue = `diagrams/${uniqueId}/likec4.c4`;
     referenceInput.value = referenceValue;
     referenceInput.dispatchEvent(new Event("change", { bubbles: true }));

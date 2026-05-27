@@ -160,10 +160,8 @@ class DynamicCsrfTrustedOriginsMiddleware:
     Ensure CSRF trusted origins keep pace with allowed hosts at runtime.
 
     The middleware inspects the incoming Origin header and, when it points to
-    a host already permitted by ALLOWED_HOSTS, automatically appends both the
-    http and https variants to settings.CSRF_TRUSTED_ORIGINS. This allows
-    deployments where hostnames change without requiring manual environment
-    updates.
+    a host already permitted by ALLOWED_HOSTS, automatically appends trusted
+    origins. Strict HTTP security keeps production CSRF origins HTTPS-only.
     """
 
     def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]) -> None:
@@ -187,6 +185,13 @@ class DynamicCsrfTrustedOriginsMiddleware:
 
         origins = set(settings.CSRF_TRUSTED_ORIGINS)
         netloc = parsed.netloc
+        if getattr(settings, "STRICT_HTTP_SECURITY", False):
+            if parsed.scheme != "https":
+                return
+            origins.add(f"https://{netloc}")
+            settings.CSRF_TRUSTED_ORIGINS = sorted(origins)
+            return
+
         for scheme in ("http", "https"):
             candidate = f"{scheme}://{netloc}"
             origins.add(candidate)

@@ -6,9 +6,9 @@ services:
       - "${PROD_HTTP_PORT:-8100}:8050"
     environment:
       DJANGO_SECRET_KEY: "${PROD_DJANGO_SECRET_KEY:?Set PROD_DJANGO_SECRET_KEY in deploy/env/prod.env}"
-      DJANGO_ALLOWED_HOSTS: "${PROD_ALLOWED_HOSTS:-example.com}"
-      ALLOWED_HOSTS: "${PROD_ALLOWED_HOSTS:-example.com}"
-      CSRF_TRUSTED: "${PROD_CSRF_TRUSTED:-}"
+      DJANGO_ALLOWED_HOSTS: "${PROD_ALLOWED_HOSTS:-cintarchifactory.cintamaya.com}"
+      ALLOWED_HOSTS: "${PROD_ALLOWED_HOSTS:-cintarchifactory.cintamaya.com}"
+      CSRF_TRUSTED: "${PROD_CSRF_TRUSTED:-https://cintarchifactory.cintamaya.com}"
       DJANGO_DEBUG: "0"
       DRAWIO_BASE_URL: "${PROD_DRAWIO_BASE_URL:-}"
       DRAWIO_PUBLIC_URL: "${PROD_DRAWIO_PUBLIC_URL:-}"

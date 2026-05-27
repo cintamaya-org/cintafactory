@@ -22,7 +22,7 @@ from django.utils import timezone
 from django.utils.text import slugify
 from django.views.decorators.clickjacking import xframe_options_exempt
 from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
-from django.views.decorators.http import require_POST, require_http_methods
+from django.views.decorators.http import require_GET, require_POST, require_http_methods, require_safe
 from django.views.generic import CreateView, DetailView, ListView, TemplateView
 from django.templatetags.static import static
 from material.frontend.registry import modules as module_registry
@@ -272,7 +272,8 @@ def _proxy_path_is_allowed(path: str) -> bool:
     if not candidate:
         return True
     lowered = candidate.lower()
-    if lowered.startswith(("http://", "https://", "//", "/")):
+    parsed = urlsplit(lowered)
+    if parsed.scheme in {"http", "https"} or parsed.netloc or candidate.startswith("/"):
         return False
     if "\x00" in candidate or "\\" in candidate:
         return False
@@ -534,6 +535,29 @@ def _regenerate_drawio_thumbnail(diagram: DrawIODiagram, xml_payload: str) -> bo
     )
 
 
+def _request_same_origin(request) -> bool:
+    expected_scheme = "https" if request.is_secure() else "http"
+    expected = f"{expected_scheme}://{request.get_host()}"
+    origin = request.headers.get("Origin")
+    if origin:
+        return origin == expected
+    referer = request.headers.get("Referer")
+    if not referer:
+        return False
+    parts = urlsplit(referer)
+    referer_origin = urlunsplit((parts.scheme, parts.netloc, "", "", ""))
+    return referer_origin == expected
+
+
+def _reject_unsafe_session_request(request, surface: str):
+    if request.method in {"GET", "HEAD", "OPTIONS", "TRACE"}:
+        return None
+    if _request_same_origin(request):
+        return None
+    logger.warning("%s blocked unsafe session request: cross-origin or missing origin", surface)
+    return JsonResponse({"ok": False, "error": "csrf_failed"}, status=403)
+
+
 class DiagramEditView(ModuleContextMixin, LoginRequiredMixin, TemplateView):
     template_name = "diagrams/edit.html"
 
@@ -613,6 +637,10 @@ def likec4_metadata(request):
             request.headers.get("User-Agent", ""),
         )
         return JsonResponse({"ok": False, "error": "unauthorized"}, status=403)
+    if is_authenticated and not token_valid:
+        csrf_response = _reject_unsafe_session_request(request, "likec4_metadata")
+        if csrf_response is not None:
+            return csrf_response
     path = data.get("path")
     storage_path = _normalize_likec4_path(path if isinstance(path, str) else None)
     if not storage_path:
@@ -823,6 +851,7 @@ def likec4_png(request):
 
 
 @login_required
+@require_safe
 def likec4_views(request):
     raw_path = request.GET.get("file")
     storage_path = _normalize_likec4_path(raw_path)
@@ -859,6 +888,7 @@ def likec4_views(request):
 
 
 @login_required
+@require_safe
 def likec4_export(request):
     storage_path = _normalize_likec4_path(request.GET.get("file"))
     if not storage_path:
@@ -979,6 +1009,10 @@ def drawio_proxy(request, path: str = ""):
 def likec4_proxy(request, path: str = ""):
     """
     Reverse proxy for the LikeC4 editor UI/API behind authenticated Django sessions.
+
+    POST is required by the embedded editor API. Because the proxy is CSRF-exempt
+    for that integration, unsafe session requests are restricted to same-origin
+    requests by _reject_unsafe_session_request before forwarding any body.
     """
     upstream_base = getattr(settings, "LIKEC4_EDITOR_URL", "").rstrip("/")
     if not upstream_base:
@@ -1000,6 +1034,9 @@ def likec4_proxy(request, path: str = ""):
         upstream = f"{upstream}?{query}"
 
     method = "HEAD" if request.method == "HEAD" else request.method
+    csrf_response = _reject_unsafe_session_request(request, "likec4_proxy")
+    if csrf_response is not None:
+        return csrf_response
     headers = {}
     content_type = request.headers.get("Content-Type")
     if content_type:
@@ -1043,6 +1080,7 @@ def likec4_proxy(request, path: str = ""):
 
 
 @login_required
+@require_safe
 def diagram_embed_context(request, pk: int):
     diagram = get_object_or_404(DrawIODiagram, pk=pk, owner=request.user)
     library_urls = _collect_library_urls(request)
@@ -1064,6 +1102,7 @@ def diagram_embed_context(request, pk: int):
 
 
 @login_required
+@require_GET
 def diagram_viewer_context(request, pk: int):
     diagram = get_object_or_404(DrawIODiagram, pk=pk, owner=request.user)
     thumbnail_url = _current_thumbnail_url(diagram)
@@ -1248,6 +1287,7 @@ def diagram_import_xml(request, pk: int):
 
 
 @login_required
+@require_safe
 def diagram_export_xml(request, pk: int):
     diagram = get_object_or_404(DrawIODiagram, pk=pk, owner=request.user)
     xml_payload = diagram.read_xml() or "<mxGraphModel/>"

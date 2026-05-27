@@ -24,8 +24,17 @@ from .middleware import (
     SLOBaselineMiddleware,
 )
 from .notifications.external import ExternalNotificationEvent, dispatch_external_notification
+from .settings import _build_csrf_trusted_origins
 from .storage.seaweedfs_storage import SeaweedFSStorage
 from .upload.upload_handlers import PerFileSizeLimitUploadHandler
+
+
+# RFC 5737 documentation addresses; safe fixtures, never routed to real hosts.
+TEST_CLIENT_IP = "192.0.2.1"
+OTHER_TEST_CLIENT_IP = "192.0.2.2"
+APP_TEST_CLIENT_IP = "192.0.2.3"
+OTHER_APP_TEST_CLIENT_IP = "192.0.2.4"
+SENSITIVE_ENDPOINT_TEST_CLIENT_IP = "192.0.2.5"
 
 
 class ConfigFileTests(SimpleTestCase):
@@ -93,6 +102,17 @@ class ConfigFileTests(SimpleTestCase):
         self.assertFalse(config["is_static_exluded"])
         self.assertTrue(config["is_admin_exluded"])
 
+    def test_build_csrf_trusted_origins_keeps_http_only_when_enabled(self):
+        origins = _build_csrf_trusted_origins(["example.com"], include_http=True)
+        self.assertEqual(origins, {"http://example.com", "https://example.com"})
+
+    def test_build_csrf_trusted_origins_drops_http_when_disabled(self):
+        origins = _build_csrf_trusted_origins(
+            ["example.com", "http://example.net", "https://example.org"],
+            include_http=False,
+        )
+        self.assertEqual(origins, {"https://example.com", "https://example.org"})
+
 
 class UrlSafetyTests(SimpleTestCase):
     def test_is_http_url_accepts_http_https(self):
@@ -135,7 +155,7 @@ class UploadHandlerTests(SimpleTestCase):
 
 class SeaweedFSStorageTests(SimpleTestCase):
     @override_settings(
-        SEAWEEDFS_FILER_URL="http://files.example.com",
+        SEAWEEDFS_FILER_URL="https://files.example.com",
         SEAWEEDFS_PUBLIC_URL="https://cdn.example.com",
         SEAWEEDFS_BASE_DIR="root",
         SEAWEEDFS_TIMEOUT=5,
@@ -151,11 +171,11 @@ class SeaweedFSStorageTests(SimpleTestCase):
         with self.assertRaises(ValueError):
             SeaweedFSStorage(base_url="ftp://bad.example.com")
 
-    @override_settings(SEAWEEDFS_FILER_URL="http://files.example.com")
+    @override_settings(SEAWEEDFS_FILER_URL="https://files.example.com")
     @mock.patch("cintafactory.storage.seaweedfs_storage.urlopen")
     def test_exists_returns_false_on_404(self, mock_urlopen):
         mock_urlopen.side_effect = HTTPError(
-            url="http://files.example.com/missing",
+            url="https://files.example.com/missing",
             code=404,
             msg="Not Found",
             hdrs=None,
@@ -164,11 +184,11 @@ class SeaweedFSStorageTests(SimpleTestCase):
         storage = SeaweedFSStorage()
         self.assertFalse(storage.exists("missing"))
 
-    @override_settings(SEAWEEDFS_FILER_URL="http://files.example.com")
+    @override_settings(SEAWEEDFS_FILER_URL="https://files.example.com")
     @mock.patch("cintafactory.storage.seaweedfs_storage.urlopen")
     def test_delete_ignores_404(self, mock_urlopen):
         mock_urlopen.side_effect = HTTPError(
-            url="http://files.example.com/missing",
+            url="https://files.example.com/missing",
             code=404,
             msg="Not Found",
             hdrs=None,
@@ -177,7 +197,7 @@ class SeaweedFSStorageTests(SimpleTestCase):
         storage = SeaweedFSStorage()
         storage.delete("missing")
 
-    @override_settings(SEAWEEDFS_FILER_URL="http://files.example.com")
+    @override_settings(SEAWEEDFS_FILER_URL="https://files.example.com")
     @mock.patch("cintafactory.storage.seaweedfs_storage.urlopen")
     def test_get_modified_time_requires_header(self, mock_urlopen):
         class Response:
@@ -194,12 +214,12 @@ class SeaweedFSStorageTests(SimpleTestCase):
         with self.assertRaises(NotImplementedError):
             storage.get_modified_time("file.txt")
 
-    @override_settings(SEAWEEDFS_FILER_URL="http://files.example.com")
+    @override_settings(SEAWEEDFS_FILER_URL="https://files.example.com")
     @mock.patch("cintafactory.storage.seaweedfs_storage.emit_baseline_metric")
     @mock.patch("cintafactory.storage.seaweedfs_storage.urlopen")
     def test_save_emits_failure_metric_on_http_error(self, mock_urlopen, emit_metric):
         mock_urlopen.side_effect = HTTPError(
-            url="http://files.example.com/upload.txt",
+            url="https://files.example.com/upload.txt",
             code=503,
             msg="Service Unavailable",
             hdrs=None,
@@ -250,6 +270,17 @@ class MiddlewareTests(SimpleTestCase):
         self.assertIn("https://example.com", set(settings.CSRF_TRUSTED_ORIGINS))
         self.assertIn("http://example.com", set(settings.CSRF_TRUSTED_ORIGINS))
 
+    @override_settings(ALLOWED_HOSTS=["example.com"], CSRF_TRUSTED_ORIGINS=[], STRICT_HTTP_SECURITY=True)
+    def test_dynamic_csrf_trusted_origins_stays_https_only_when_strict(self):
+        def get_response(request):
+            return HttpResponse("ok")
+
+        middleware = DynamicCsrfTrustedOriginsMiddleware(get_response)
+        middleware(self.factory.get("/", HTTP_ORIGIN="https://example.com"))
+        middleware(self.factory.get("/", HTTP_ORIGIN="http://example.com"))
+        self.assertIn("https://example.com", set(settings.CSRF_TRUSTED_ORIGINS))
+        self.assertNotIn("http://example.com", set(settings.CSRF_TRUSTED_ORIGINS))
+
     @override_settings(STATIC_URL="/static/")
     def test_rate_limit_excludes_static(self):
         def get_response(request):
@@ -270,7 +301,7 @@ class MiddlewareTests(SimpleTestCase):
             return HttpResponse("ok")
 
         middleware = RateLimitMiddleware(get_response)
-        request = self.factory.get("/api/items", REMOTE_ADDR="10.0.0.1")
+        request = self.factory.get("/api/items", REMOTE_ADDR=TEST_CLIENT_IP)
         with mock.patch("cintafactory.middleware.load_limit_config") as load_config:
             load_config.return_value = {
                 "is_static_exluded": True,
@@ -291,7 +322,7 @@ class MiddlewareTests(SimpleTestCase):
             return HttpResponse("ok")
 
         middleware = RateLimitMiddleware(get_response)
-        request = self.factory.get("/api/items", REMOTE_ADDR="10.0.0.2")
+        request = self.factory.get("/api/items", REMOTE_ADDR=OTHER_TEST_CLIENT_IP)
         with mock.patch("cintafactory.middleware.load_limit_config") as load_config:
             load_config.return_value = {
                 "is_static_exluded": True,
@@ -342,7 +373,7 @@ class MiddlewareTests(SimpleTestCase):
             return HttpResponse("ok")
 
         middleware = RateLimitMiddleware(get_response)
-        request = self.factory.get("/dat/items", REMOTE_ADDR="10.0.0.3")
+        request = self.factory.get("/dat/items", REMOTE_ADDR=APP_TEST_CLIENT_IP)
         with mock.patch("cintafactory.middleware.load_limit_config") as load_config:
             load_config.return_value = {
                 "is_static_exluded": True,
@@ -363,7 +394,7 @@ class MiddlewareTests(SimpleTestCase):
             return HttpResponse("ok")
 
         middleware = RateLimitMiddleware(get_response)
-        request = self.factory.get("/dat/items", REMOTE_ADDR="10.0.0.4")
+        request = self.factory.get("/dat/items", REMOTE_ADDR=OTHER_APP_TEST_CLIENT_IP)
         with mock.patch("cintafactory.middleware.load_limit_config") as load_config:
             load_config.return_value = {
                 "is_static_exluded": True,
@@ -384,7 +415,7 @@ class MiddlewareTests(SimpleTestCase):
             return HttpResponse("ok")
 
         middleware = RateLimitMiddleware(get_response)
-        request = self.factory.post("/diagrams/likec4/import/", REMOTE_ADDR="10.0.0.5")
+        request = self.factory.post("/diagrams/likec4/import/", REMOTE_ADDR=SENSITIVE_ENDPOINT_TEST_CLIENT_IP)
         with mock.patch("cintafactory.middleware.load_limit_config") as load_config:
             load_config.return_value = {
                 "is_static_exluded": True,

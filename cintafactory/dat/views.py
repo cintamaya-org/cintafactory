@@ -29,7 +29,7 @@ from django.template.loader import render_to_string
 from django.urls import reverse, reverse_lazy
 from django.views import View
 from django.views.generic import DetailView, ListView, TemplateView, FormView
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_safe
 
 from material import Fieldset, Layout, Row
 from material.frontend.registry import modules as module_registry
@@ -2779,6 +2779,7 @@ class DATDetailView(LoginRequiredMixin, ModuleContextMixin, DetailModelView):
         return context
 
 
+@require_safe
 def dat_crud_detail_unavailable(request, pk):
     return DATDetailView.as_view()(request, pk=pk)
 
@@ -3637,6 +3638,7 @@ class DatDashboardView(ModuleContextMixin, DatManagerAccessMixin, TemplateView):
 
 
 @login_required
+@require_safe
 def application_options(request):
     if not (user_can_manage_dat(request.user) or user_can_create_dat_entities(request.user)):
         raise PermissionDenied
@@ -3653,6 +3655,7 @@ def application_options(request):
 
 
 @login_required
+@require_safe
 def topbar_search(request):
     service = TopbarSearchService(request.user)
     options = TopbarSearchOptions(
@@ -3667,10 +3670,8 @@ def topbar_search(request):
 
 
 @login_required
+@require_POST
 def create_schema_diagram(request, dat_pk: int):
-    if request.method != "POST":
-        return JsonResponse({"error": "Méthode non autorisée"}, status=405)
-
     logger.warning(
         "create_schema_diagram request dat_id=%s user_id=%s username=%s has_csrf_cookie=%s has_csrf_header=%s",
         dat_pk,

@@ -30,7 +30,10 @@ WORKDIR /opt/likec4-worker
 COPY worker/package.json ./
 RUN npm install --omit=dev
 COPY worker ./
+RUN mkdir -p /data \
+    && chown -R pwuser:pwuser /opt/likec4-worker /data
 
 WORKDIR /data
+USER pwuser
 
 EXPOSE 4173 5173 24678 9000

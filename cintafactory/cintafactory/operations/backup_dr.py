@@ -14,9 +14,19 @@ from ..storage.seaweedfs_storage import SeaweedFSStorage
 from .slo_baseline import emit_baseline_metric
 
 
+_PG_SETTING_QUERIES = {
+    "archive_mode": "SHOW archive_mode",
+    "archive_command": "SHOW archive_command",
+    "wal_level": "SHOW wal_level",
+}
+
+
 def _read_pg_setting(name: str) -> str:
+    query = _PG_SETTING_QUERIES.get(name)
+    if query is None:
+        raise ValueError(f"Unsupported PostgreSQL setting: {name}")
     with connection.cursor() as cursor:
-        cursor.execute(f"SHOW {name}")
+        cursor.execute(query)
         row = cursor.fetchone()
     if not row:
         return ""

@@ -1,18 +1,61 @@
 // Minimal Node server to edit a C4 file and view the LikeC4 diagram side by side.
 const { createServer } = require('http');
 const { access, mkdir, writeFile, readdir, unlink } = require('fs').promises;
-const { createReadStream } = require('fs');
+const { chmodSync, createReadStream, lstatSync, mkdirSync, mkdtempSync, realpathSync } = require('fs');
 const { execFile } = require('child_process');
 const { createHash } = require('crypto');
+const { tmpdir } = require('os');
 const { extname, join, basename, dirname, posix, resolve, sep } = require('path');
 const { promisify } = require('util');
 
 const PORT = process.env.LIKEC4_EDITOR_PORT || 4173;
 const ROOT_DIR = __dirname; // always resolve relative to where server.js lives
 const DEFAULT_STORAGE_PATH = (process.env.C4_FILE || 'likec4/default.c4').replace(/^\/+/, '');
-const PREVIEW_DIR = process.env.LIKEC4_PREVIEW_DIR || '/tmp/likec4-previews';
-const SEAWEEDFS_FILER_URL = (process.env.SEAWEEDFS_FILER_URL || '').replace(/\/+$/, '');
-const SEAWEEDFS_BASE_DIR = (process.env.SEAWEEDFS_BASE_DIR || '').replace(/^\/+|\/+$/g, '');
+const PRIVATE_DIR_MODE = 0o700;
+
+const preparePreviewDir = () => {
+  const configuredDir = process.env.LIKEC4_PREVIEW_DIR;
+  if (!configuredDir) {
+    return mkdtempSync(join(tmpdir(), 'likec4-previews-'));
+  }
+
+  const target = resolve(configuredDir);
+  try {
+    const stat = lstatSync(target);
+    if (!stat.isDirectory()) {
+      throw new Error(`Preview path is not a directory: ${target}`);
+    }
+  } catch (err) {
+    if (!err || err.code !== 'ENOENT') {
+      throw err;
+    }
+    mkdirSync(target, { recursive: true, mode: PRIVATE_DIR_MODE });
+  }
+
+  chmodSync(target, PRIVATE_DIR_MODE);
+  return realpathSync(target);
+};
+
+const PREVIEW_DIR = preparePreviewDir();
+
+const stripTrailingSlashes = (value) => {
+  let result = String(value || '');
+  while (result.endsWith('/')) {
+    result = result.slice(0, -1);
+  }
+  return result;
+};
+
+const stripSlashes = (value) => {
+  let result = stripTrailingSlashes(value);
+  while (result.startsWith('/')) {
+    result = result.slice(1);
+  }
+  return result;
+};
+
+const SEAWEEDFS_FILER_URL = stripTrailingSlashes(process.env.SEAWEEDFS_FILER_URL);
+const SEAWEEDFS_BASE_DIR = stripSlashes(process.env.SEAWEEDFS_BASE_DIR);
 const LIKEC4_METADATA_URL = process.env.LIKEC4_METADATA_URL || '';
 const LIKEC4_METADATA_TOKEN = process.env.LIKEC4_METADATA_TOKEN || 'dev_token_idHaf';
 const LIKEC4_API_TOKEN = (process.env.LIKEC4_API_TOKEN || 'dev_likec4_api_token_change_me').trim();
@@ -209,11 +252,29 @@ const safePublicPath = (rawPath) => {
   return resolvedTarget;
 };
 
-const slugifySegment = (value) =>
-  String(value || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'diagram';
+const slugifySegment = (value) => {
+  const input = String(value || '').toLowerCase();
+  let result = '';
+  let needsSeparator = false;
+
+  for (const char of input) {
+    const code = char.charCodeAt(0);
+    const isAsciiLowercase = code >= 97 && code <= 122;
+    const isDigit = code >= 48 && code <= 57;
+
+    if (isAsciiLowercase || isDigit) {
+      if (needsSeparator && result) {
+        result += '-';
+      }
+      result += char;
+      needsSeparator = false;
+    } else {
+      needsSeparator = result.length > 0;
+    }
+  }
+
+  return result || 'diagram';
+};
 
 const canonicalLikeC4Path = (rawPath) => {
   const normalized = normalizeStoragePath(rawPath);
@@ -330,12 +391,39 @@ const renderLikeC4 = async (content) => {
 };
 
 
-const stripComments = (text) =>
-  text
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .split('\n')
-    .map(line => line.replace(/\/\/.*$/, ''))
-    .join('\n');
+const stripComments = (text) => {
+  let result = '';
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    const next = text[i + 1];
+    if (ch === '/' && next === '*') {
+      i += 2;
+      while (i < text.length) {
+        if (text[i] === '\n') {
+          result += '\n';
+        }
+        if (text[i] === '*' && text[i + 1] === '/') {
+          i++;
+          break;
+        }
+        i++;
+      }
+      continue;
+    }
+    if (ch === '/' && next === '/') {
+      i += 2;
+      while (i < text.length && text[i] !== '\n') {
+        i++;
+      }
+      if (i < text.length) {
+        result += text[i];
+      }
+      continue;
+    }
+    result += ch;
+  }
+  return result;
+};
 
 const findClosingBrace = (text, openIndex) => {
   let depth = 0;
@@ -359,14 +447,116 @@ const findClosingBrace = (text, openIndex) => {
   return -1;
 };
 
+const isIdentifierStart = (ch) => (
+  (ch >= 'A' && ch <= 'Z') ||
+  (ch >= 'a' && ch <= 'z') ||
+  ch === '_'
+);
+
+const isIdentifierChar = (ch) => isIdentifierStart(ch) || (ch >= '0' && ch <= '9') || ch === '-';
+const isWhitespace = (ch) => ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r' || ch === '\f';
+
 const parseKeyValues = (text) => {
-  const kv = /([A-Za-z_][\w-]*)\s+'([\s\S]*?)'/g;
   const entries = [];
-  let match;
-  while ((match = kv.exec(text)) !== null) {
-    entries.push({ key: match[1], value: match[2].trim() });
+
+  for (let i = 0; i < text.length;) {
+    if (!isIdentifierStart(text[i])) {
+      i++;
+      continue;
+    }
+
+    const keyStart = i;
+    i++;
+    while (i < text.length && isIdentifierChar(text[i])) {
+      i++;
+    }
+    const key = text.slice(keyStart, i);
+
+    const whitespaceStart = i;
+    while (i < text.length && isWhitespace(text[i])) {
+      i++;
+    }
+    if (i === whitespaceStart || text[i] !== '\'') {
+      i = keyStart + 1;
+      continue;
+    }
+
+    const valueStart = ++i;
+    while (i < text.length && text[i] !== '\'') {
+      i++;
+    }
+    if (i >= text.length) {
+      break;
+    }
+
+    entries.push({ key, value: text.slice(valueStart, i).trim() });
+    i++;
   }
   return entries;
+};
+
+const parseRelations = (text) => {
+  const relations = [];
+
+  for (let i = 0; i < text.length;) {
+    if (!isIdentifierStart(text[i])) {
+      i++;
+      continue;
+    }
+
+    const fromStart = i;
+    i++;
+    while (i < text.length && isIdentifierChar(text[i])) {
+      i++;
+    }
+    const from = text.slice(fromStart, i);
+
+    while (i < text.length && isWhitespace(text[i])) {
+      i++;
+    }
+    if (text[i] !== '-' || text[i + 1] !== '>') {
+      i = fromStart + 1;
+      continue;
+    }
+    i += 2;
+
+    while (i < text.length && isWhitespace(text[i])) {
+      i++;
+    }
+    if (!isIdentifierStart(text[i])) {
+      i = fromStart + 1;
+      continue;
+    }
+
+    const toStart = i;
+    i++;
+    while (i < text.length && isIdentifierChar(text[i])) {
+      i++;
+    }
+    const to = text.slice(toStart, i);
+
+    while (i < text.length && isWhitespace(text[i])) {
+      i++;
+    }
+
+    let label = null;
+    const quote = text[i];
+    if (quote === '\'' || quote === '"') {
+      const labelStart = i + 1;
+      let labelEnd = labelStart;
+      while (labelEnd < text.length && text[labelEnd] !== quote) {
+        labelEnd++;
+      }
+      if (labelEnd < text.length) {
+        label = text.slice(labelStart, labelEnd);
+        i = labelEnd + 1;
+      }
+    }
+
+    relations.push({ from, to, label });
+  }
+
+  return relations;
 };
 
 const parseComponents = (content, alreadyCleaned = false) => {
@@ -422,7 +612,6 @@ const parseComponents = (content, alreadyCleaned = false) => {
 
 const buildFlowMatrix = (content) => {
   const cleaned = stripComments(content);
-  const relation = /([A-Za-z_][\w-]*)\s*->\s*([A-Za-z_][\w-]*)\s*(?:(?:'([^']*)')|(?:"([^"]*)"))?/g;
   const flows = [];
   const nodes = [];
   const index = new Map();
@@ -433,15 +622,11 @@ const buildFlowMatrix = (content) => {
     }
   };
 
-  let match;
-  while ((match = relation.exec(cleaned)) !== null) {
-    const from = match[1];
-    const to = match[2];
-    const label = match[3] ?? match[4] ?? null;
+  parseRelations(cleaned).forEach(({ from, to, label }) => {
     flows.push({ from, to, label });
     addNode(from);
     addNode(to);
-  }
+  });
 
   const adjacency = nodes.map(() => nodes.map(() => 0));
   const labels = nodes.map(() => nodes.map(() => null));

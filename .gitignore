@@ -68,3 +68,6 @@ params_dev/*
 AGENTS.md
 .codex
 tmp/
+
+.sonarlint/
+.sonarlint

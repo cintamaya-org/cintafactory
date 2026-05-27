@@ -293,7 +293,7 @@ def _scan_file_with_scan_command(uploaded_file, host: str, port: int, timeout: i
         raise ValidationError("Le scan antivirus n'est pas configure (CLAMAV_SCAN_DIR manquant).")
     os.makedirs(scan_dir, exist_ok=True)
     try:
-        os.chmod(scan_dir, 0o777)
+        os.chmod(scan_dir, 0o700)
     except OSError:
         pass
     filename = f"upload_{uuid.uuid4().hex}"
