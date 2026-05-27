@@ -1,0 +1,10 @@
+{# Reusable loading indicator. Include it anywhere with {% include "components/_loading_spinner.html" %}. #}
+{% load static %}
+<img
+  src="{% static 'imgs/cintamaya_logo_100px.png' %}"
+  class="rotating-logo"
+  alt="Logo en chargement"
+  role="status"
+  aria-live="polite"
+  aria-busy="true"
+/>

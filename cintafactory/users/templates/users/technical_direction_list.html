@@ -1,0 +1,42 @@
+{% extends "material/frontend/base_module.html" %}
+
+{% block content %}
+<div class="card cinta-card">
+  <div class="card-content">
+    <div class="page-header">
+      <h5 class="page-header__title">Directions technique</h5>
+      {% if request.user.is_superuser %}
+        <a href="crud/add/" class="btn waves-effect waves-light cinta-btn-primary">+ Ajouter une direction</a>
+      {% endif %}
+    </div>
+    <div class="table-wrapper">
+      <table class="highlight responsive-table">
+        <thead>
+          <tr>
+            <th>Nom</th>
+            <th>Slug</th>
+            <th class="table-actions-col">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if object_list %}
+            {% for obj in object_list %}
+              {% include "users/_technical_direction_row.html" %}
+            {% empty %}
+              <tr><td colspan="3" class="table-empty">Aucune direction technique pour le moment.</td></tr>
+            {% endfor %}
+          {% elif page_obj %}
+            {% for obj in page_obj.object_list %}
+              {% include "users/_technical_direction_row.html" %}
+            {% empty %}
+              <tr><td colspan="3" class="table-empty">Aucune direction technique pour le moment.</td></tr>
+            {% endfor %}
+          {% else %}
+            <tr><td colspan="3" class="table-empty">Aucune direction technique pour le moment.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

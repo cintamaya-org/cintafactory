@@ -1,0 +1,302 @@
+{% load dat_extras static %}
+{% with wrap_card=wrap|default:True %}
+{% if wrap_card %}
+<div class="card cinta-card" id="section-{{ container.section.metadata.slug }}">
+  <div class="card-content">
+{% else %}
+<div id="section-{{ container.section.metadata.slug }}" class="section u-p-0">
+{% endif %}
+    <div class="dat-section-header">
+      <div>
+        <span class="card-title dat-section-title">
+          <i class="material-icons" aria-hidden="true">view_agenda</i>
+          {{ container.section.metadata.title }}
+        </span>
+        {% if container.section.metadata.description %}
+          <p class="dat-section-description">{{ container.section.metadata.description }}</p>
+        {% endif %}
+      </div>
+      <div class="dat-section-status-meta">
+        {% if container.section.metadata.slug == "validation" %}
+          <div class="u-flex u-justify-end u-w-100">
+            <a
+              href="#dat-reserve-history-modal"
+              class="btn waves-effect waves-light cinta-btn-primary modal-trigger dat-modal-trigger"
+              data-modal-target="dat-reserve-history-modal"
+            >
+              <i class="material-icons left" aria-hidden="true">history</i>
+              Historique des réserves et validations
+            </a>
+          </div>
+        {% endif %}
+        {% if container.has_status %}
+          {% with blocked_value=container.status_values|get_item:"blocked" %}
+          {% section_status_icon container.status.value as section_status_icon %}
+          <div class="dat-section-status-chip">
+            <span class="{{ section_status_icon.variant }} dat-section-status-icon" aria-hidden="true" style="color: {{ section_status_icon.color|default:'#546e7a' }};">
+              {{ section_status_icon.name|default:'radio_button_unchecked' }}
+            </span>
+            <span class="dat-section-status-chip__label">{{ container.status.label|default:"En cours" }}</span>
+          </div>
+          {% if container.status_locked %}
+            <span class="chip green lighten-4 dat-section-locked-chip">Section validée</span>
+          {% endif %}
+          {% if container.status.commentaire and container.status.value != blocked_value %}
+            <p class="dat-section-status-note">{{ container.status.commentaire }}</p>
+          {% endif %}
+          {% endwith %}
+        {% endif %}
+      </div>
+    </div>
+    <div class="dat-sub-section dat-sub-section--tight">
+      <h6 class="u-mt-0 u-flex u-items-center u-gap-0-5 text-body">
+        <i class="material-icons" aria-hidden="true">group</i>
+        Responsables de la section
+      </h6>
+      {% if container.section_responsibles %}
+        <div class="u-flex u-flex-wrap u-gap-0-5">
+          {% for responsible in container.section_responsibles %}
+            <span class="chip green lighten-5">{{ responsible.display }}</span>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="u-m-0 text-muted">Aucun responsable affecté.</p>
+      {% endif %}
+    </div>
+	    {% if container.has_status %}
+	      {% with blocked_value=container.status_values|get_item:"blocked" %}
+	        {% if container.status.value == blocked_value and container.status.commentaire %}
+          <div class="dat-sub-section dat-sub-section-blocked dat-sub-section--tight">
+            <h6 class="u-mt-0 u-flex u-items-center u-gap-0-5 text-danger-strong">
+              <i class="material-icons dat-block-modal-icon" aria-hidden="true">block</i>
+              Section Bloquer
+            </h6>
+            <p class="u-m-0 u-pre-wrap text-danger-strong">{{ container.status.commentaire }}</p>
+          </div>
+	        {% endif %}
+	      {% endwith %}
+	    {% endif %}
+	    {% if container.has_status and container.status.reserve_message %}
+	      <div class="dat-sub-section dat-sub-section-reserve dat-sub-section--tight">
+	        <h6 class="u-mt-0 u-flex u-items-center u-gap-0-5 text-body">
+	          <i class="material-icons dat-reserve-modal-icon" aria-hidden="true">bookmark</i>
+	          Réserve
+	        </h6>
+	        <p class="u-m-0 u-mb-0-5 text-muted-dark">
+	          Par <strong>{{ container.status.reserve_by_display|default:" — " }}</strong>
+	        </p>
+	        <p class="u-m-0 u-pre-wrap text-body">{{ container.status.reserve_message }}</p>
+	      </div>
+	    {% endif %}
+	    {% if container.section.metadata.slug == "validation" %}
+	      <link rel="stylesheet" href="{% static 'css/dat_workflow_card.css' %}">
+	      <div class="dat-sub-section dat-sub-section--tight dat-validation-workflow-card">
+	        <h6 class="u-mt-0 u-flex u-items-center u-gap-0-5 text-body">
+	          <i class="material-icons" aria-hidden="true">schema</i>
+	          Workflow lié
+	        </h6>
+	        <div class="u-flex u-items-center u-gap-1">
+	          <div class="dat-validation-workflow-card__diagram" data-wf-diagram data-layout-height="{{ viewflow_workflow_template.layout.height|default:300 }}" data-layout-padding="{{ viewflow_workflow_template.layout.padding|default:36 }}">
+	            <svg class="wf-links" data-wf-links></svg>
+	            <div class="wf-node-row">
+	              {% with nodes=viewflow_workflow_template.nodes %}
+	                {% for node in nodes %}
+	                  {% with node_meta=workflow_node_statuses|get_item:node.id %}
+	                  <button class="wf-node wf-node--{{ node.variant|default:'mid' }} wf-node--scope-{{ node_meta.scope|default:'section' }} wf-node--tone-{{ node_meta.tone|default:'unknown' }}" type="button" aria-label="Workflow step {{ node.title|default:node.id }}" data-node-id="{{ node.id|default:forloop.counter }}" data-row="{{ node.row|default_if_none:0 }}" data-col="{{ node.col|default_if_none:0 }}" data-links="{% if node.links %}{{ node.links|join:',' }}{% endif %}">
+	                    <span class="wf-node__label">{{ node.title|default:node.id }}</span>
+	                    <span class="material-icons wf-node__icon" aria-hidden="true">{{ node_meta.icon|default:"radio_button_unchecked" }}</span>
+	                    <span class="wf-node__cap"></span>
+	                    <span class="wf-node__body">
+	                      {% if node_meta.message %}
+	                        <span class="wf-node__content wf-node__content--{{ node_meta.message_kind|default:'note' }}">{{ node_meta.message }}</span>
+	                      {% elif node.content %}
+	                        <span class="wf-node__content">{{ node.content }}</span>
+	                      {% endif %}
+	                    </span>
+	                  </button>
+	                  {% endwith %}
+	                {% endfor %}
+	              {% endwith %}
+	            </div>
+	          </div>
+	          <div class="u-flex u-flex-col">
+	            <span class="text-body">Processus lié au DAT.</span>
+	            {% if viewflow_process and viewflow_process.process_id %}
+	              <small class="text-muted">Process ID : {{ viewflow_process.process_id }}</small>
+	            {% else %}
+	              <small class="text-muted">Process ID : non reconnus</small>
+	            {% endif %}
+	          </div>
+	        </div>
+          <div class="u-flex u-items-center u-gap-1">
+            <div class="dat-validation-workflow-card__diagram" data-wf-diagram data-layout-height="220" data-layout-padding="44" aria-label="Exemple statique de workflow">
+              <svg class="wf-links" data-wf-links></svg>
+              <div class="wf-node-row">
+                <button class="wf-node wf-node--mid wf-node--scope-section wf-node--tone-unknown" type="button" aria-label="Étape Cybersecurity" data-node-id="cybersecurity" data-row="0" data-col="0" data-links="architecture-technique">
+                  <span class="wf-node__label">Cybersecurity</span>
+                  <span class="material-icons wf-node__icon" aria-hidden="true">security</span>
+                  <span class="wf-node__cap"></span>
+                  <span class="wf-node__body">
+                    <span class="wf-node__content">Contrôles sécurité</span>
+                  </span>
+                </button>
+                <button class="wf-node wf-node--mid wf-node--scope-section wf-node--tone-review" type="button" aria-label="Étape Architecture technique" data-node-id="architecture-technique" data-row="0" data-col="1" data-links="validation">
+                  <span class="wf-node__label">Architecture technique</span>
+                  <span class="material-icons wf-node__icon" aria-hidden="true">architecture</span>
+                  <span class="wf-node__cap"></span>
+                  <span class="wf-node__body">
+                    <span class="wf-node__content">Revue architecture</span>
+                  </span>
+                </button>
+                <button class="wf-node wf-node--mid wf-node--scope-section wf-node--tone-validated" type="button" aria-label="Étape Validation" data-node-id="validation" data-row="0" data-col="2">
+                  <span class="wf-node__label">Validation</span>
+                  <span class="material-icons wf-node__icon" aria-hidden="true">task_alt</span>
+                  <span class="wf-node__cap"></span>
+                  <span class="wf-node__body">
+                    <span class="wf-node__content">Validation finale</span>
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
+	      </div>
+	    {% endif %}
+	    {% for part in container.parts %}
+	      {% include "dat/partials/dat_sub_section_card.html" with part=part container=container container_section=container.section dat=dat %}
+	    {% endfor %}
+	    {% if container.has_status %}
+	      <div class="dat-section-status-actions">
+        {% if container.status_locked %}
+          <div class="dat-section-status-message dat-section-status-message--locked">
+            <i class="material-icons" aria-hidden="true">lock</i>
+            <span>Cette section est validée et n'est plus modifiable.</span>
+          </div>
+        {% endif %}
+	        {% if container.can_update_status and not container.status_locked %}
+	          <div class="dat-section-status-actions__buttons">
+	            {% with validate_value=container.status_values|get_item:"validated" blocked_value=container.status_values|get_item:"blocked" default_value=container.status_values|get_item:"default" %}
+              {% if container.status.value == blocked_value %}
+                <form method="post" action="{% url 'dat:section_status' dat.pk container.section.metadata.slug %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="status" value="{{ default_value }}">
+                  <button type="submit" class="btn btn-flat waves-effect cinta-btn-secondary">
+                    <i class="material-icons left" aria-hidden="true">refresh</i>
+                    Repasser en cours
+                  </button>
+                </form>
+                {% if container.status_choices|get_item:validate_value %}
+                  <form method="post" action="{% url 'dat:section_status' dat.pk container.section.metadata.slug %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="status" value="{{ validate_value }}">
+                    <button type="submit" class="btn waves-effect waves-light cinta-btn-primary">
+                      <i class="material-icons left" aria-hidden="true">task_alt</i>
+                      Valider
+                    </button>
+                  </form>
+                {% endif %}
+	              {% elif container.status.value == validate_value %}
+	                <form method="post" action="{% url 'dat:section_status' dat.pk container.section.metadata.slug %}" class="dat-devalidate-form" data-section-title="{{ container.section.metadata.title }}" data-has-responsible-validation="{% if container.status.responsable_value == validate_value %}1{% else %}0{% endif %}">
+	                  {% csrf_token %}
+	                  <input type="hidden" name="status" value="{{ default_value }}">
+	                  <input type="hidden" name="confirm_responsable_reset" value="0">
+	                  <button type="submit" class="btn btn-flat waves-effect cinta-btn-secondary">
+	                    <i class="material-icons left" aria-hidden="true">refresh</i>
+	                    Dévalider
+	                  </button>
+	                </form>
+	                {% if container.status.responsable_value != validate_value and container.status_choices|get_item:blocked_value %}
+	                  <form method="post" action="{% url 'dat:section_status' dat.pk container.section.metadata.slug %}" class="dat-block-status-form" data-section-title="{{ container.section.metadata.title }}">
+	                    {% csrf_token %}
+	                    <input type="hidden" name="status" value="{{ blocked_value }}">
+	                    <input type="hidden" name="commentaire" value="">
+	                    <button type="submit" class="btn btn-flat waves-effect cinta-btn-secondary">
+	                      <i class="material-icons left" aria-hidden="true">block</i>
+	                      Bloquer
+	                    </button>
+	                  </form>
+	                {% endif %}
+	              {% else %}
+                {% if container.status_choices|get_item:validate_value %}
+	                <form method="post" action="{% url 'dat:section_status' dat.pk container.section.metadata.slug %}">
+	                    {% csrf_token %}
+	                    <input type="hidden" name="status" value="{{ validate_value }}">
+                    <button type="submit" class="btn waves-effect waves-light cinta-btn-primary">
+                      <i class="material-icons left" aria-hidden="true">task_alt</i>
+                      Valider
+                    </button>
+                  </form>
+                {% endif %}
+	                {% if container.status_choices|get_item:blocked_value %}
+	                  <form method="post" action="{% url 'dat:section_status' dat.pk container.section.metadata.slug %}" class="dat-block-status-form" data-section-title="{{ container.section.metadata.title }}">
+	                    {% csrf_token %}
+	                    <input type="hidden" name="status" value="{{ blocked_value }}">
+	                    <input type="hidden" name="commentaire" value="">
+	                    <button type="submit" class="btn btn-flat waves-effect cinta-btn-secondary">
+	                      <i class="material-icons left" aria-hidden="true">block</i>
+	                      Bloquer
+	                    </button>
+	                  </form>
+	                {% endif %}
+              {% endif %}
+	            {% endwith %}
+	          </div>
+	        {% endif %}
+	        {% with validate_value=container.status_values|get_item:"validated" %}
+	          {% if container.status.responsable_value == validate_value %}
+	            <div class="dat-section-status-message dat-section-status-message--success">
+	              <i class="material-icons" aria-hidden="true">verified</i>
+	              <span>Validation responsable effectuée.</span>
+	            </div>
+	          {% endif %}
+	        {% endwith %}
+	      </div>
+	    {% endif %}
+    {% if container.section.metadata.slug == "validation" %}
+      <div class="dat-validation-actions">
+        {% if dat.status == "en_attente_de_revue" %}
+          <p class="u-m-0 text-body">Toutes les sections sont validées. Choisissez une décision finale.</p>
+          {% if can_review_dat %}
+            <div class="dat-validation-actions__buttons">
+              <form method="post" action="{% url 'dat:my_validation_decision' dat.pk %}">
+                {% csrf_token %}
+                <input type="hidden" name="decision" value="valider">
+                <button type="submit" class="btn waves-effect waves-light cinta-btn-primary">
+                  <i class="material-icons left" aria-hidden="true">task_alt</i>
+                  Valider
+                </button>
+              </form>
+              <form method="post" action="{% url 'dat:my_validation_decision' dat.pk %}">
+                {% csrf_token %}
+                <input type="hidden" name="decision" value="refuse">
+                <button type="submit" class="btn btn-flat waves-effect cinta-btn-secondary dat-validation-actions__decline">
+                  <i class="material-icons left" aria-hidden="true">highlight_off</i>
+                  Refusé
+                </button>
+              </form>
+              <form method="post" action="{% url 'dat:my_validation_decision' dat.pk %}">
+                {% csrf_token %}
+                <input type="hidden" name="decision" value="reserve">
+                <button type="submit" class="btn btn-flat waves-effect cinta-btn-secondary">
+                  <i class="material-icons left" aria-hidden="true">undo</i>
+                  Mettre en réserve
+                </button>
+              </form>
+            </div>
+          {% else %}
+            <p class="u-m-0 text-muted-soft">Seuls les réviseurs peuvent valider, refuser ou placer ce dossier en réserve.</p>
+          {% endif %}
+        {% elif dat.status == "reserve" %}
+          <p class="u-m-0 text-body">Le DAT est en réserve : mettez à jour les sections puis validez-les à nouveau pour repasser en revue.</p>
+        {% elif dat.status == "valider" or dat.status == "refuse" %}
+          <p class="u-m-0 text-muted-soft">Ce DAT est clôturé. Les décisions ne sont plus modifiables.</p>
+        {% endif %}
+      </div>
+    {% endif %}
+    {% include "dat/partials/dat_section_attachments.html" with container=container dat=dat %}
+{% if wrap_card %}
+  </div>
+</div>
+{% else %}
+</div>
+{% endif %}
+{% endwith %}

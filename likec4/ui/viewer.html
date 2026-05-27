@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LikeC4 Viewer</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --panel: #161a20;
+      --text: #e5e5e5;
+      --muted: #9da6b5;
+      --accent: #3ba55d;
+      --font: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at 20% 20%, rgba(59, 165, 93, 0.08), transparent 30%),
+                  radial-gradient(circle at 80% 0%, rgba(70, 172, 255, 0.05), transparent 32%),
+                  var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      min-height: 100vh;
+    }
+    #root {
+      min-height: 100vh;
+      display: flex;
+      align-items: stretch;
+      justify-content: stretch;
+    }
+    .message {
+      margin: auto;
+      padding: 18px 22px;
+      background: var(--panel);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .message strong { color: var(--accent); }
+    likec4-view {
+      flex: 1;
+      min-height: 100vh;
+    }
+  </style>
+</head>
+<body>
+  <div id="root">
+    <div class="message" id="message">Loading LikeC4 view...</div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const viewId = (params.get('view') || 'index').trim() || 'index';
+    const bundleParam = params.get('bundle') || 'likec4-webcomponent.js';
+    const root = document.getElementById('root');
+    const message = document.getElementById('message');
+
+    const loadScript = (src) => new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = src;
+      script.async = true;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('Script failed to load'));
+      document.head.appendChild(script);
+    });
+
+    const mountView = () => {
+      root.innerHTML = '';
+      const viewEl = document.createElement('likec4-view');
+      viewEl.setAttribute('view-id', viewId);
+      viewEl.setAttribute('browser', 'true');
+      root.appendChild(viewEl);
+    };
+
+    const scriptUrl = new URL(bundleParam, window.location.href).toString();
+    loadScript(scriptUrl)
+      .then(() => {
+        if (!customElements.get('likec4-view')) {
+          message.textContent = 'LikeC4 web component not registered.';
+          root.innerHTML = '';
+          root.appendChild(message);
+          return;
+        }
+        mountView();
+      })
+      .catch((err) => {
+        const detail = err && err.message ? err.message : 'Unknown error';
+        message.innerHTML = 'Failed to load LikeC4 bundle. <strong>' + detail + '</strong>';
+      });
+  </script>
+</body>
+</html>

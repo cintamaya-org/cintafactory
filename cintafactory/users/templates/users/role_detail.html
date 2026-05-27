@@ -1,0 +1,116 @@
+{% extends "material/frontend/base_module.html" %}
+{% load static %}
+
+{% block content %}
+{% with role=role_obj|default:object %}
+{% with members=member_list|default:role.users.all %}
+{% with members_count=members|length %}
+<div class="card cinta-card">
+  <div class="card-content">
+    <div class="page-header">
+      <div>
+        <h5 class="page-header__title">Rôle</h5>
+        <p class="page-header__subtitle">Détails pour {{ role.name }}</p>
+      </div>
+      <div class="page-header__actions">
+        <a href="{% url 'users:role_change' pk=role.pk %}" class="btn waves-effect waves-light cinta-btn-primary">
+          <i class="material-icons left">edit</i>Modifier
+        </a>
+        <a href="{% url 'users:role_list' %}" class="btn-flat waves-effect">
+          <i class="material-icons left">arrow_back</i>Retour à la liste
+        </a>
+      </div>
+    </div>
+
+    <div class="divider section-divider"></div>
+
+    <div class="row">
+      <div class="col s12 m6">
+        <h6 class="section-title">Informations générales</h6>
+        <ul class="collection collection--borderless">
+          <li class="collection-item"><strong>Nom :</strong> {{ role.name }}</li>
+          <li class="collection-item"><strong>Slug :</strong> {{ role.slug }}</li>
+          <li class="collection-item"><strong>Direction technique :</strong>
+            {% if role.technical_direction %}
+              {{ role.technical_direction.name }}
+            {% elif role.is_admin_role %}
+              Transverse
+            {% else %}
+              —
+            {% endif %}
+          </li>
+          <li class="collection-item"><strong>Type :</strong>
+            {% if role.is_admin_role %}Administrateur{% else %}Direction{% endif %}
+          </li>
+        </ul>
+      </div>
+      <div class="col s12 m6">
+        <h6 class="section-title">Statistiques</h6>
+        <ul class="collection collection--borderless">
+          <li class="collection-item"><strong>Utilisateurs rattachés :</strong> {{ members_count }}</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="divider section-divider"></div>
+
+    <div class="divider section-divider"></div>
+
+    <div>
+      <div class="u-flex u-justify-between u-items-center u-flex-wrap u-gap-0-5">
+        <h6 class="section-title u-m-0">Utilisateurs avec ce rôle</h6>
+        <span class="text-muted-secondary">{{ members_count }} utilisateur{% if members_count != 1 %}s{% endif %}</span>
+      </div>
+      <div class="table-wrapper">
+        <table class="highlight responsive-table">
+          <thead>
+            <tr>
+              <th>Utilisateur</th>
+              <th>Email</th>
+              <th>Groupe</th>
+              <th>Direction (groupe)</th>
+              <th>Actif</th>
+              <th class="table-actions-col">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if members %}
+              {% for member in members %}
+                <tr>
+                  <td>{{ member.get_full_name|default:member.username }}</td>
+                  <td>{{ member.email|default:"—" }}</td>
+                  <td>
+                    {% if member.business_group %}
+                      {{ member.business_group.name }}
+                    {% else %}
+                      —
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if member.business_group and member.business_group.direction %}
+                      {{ member.business_group.direction.name }}
+                    {% else %}
+                      —
+                    {% endif %}
+                  </td>
+                  <td>{% if member.is_active %}Oui{% else %}Non{% endif %}</td>
+                  <td>
+                    <a href="{% url 'users:user_detail' pk=member.pk %}" class="btn-flat waves-effect">Voir</a>
+                  </td>
+                </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="6" class="table-empty table-empty--center">Aucun utilisateur pour ce rôle.</td>
+              </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endwith %}
+{% endwith %}
+{% endwith %}
+{% endblock %}

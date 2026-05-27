@@ -1,0 +1,48 @@
+{% extends "material/frontend/base_module.html" %}
+
+{% block content %}
+<div class="card cinta-card">
+  <div class="card-content">
+    <div class="page-header">
+      <h5 class="page-header__title">Groupes métiers</h5>
+
+{% if request.user.is_superuser %}
+        <a href="crud/add/" class="btn waves-effect waves-light cinta-btn-primary">+ Ajouter un groupe</a>
+      {% endif %}
+    </div>
+
+    <div class="table-wrapper">
+      <table class="highlight responsive-table">
+        <thead>
+          <tr>
+            <th>Nom</th>
+            <th>Direction technique</th>
+            <th>Direction métier</th>
+            <th>Responsable</th>
+            <th>Par défaut</th>
+            <th>Utilisateurs</th>
+            <th class="table-actions-col">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if object_list %}
+            {% for obj in object_list %}
+              {% include "users/_group_row.html" %}
+            {% empty %}
+              <tr><td colspan="7" class="table-empty">Aucun groupe pour le moment.</td></tr>
+            {% endfor %}
+          {% elif page_obj %}
+            {% for obj in page_obj.object_list %}
+              {% include "users/_group_row.html" %}
+            {% empty %}
+              <tr><td colspan="7" class="table-empty">Aucun groupe pour le moment.</td></tr>
+            {% endfor %}
+          {% else %}
+            <tr><td colspan="7" class="table-empty">Aucun groupe pour le moment.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

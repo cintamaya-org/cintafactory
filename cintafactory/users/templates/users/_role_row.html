@@ -1,11 +1,32 @@
 <tr>
-  <td>{{ obj.name }}</td>
+  <td>
+    <a href="{% url 'users:role_detail' pk=obj.pk %}" class="cinta-link">{{ obj.name }}</a>
+  </td>
   <td>{{ obj.slug }}</td>
   <td>
-    {% if request.user.is_superuser or request.user.is_staff or request.user.role and request.user.role.slug == "comite-validation" %}
-      <a href="{% url 'users:role_change' pk=obj.pk %}" class="btn-flat waves-effect">Modifier</a>
+    {% if obj.technical_direction %}
+      {{ obj.technical_direction.name }}
+    {% elif obj.is_admin_role %}
+      <span class="text-muted-light">Transverse</span>
     {% else %}
-      <span title="Aucune permission" style="color:#888;">—</span>
+      —
     {% endif %}
+  </td>
+  <td>
+    {% if obj.is_admin_role %}
+      <span class="chip red lighten-5 text-danger u-text-semibold">Administrateur</span>
+    {% else %}
+      <span class="chip teal lighten-5 text-teal-dark">User</span>
+    {% endif %}
+  </td>
+  <td>
+    <div class="u-flex u-gap-0-3 u-flex-wrap">
+      <a href="{% url 'users:role_detail' pk=obj.pk %}" class="btn-flat waves-effect">Détails</a>
+      {% if request.user.is_superuser %}
+        <a href="{% url 'users:role_change' pk=obj.pk %}" class="btn-flat waves-effect">Modifier</a>
+      {% else %}
+        <span title="Aucune permission" class="text-muted-light">—</span>
+      {% endif %}
+    </div>
   </td>
 </tr>

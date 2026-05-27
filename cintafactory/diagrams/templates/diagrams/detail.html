@@ -1,0 +1,47 @@
+{% extends current_module.base_template %}
+
+{% block title %}{{ diagram.title }}{% endblock %}
+{% block page_title %}Diagrammes{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+{% include "components/drawio_preview_listener.html" %}
+{% endblock %}
+
+{% block breadcrumbs_items %}
+<a href="{% url 'diagrams:list' %}">Mes diagrammes</a>
+<a class="active">{{ diagram.title }}</a>
+{% endblock %}
+
+{% block content %}
+<div class="section">
+  <div class="row">
+    <div class="col s12 l8">
+      <div class="card cinta-card">
+        <div class="card-content">
+          <span class="card-title">{{ diagram.title }}</span>
+          <p class="grey-text">Dernière mise à jour le {{ diagram.updated_at|date:"d/m/Y à H\\hi" }}</p>
+        </div>
+        <div class="card-image diagram-detail__image">
+          {% if diagram.thumbnail %}
+          <img src="{% url 'diagrams:diagram_asset' diagram.pk 'views/thumb.png' %}" alt="{{ diagram.title }}" class="diagram-detail__img" data-diagram-preview-id="{{ diagram.pk }}">
+          {% else %}
+          <div class="diagram-detail__placeholder">
+            <i class="material-icons diagram-detail__placeholder-icon">insert_drive_file</i>
+            <p class="center-align u-m-0">Aucun aperçu disponible. Ouvrez le diagramme dans l'éditeur pour en générer un.</p>
+          </div>
+          {% endif %}
+        </div>
+        <div class="card-action diagram-detail__actions">
+          <a class="btn-flat waves-effect" href="{% url 'diagrams:list' %}">
+            <i class="material-icons left">arrow_back</i>Retour
+          </a>
+          <a class="btn waves-effect waves-light cinta-btn-primary" href="{% url 'diagrams:edit' diagram.pk %}">
+            <i class="material-icons left">edit</i>Ouvrir l'éditeur
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

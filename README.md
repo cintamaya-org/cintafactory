@@ -1,105 +1,78 @@
 # CintaFactory
 
-**CintaFactory** is a TODO Describe the product
----
+**CintaFactory** est une plateforme Django destinée à centraliser la gestion des dossiers d'architecture technique, appelés **DAT**. Le projet couvre le cycle de vie complet d'un DAT : création, structuration du contenu, affectation des responsables, validation par workflow, suivi des décisions, exports sécurisés et visualisation de diagrammes.
 
-## Technology Stack
+L'objectif est de fournir un espace commun aux équipes métier, architecture et validation pour préparer, relire et tracer les dossiers d'architecture d'une application.
 
-| Component           | Technology           |
-| ------------------- | -------------------- |
-| **Framework**       | Django 5.2.5         |
-| **Database**        | SQLite (/PostgreSQL) |
-| **Language**        | Python TODO VE       |
+## Ce que permet le projet
 
----
+- Gérer les **applications** et leurs rattachements aux directions métier.
+- Créer et suivre des **DAT** avec statut, propriétaire, participants et historique.
+- Organiser chaque DAT en **sections et sous-sections** configurables.
+- Affecter des **rôles** et des responsables selon les directions techniques et métier.
+- Piloter les validations via un **workflow DAT** : nouvelle demande, en cours, en attente de revue, réserve, validation ou refus.
+- Suivre les tâches, notifications et changements d'état depuis des vues de travail.
+- Produire des **exports PDF et JSON** des DAT avec contrôle d'accès renforcé.
+- Intégrer des diagrammes **draw.io** et **LikeC4** pour documenter l'architecture.
+- Exposer des endpoints de santé, métriques et tableaux de bord d'observabilité.
 
-## Development Setup
+## Modules principaux
 
-### Clone the repository
+| Module | Rôle |
+| --- | --- |
+| `dat` | Gestion des DAT, applications, sections, participants, historique, exports et import. |
+| `workflows` | Définition et synchronisation des étapes de validation, tableaux de suivi et notifications. |
+| `users` | Utilisateurs, rôles, directions techniques, directions métier et groupes. |
+| `diagrams` | Édition, import, export et rendu de diagrammes draw.io et LikeC4. |
+| `configuration` | Écrans et paramètres de configuration applicative. |
+| `cintafactory` | Projet Django principal, API, santé, métriques, middleware et tâches asynchrones. |
 
-```bash
-git clone https://github.com/your-org/cintafactory.git
-cd cintafactory
-```
+## Parcours fonctionnel
 
-### Create and activate a virtual environment
+1. Une application est déclarée avec sa direction métier.
+2. Un DAT est créé pour cette application.
+3. Les participants et responsables sont associés au dossier.
+4. Les sections du DAT sont complétées avec textes, pièces jointes et diagrammes.
+5. Le DAT avance dans le workflow de validation.
+6. Les décisions, réserves et modifications sont historisées.
+7. Le dossier peut être exporté en PDF ou JSON selon les règles d'accès.
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
-```
+## Stack technique
 
-### Install dependencies
+| Composant | Technologie |
+| --- | --- |
+| Langage | Python 3.12+ |
+| Framework web | Django 5.2 |
+| API | Django REST Framework, drf-spectacular |
+| Base de données | PostgreSQL |
+| Authentification | Django auth, OAuth Toolkit |
+| Workflow et UI | django-viewflow, django-material |
+| Exports | WeasyPrint, JSON |
+| Diagrammes | draw.io, LikeC4 |
+| Déploiement local | Docker Compose |
+| Observabilité | Prometheus, Grafana, Loki, Promtail, cAdvisor |
 
-```bash
-pip install -r requirements.txt
-```
+## Documentation utile
 
-### Apply migrations
+- [`README_old.md`](./README_old.md) : ancien guide général, installation et commandes principales.
+- [`README_dev.md`](./README_dev.md) : guide développeur par packs Docker Compose.
+- [`README_MONITORING.md`](./README_MONITORING.md) : supervision, métriques, logs et dashboards.
+- [`README_LOG.md`](./README_LOG.md) : informations liées aux logs.
+- [`deploy/`](./deploy) : scripts et fichiers de déploiement.
+- [`params_dev/`](./params_dev) : runbooks et notes techniques de développement.
 
-```bash
-python manage.py migrate
-```
+## Points d'entrée applicatifs
 
-### Synchronise workflow definitions
+Les routes principales sont servies par le projet Django :
 
-```bash
-python manage.py sync_workflows
-```
+- `/accounts/login/` : connexion.
+- `/dat/` : gestion des DAT.
+- `/workflows/` : tableaux de validation et tâches.
+- `/diagrams/` : diagrammes draw.io et LikeC4.
+- `/api/docs/` : documentation Swagger de l'API.
+- `/health/live` et `/health/ready` : santé applicative.
+- `/metrics` : métriques Prometheus.
 
-The command reads the declarative configuration in `workflows/definitions.py`
-and keeps the database (steps, permissions) in sync.
+## Licence
 
-### Create a superuser
-
-```bash
-python manage.py createsuperuser
-```
-
-### Run the development server
-
-```bash
-python manage.py runserver
-```
-
-Now open:
--> [http://127.0.0.1:8050/admin/](http://127.0.0.1:8050/admin/) to access the Django admin interface.
-
----
-
-## CI/CD
-
-The GitHub Actions workflow in `.github/workflows/deploy.yml` automates testing and deployments:
-
-- Pushes to `dev`, `main`, or any `dev-*` branch always run the Django test suite.
-- Successful pushes to `dev` and pull requests targeting `dev` deploy the shared test stack by executing `deploy/scripts/deploy.sh test` on the VPS.
-- Successful pushes to `main` and pull requests from `dev` into `main` deploy the production/demo stack by executing `deploy/scripts/deploy.sh prod`.
-
-Each environment uses distinct Docker Compose project names, host ports, and named volumes, allowing the two stacks to run on the same VPS simultaneously without resource conflicts.
-
-
-### Required GitHub secrets
-
-Add the following secrets to the repository (or organisation) so the workflow can reach the VPS:
-
-| Secret | Description |
-| ------ | ----------- |
-| `VPS_IP` | SSH host name or IP address of the VPS. |
-| `VPS_USER` | SSH user that can deploy and run Docker. |
-| `VPS_SSH_KEY` | Private SSH key (PEM) for that user. |
-
-Secrets stored in `deploy/env/*.env` remain on the VPS—they are excluded from the sync step during deployments.
-
----
-
-## License
-
-This project is licensed under the **AGPL-3.0 License**.
-See the [LICENSE](./LICENSE) file for full details.
-
----
-
-### Notes
-
-* Default database: `SQLite` for local development (TODO switch to PostgreSQL).
-* Future features: SSO integration, role-based access control, external file storage....
+Le projet est distribué sous licence **AGPL-3.0**. Voir [`LICENSE`](./LICENSE) pour le texte complet.

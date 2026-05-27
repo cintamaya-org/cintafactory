@@ -1,0 +1,21 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>{% block title %}Diagrammes{% endblock %}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link href="{% static 'diagrams/editor.css' %}" rel="stylesheet" />
+  </head>
+  <body class="app">
+    <header class="topbar">
+      <nav>
+        <a href="{% url 'diagrams:list' %}" class="brand">Diagrammes</a>
+        <a href="{% url 'diagrams:create' %}" class="btn">Nouveau</a>
+      </nav>
+    </header>
+    <main class="content">
+      {% block content %}{% endblock %}
+    </main>
+  </body>
+</html>

@@ -1,0 +1,47 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "graphTooltip": 0,
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 16, "w": 24, "x": 0, "y": 0},
+      "id": 1,
+      "options": {"mode": "markdown"},
+      "targets": [],
+      "title": "Service Interaction Diagram",
+      "type": "text",
+      "content": "```mermaid\nflowchart LR\n    U[Users] --> W[Web/Django]\n    W --> DB[(Postgres)]\n    W --> Q[Async Jobs]\n    Q --> EXP[LikeC4/DrawIO Exporters]\n    W --> ST[(SeaweedFS)]\n    W --> AV[ClamAV]\n```\n\nUse this together with the capacity and reliability dashboards for incident triage."
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 10, "w": 12, "x": 0, "y": 16},
+      "id": 2,
+      "targets": [
+        {"expr": "cinta_dependency_up", "refId": "A"}
+      ],
+      "title": "Dependency Status",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 10, "w": 12, "x": 12, "y": 16},
+      "id": 3,
+      "targets": [
+        {"expr": "sum by (metric, success) (increase(cinta_baseline_events_total[15m]))", "refId": "A"}
+      ],
+      "title": "Cross-Service Event Flow",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["plan6", "architecture", "diagram"],
+  "templating": {"list": []},
+  "time": {"from": "now-12h", "to": "now"},
+  "title": "Cinta Architecture and Interactions",
+  "uid": "cinta-architecture-interactions",
+  "version": 1
+}

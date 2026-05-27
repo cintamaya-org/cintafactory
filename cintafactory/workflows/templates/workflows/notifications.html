@@ -1,0 +1,175 @@
+{% extends "material/frontend/base_module.html" %}
+
+{% block content %}
+<div class="card wf-notifications-card">
+  <div class="card-content">
+    <div class="wf-notifications">
+      <div class="wf-notifications__header">
+        <div>
+          <h1>Notifications</h1>
+          <p class="wf-notifications__subtitle">Suivez les derniers événements liés à vos DAT et à vos workflows.</p>
+        </div>
+        <div class="wf-notifications__summary">
+          <span class="chip {% if notifications_unread_count %}red darken-1 white-text{% else %}grey lighten-2 grey-text text-darken-2{% endif %}">
+            {{ notifications_unread_count }} non lus
+          </span>
+          <span class="chip grey lighten-3">
+            {{ notifications|length }} éléments
+          </span>
+          {% if notifications %}
+            <form method="post" action="{% url 'workflows:notifications' %}">
+              {% csrf_token %}
+              <input type="hidden" name="mark_all" value="1">
+              <button type="submit" class="btn-flat">
+                Tout marquer comme lu
+              </button>
+            </form>
+          {% endif %}
+        </div>
+      </div>
+
+      {% if notifications %}
+        <ul class="wf-notifications__list">
+          {% for notification in notifications %}
+            <li class="wf-notification{% if notification.is_unread %} wf-notification--unread{% endif %}">
+              <div class="wf-notification__icon" aria-hidden="true">
+                {% if notification.source == "history" %}
+                  {% if notification.action == history_actions.STATUS_CHANGED %}
+                    <i class="material-icons">published_with_changes</i>
+                  {% elif notification.action == history_actions.OWNER_CHANGED %}
+                    <i class="material-icons">swap_horiz</i>
+                  {% elif notification.action == history_actions.SECTION_UPDATED %}
+                    <i class="material-icons">description</i>
+                  {% elif notification.action == history_actions.UPDATED %}
+                    <i class="material-icons">edit</i>
+                  {% elif notification.action == history_actions.CREATED %}
+                    <i class="material-icons">add_circle_outline</i>
+                  {% else %}
+                    <i class="material-icons">notifications</i>
+                  {% endif %}
+                {% else %}
+                  {% if notification.level == "success" %}
+                    <i class="material-icons">check_circle</i>
+                  {% elif notification.level == "warning" %}
+                    <i class="material-icons">warning</i>
+                  {% elif notification.level == "error" %}
+                    <i class="material-icons">error</i>
+                  {% else %}
+                    <i class="material-icons">notifications</i>
+                  {% endif %}
+                {% endif %}
+              </div>
+              <div class="wf-notification__body">
+                <div class="wf-notification__title">
+                  <span>{{ notification.title }}</span>
+                  <span aria-hidden="true">·</span>
+                  {% if notification.dat_link %}
+                    <a href="{{ notification.dat_link }}" class="wf-notification__dat-link">
+                      {{ notification.dat_reference }} · {{ notification.dat_title }}
+                    </a>
+                  {% else %}
+                    <span>{{ notification.dat_reference }} · {{ notification.dat_title }}</span>
+                  {% endif %}
+                </div>
+                <div class="wf-notification__meta">
+                  <span><i class="material-icons tiny" aria-hidden="true">event</i> {{ notification.created_at|date:"d/m/Y" }} à {{ notification.created_at|time:"H\\hi" }}</span>
+                  <span><i class="material-icons tiny" aria-hidden="true">person</i> {{ notification.actor_name }}</span>
+                  {% if notification.dat_application_name %}
+                    <span><i class="material-icons tiny" aria-hidden="true">apps</i> {{ notification.dat_application_name }}</span>
+                  {% endif %}
+                </div>
+                <div class="wf-notification__status-chips">
+                  {% if notification.source == "history" and notification.action == history_actions.STATUS_CHANGED %}
+                    {% if notification.status_from %}
+                      <span class="chip grey lighten-3" title="Statut précédent">{{ notification.status_from }}</span>
+                    {% endif %}
+                    {% if notification.status_to and notification.status_to != notification.status_from %}
+                      <span class="chip blue lighten-5" title="Statut actuel">{{ notification.status_to }}</span>
+                    {% endif %}
+                  {% else %}
+                    <span class="chip grey lighten-3">{{ notification.actor_name }}</span>
+                    <span class="chip blue lighten-5">{{ notification.level|default:"info"|capfirst }}</span>
+                  {% endif %}
+                  {% if notification.is_unread %}
+                    <span class="chip red darken-1 white-text">Nouveau</span>
+                  {% endif %}
+                </div>
+                <div class="wf-notification__details">
+                  {% if notification.source == "history" %}
+                    {% with entry=notification.history %}
+                      {% if entry.action == history_actions.STATUS_CHANGED %}
+                        Passage de <strong>{{ entry.details.from|default:"-" }}</strong> à <strong>{{ entry.details.to|default:"-" }}</strong>.
+                      {% elif entry.action == history_actions.OWNER_CHANGED %}
+                        Responsable : <strong>{{ entry.details.from_username|default:"-" }}</strong> -> <strong>{{ entry.details.to_username|default:"-" }}</strong>.
+                      {% elif entry.action == history_actions.UPDATED %}
+                        {% if entry.details.changes %}
+                          <ul>
+                            {% for field, data in entry.details.changes.items %}
+                              <li>
+                                <strong>{{ field|capfirst }}</strong> : <span>{{ data.from|default:"-" }}</span> -> <span>{{ data.to|default:"-" }}</span>
+                              </li>
+                            {% endfor %}
+                          </ul>
+                        {% else %}
+                          Aucune précision supplémentaire.
+                        {% endif %}
+                      {% elif entry.action == history_actions.SECTION_UPDATED %}
+                        {% with details=entry.details %}
+                          {% if details.section %}
+                            Section <strong>{{ details.section.title|default:details.section.slug }}</strong>
+                            {% if details.section.slug %}
+                              (<code>{{ details.section.slug }}</code>)
+                            {% endif %}
+                            :
+                          {% endif %}
+                          {% if details.changes %}
+                            <ul>
+                              {% for key, change in details.changes.items %}
+                                <li>
+                                  {% if change.part %}<strong>{{ change.part }}</strong> · {% endif %}
+                                  <span>{{ change.label|default:key }}</span> :
+                                  <span>{{ change.from|default:"-" }}</span> -> <span>{{ change.to|default:"-" }}</span>
+                                </li>
+                              {% endfor %}
+                            </ul>
+                          {% else %}
+                            Mise à jour effectuée.
+                          {% endif %}
+                        {% endwith %}
+                      {% else %}
+                        {% if entry.details %}
+                          <code>{{ entry.details }}</code>
+                        {% else %}
+                          Un nouvel événement a été enregistré.
+                        {% endif %}
+                      {% endif %}
+                    {% endwith %}
+                  {% else %}
+                    {% if notification.message %}
+                      <p>{{ notification.message|linebreaksbr }}</p>
+                    {% endif %}
+                    {% if notification.target_url %}
+                      <p>
+                        <a href="{{ notification.target_url }}" class="btn-flat">Consulter</a>
+                      </p>
+                    {% elif notification.dat_link %}
+                      <p>
+                        <a href="{{ notification.dat_link }}" class="btn-flat">Voir le DAT</a>
+                      </p>
+                    {% endif %}
+                  {% endif %}
+                </div>
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="wf-notifications__empty">
+          <i class="material-icons wf-notifications__empty-icon" aria-hidden="true">notifications_none</i>
+          <p>Aucune notification à afficher pour le moment. Dès qu'un événement vous concernant sera enregistré, il apparaîtra ici.</p>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

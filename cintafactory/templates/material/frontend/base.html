@@ -1,4 +1,4 @@
-{% load i18n static %}
+{% load i18n static dat_extras %}
 {% get_current_language as LANGUAGE_CODE %}
 <!DOCTYPE html>
 <html lang="{{ LANGUAGE_CODE|default:"fr" }}">
@@ -9,79 +9,101 @@
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0"/>
         {% block turbolinks-cache-control %}<meta name="turbolinks-cache-control" content="no-cache">{% endblock %}
         <title>{% block title %}{% endblock %}</title>
-        {% block favicon %}<link href="{% static 'material/imgs/favicon.png' %}" rel="shortcut icon">{% endblock %}
-        {% block css %}{% include 'material/frontend/includes/material_css.html' %}{% endblock css %}
+        {% block favicon %}<link href="{% static 'imgs/cintamaya_logo.ico' %}" rel="icon" type="image/x-icon">{% endblock %}
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+        {% block css %}
+        {% include 'material/frontend/includes/material_css.html' %}
+        <link rel="stylesheet" href="{% static 'css/global.css' %}">
+        {% endblock css %}
         {% block js %}{% include 'material/frontend/includes/material_js.html' %}{% endblock js %}
+        <script src="{% static 'js/user_form.js' %}" defer></script>
+        <script src="{% static 'js/topbar_search.js' %}" defer></script>
+        <script src="{% static 'js/attachment_download.js' %}" defer></script>
+        <script src="{% static 'js/sidenav_toggle.js' %}" defer></script>
+        {% if frontend_dev_logger_enabled %}
+        <script src="{% static 'js/dev_front_logger.js' %}" defer></script>
+        {% endif %}
         {% block extrahead %}{% endblock %}
         {% endblock head %}
     </head>
     <body class="{%block bodyclass %}with-sidebar{% endblock %}"><dmc-turbolinks/>
         {% block body %}
         <header>
-            {% block header %}
-            <dmc-sidenav>
-                <ul id="slide-out" class="sidenav sidenav-fixed">
-                    {% block sidenav_header %}
-                    <li>
-                        <div class="user-view">
-                            <div class="background">
-                              <img src="{% static 'imgs/cintamaya_logo.jpg' %}" alt="Fond de la barre laterale">
-                            </div>
-                            {% comment %} {% block userphoto %}
-                            {% if user.photo.url %}
-                            <a href="#"><img class="circle" src="{{ user.photo.url }}"></a>
-                            {% else %}
-                            <a href="#"><img class="circle" src="{% static 'material/imgs/user.png' %}"></a>
-                            {% endif %}
-                            {% endblock %} {% endcomment %}
-                            <a href="#"><span class="white-text name">{{ request.user.get_username|title }}</span></a>
-                            <a href="#"><span class="white-text email">{{ request.user.email }}</span></a>
-                            <a href="{% url 'account:profile' %}"
-                               class="btn-flat waves-effect my-account__link"
-                               style="margin-top:0.75rem;">
-                                <i class="material-icons left">person</i>Mon compte
-                            </a>
-                        </div>
-                    </li>
-                    {% endblock %}
-                    {% block sidenav_items %}
-                    {% for module in modules %}
-                    {% if current_module == module and forloop.last %}
-                    <li class="active last">
-                        {% include module.menu with module=module %}
-                    </li>
-                    {% elif current_module == module %}
-                    <li class="active">
-                        {% include module.menu with module=module %}
-                    </li>
-                    {% elif forloop.last %}
-                    <li class="last">
-                        {% include module.menu with module=module %}
-                    </li>
-                    {% else %}
-                    <li>
-                        {% include module.menu with module=module %}
-                    </li>
-                    {% endif %}
-                    {% endfor %}
-                    {% endblock sidenav_items %}
-                </ul>
-            </dmc-sidenav>
-            {% endblock %}
+            {% block header %}{% endblock %}
         </header>
-        <main>
-            {% block main %}
+        <div class="global">
             {% block topbar %}
             <nav class="topbar">
                 <div class="nav-wrapper">
-                    <dmc-sidenav-trigger><a href="#" data-target="slide-out" class="sidenav-trigger"><i class="material-icons">menu</i></a></dmc-sidenav-trigger>
                     <div class="brand-logo">
-                        {% block page_title %}{% endblock %}
+                        <img src="{% static 'imgs/cintamaya_logo.svg' %}" alt="Cintamaya logo">
+                    </div>
+                    <div class="topbar-toggle-slot">
+                                            <li class="sidenav-toggle">
+                            <button
+                                type="button"
+                                class="btn cinta-btn-secondary cinta-btn-secondary--block sidenav-toggle__button"
+                                data-sidenav-width-toggle
+                                aria-expanded="true"
+                                aria-controls="slide-out"
+                            >
+                                <i class="material-icons icon--no-margin" aria-hidden="true">keyboard_double_arrow_left</i>
+                                <span>{% trans "Etendre / Réduire le menu" %}</span>
+                            </button>
+                        </li>
                     </div>
                     <ul id="nav-mobile" class="right hide-on-med-and-down">
+                        <li class="topbar-search"> 
+                            <form class="topbar-search__form" role="search" method="get" action="{% url 'dat:search_page' %}">
+                                 <input
+                                  id="topbar-search"
+                                  type="search"
+                                  name="q"
+                                  placeholder="Rechercher"
+                                  aria-label="Rechercher"
+                                  autocomplete="off"
+                                  data-search-url="{% url 'dat:topbar_search' %}"
+                                >
+                            </form>
+                            <div id="topbar-search-results" class="topbar-search__results" hidden></div>
+                        </li>
                         {% block topbar_links %}
                         {% if user.is_authenticated %}
-                        <li><a href="{% url 'logout' %}" data-turbolinks="false"><i class="material-icons right">exit_to_app</i>Deconnexion</a></li>
+                        <li class="topbar-avatar">
+                            {% if request.user.is_authenticated and request.user.profile_picture %}
+                                <img class="u-inline-flex circle user-view__avatar" src="{{ request.user.profile_picture.url }}" alt="Photo de profil">
+                            {% else %}
+                                <img class="u-inline-flex circle user-view__avatar" src="{% static 'material/imgs/user.png' %}" alt="Photo de profil">
+                            {% endif %}
+                        </li>
+                        <li class="topbar-notifications">
+                            <a href="{% url 'workflows:notifications' %}"
+                               class="btn cinta-btn-secondary cinta-btn-secondary--block"
+                               data-turbolinks="false">
+                                <i class="material-icons icon--no-margin" aria-hidden="true">notifications</i>
+                                <span class="chip red darken-1 white-text sidenav-notifications__badge" role="status">
+                                    {{ workflow_unread_notification_count|default:0 }}
+                                </span>
+                            </a>
+                        </li>
+                        <li>
+                             <a href="{% url 'account:profile' %}"
+                                class="btn waves-effect waves-light cinta-btn-primary u-inline-flex u-items-center btn-side-margin"
+                                data-turbolinks="false"
+                                >
+                                 <i class="material-icons icon--no-margin">person</i>
+                             </a>
+                         </li>
+                         <li>
+                             <a href="{% url 'logout' %}"
+                                class="btn waves-effect waves-light cinta-btn-primary u-inline-flex u-items-center btn-side-margin"
+                                data-turbolinks="false"
+                                >
+                                 <i class="material-icons icon--no-margin">exit_to_app</i>
+                             </a>
+                         </li>
                         {% else %}
                         <li><a href="{% url 'login' %}" data-turbolinks="false"><i class="material-icons right">lock_open</i>Connexion</a></li>
                         {% endif %}
@@ -90,29 +112,79 @@
                 </div>
             </nav>
             {% endblock topbar %}
-            {% comment %} {% block breadcrumbs %}
-            <nav class="breadcrumbs">
-                <div class="nav-wrapper">
-                    {% block breadcrumbs_items %}{% endblock %}
+            <main>
+                {% block main %}
+                {% block main_content %}
+                <dmc-sidenav>
+                    <ul id="slide-out" class="sidenav sidenav-fixed">
+                        {% block sidenav_header %}
+
+                        {% endblock %}
+                        <li class="sidenav-modules">
+                            <ul class="sidenav-modules__list">
+                                {% block sidenav_items %}
+                                {% for module in modules %}
+                                {% if module.menu %}
+                                {% if current_module == module and forloop.last %}
+                                <li class="last">ff
+                                    {% include module.menu with module=module %}
+                                </li>
+                                {% elif current_module == module %}
+                                <li>
+                                    {% include module.menu with module=module %}
+                                </li>
+                                {% elif forloop.last %}
+
+                                {% else %}
+                                <li>
+                                    {% include module.menu with module=module %}
+                                </li>
+                                {% endif %}
+                                {% endif %}
+                                {% endfor %}
+                                {% endblock sidenav_items %}
+                            </ul>
+                       <!-- </li>
+                        {% block sidenav_global_actions %}
+                        {% if request.user.is_authenticated %}
+                        <li class="sidenav-notifications">
+                            <a href="{% url 'workflows:notifications' %}"
+                               class="btn cinta-btn-secondary cinta-btn-secondary--block"
+                               data-turbolinks="false">
+                                <i class="material-icons icon--no-margin" aria-hidden="true">notifications</i>
+                                <span class="sidenav-notifications__text">{% trans "Notifications" %}</span>
+                                <span class="chip red darken-1 white-text sidenav-notifications__badge" role="status">
+                                    {{ workflow_unread_notification_count|default:0 }}
+                                </span>
+                            </a>
+                        </li>-->
+                        {% endif %}
+                        {% endblock sidenav_global_actions %}
+                        {% block sidenav_footer %}
+                        <li class="sidenav-footer">
+                            <img src="{% static 'imgs/cintamata_logo_typogramme_signature.png' %}" alt="Logo CINTAMATA">
+                        </li>
+                        {% endblock sidenav_footer %}
+                    </ul>
+                </dmc-sidenav>
+                <div class="content">
+                    {% block content %}{% endblock %}
                 </div>
-            </nav>
-            {% endblock %} {% endcomment %}
-            {% block main_content %}
-            <div class="content">
-                {% block content %}{% endblock %}
-            </div>
-            {% endblock main_content %}
-            {% endblock main %}
-        </main>
+                {% endblock main_content %}
+                {% endblock main %}
+            </main>
+        </div>
         <footer>
             {% block footer %}{% endblock footer %}
         </footer>
         {% endblock %}
         {% block messages %}
         <dmc-snackbar>
-            {% for message in messages %}
-            <p class="alert-{{ message.tags }}">{{ message|capfirst }}</p>
-            {% endfor %}
+            {% with messages|unique_messages as unique_messages %}
+                {% for message in unique_messages %}
+                <p class="alert-{{ message.tags }}">{{ message|capfirst }}</p>
+                {% endfor %}
+            {% endwith %}
         </dmc-snackbar>
         {% endblock messages %}
     </body>

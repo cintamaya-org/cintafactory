@@ -9,3 +9,11 @@ class DatConfig(ModuleMixin, AppConfig):
     icon = "<i class='material-icons'>topic</i>"
     order = 30
     base_template = "material/frontend/base_module.html"
+
+    def ready(self):
+        super().ready()
+        from .config import ensure_section_blueprints_file_exists
+
+        ensure_section_blueprints_file_exists()
+        # Import signals to register DAT lifecycle logging hooks.
+        from . import signals  # noqa: F401

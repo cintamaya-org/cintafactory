@@ -16,8 +16,8 @@ Ces normes vise à :
 ## Conventions générales  
 1. Tous les identifiants (variables, fonctions, classes, constantes, modules…) doivent suivre le même style du sein du projet.  
 2. Tous les identifiants doivent être nommés en **anglais**, sauf dans les cas où l’usage de l’anglais **n’a pas de sens** pour l’objectif de l’application ou le domaine métier.  
-   - Pour les acronymes ou abréviations métier ou techniques bien établis, le nom **doit être en majuscules** et clairement documenté.  
-     - Exemple : `DAT` pour « Dossier d’Architecture Technique ».  
+  - Pour les acronymes ou abréviations métier ou techniques bien établis, le nom **doit être en majuscules** et clairement documenté.  
+  - Exemple : `DAT` pour « Dossier d’Architecture Technique ».  
 3. On évite les abréviations ou acronymes non explicites, sauf si elles sont très bien connues dans le contexte.  
 4. Chaque nom doit refléter clairement son rôle et sa nature : ce qu’il est ou ce qu’il fait.
 

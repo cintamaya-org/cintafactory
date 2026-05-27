@@ -1,0 +1,42 @@
+{% load static %}
+{% include "dat/components/drawio_viewer_loader.html" %}
+<div class="dat-repeater"
+     data-columns="{{ widget.columns_json|escape }}"
+     data-field-id="{{ widget.attrs.id }}"
+     {% if widget.min_rows is not None %}data-min-rows="{{ widget.min_rows }}"{% endif %}
+     {% if widget.max_rows is not None %}data-max-rows="{{ widget.max_rows }}"{% endif %}
+     data-allow-add="{{ widget.allow_row_addition|yesno:"1,0" }}"
+     data-allow-remove="{{ widget.allow_row_removal|yesno:"1,0" }}"
+     {% if widget.attrs.data_schema_repeater %}data-schema-repeater="{{ widget.attrs.data_schema_repeater }}"{% endif %}
+     {% if widget.attrs.data_drawio_create_url %}data-drawio-create-url="{{ widget.attrs.data_drawio_create_url }}"{% endif %}
+     {% if widget.attrs.data_drawio_edit_template %}data-drawio-edit-template="{{ widget.attrs.data_drawio_edit_template }}"{% endif %}
+     {% if widget.attrs.data_drawio_detail_template %}data-drawio-detail-template="{{ widget.attrs.data_drawio_detail_template }}"{% endif %}
+     {% if widget.attrs.data_drawio_import_template %}data-drawio-import-template="{{ widget.attrs.data_drawio_import_template }}"{% endif %}
+     {% if widget.attrs.data_drawio_export_template %}data-drawio-export-template="{{ widget.attrs.data_drawio_export_template }}"{% endif %}
+     {% if widget.attrs.data_likec4_export_template %}data-likec4-export-template="{{ widget.attrs.data_likec4_export_template }}"{% endif %}
+     {% if widget.attrs.data_likec4_views_template %}data-likec4-views-template="{{ widget.attrs.data_likec4_views_template }}"{% endif %}
+     {% if widget.attrs.data_likec4_import_url %}data-likec4-import-url="{{ widget.attrs.data_likec4_import_url }}"{% endif %}
+     data-likec4-embed-url="{% url 'diagrams:likec4_proxy_root' %}"
+     {% if widget.attrs.data_likec4_png_public_prefix %}data-likec4-png-public-prefix="{{ widget.attrs.data_likec4_png_public_prefix }}"{% endif %}>
+  <input type="hidden" name="{{ widget.name }}" id="{{ widget.attrs.id }}" value="{{ widget.value_json|escape }}">
+  <div class="responsive-table dat-repeater__table">
+    <table class="highlight dat-repeater-table">
+      <thead>
+        <tr>
+          {% for column in widget.columns %}
+            <th>{{ column.label }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <button type="button" class="btn waves-effect waves-light cinta-btn-primary dat-repeater-add-row">
+    <i class="material-icons left" aria-hidden="true">add</i>
+    Ajouter une ligne
+  </button>
+  <template data-dat-loading-spinner-template>
+    {% include "dat/components/_loading_spinner.html" %}
+  </template>
+</div>
+<script src="{% static 'js/dat_repeater.js' %}"></script>

@@ -5,7 +5,7 @@ from material.frontend.apps import ModuleMixin
 class AccountConfig(ModuleMixin, AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "account"
-    verbose_name = "Mon compte"
+    verbose_name = ""
 
     icon = "<i class='material-icons'>person</i>"
     order = 20

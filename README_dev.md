@@ -1,73 +1,168 @@
+# CintaFactory Developer Guide
 
+## Stack Packs
+Use these packs depending on what you need to work on.
 
-#  CintaFactory — Developer Guide
+1. `core-dev` pack
+- Compose file: `docker-compose.dev.yml`
+- Includes: Django web, Postgres, drawio, drawio-export, likec4, likec4-exporter, clamav, seaweedfs
+- Use for: normal feature development
 
+2. `scaling` pack
+- Compose file: `docker-compose.scaling.dev.yml`
+- Includes: traefik, web, worker, pgbouncer, exporters, db, storage/scanner
+- Use for: scale, readiness, worker and network topology validation
 
----
+3. `observability` pack
+- Compose file: `cintafactory/docker-compose.observability.dev.yml`
+- Includes: Grafana, Prometheus, Loki, Promtail, cAdvisor
+- Use for: dashboards, metrics, logs, capacity monitoring
 
-##  Launch the Development Stack
+4. `full-platform` pack
+- Start `scaling` pack, then `observability` pack
+- Use for: end-to-end ops/reliability validation
 
-Run the development containers using the dedicated `docker-compose.dev.yml` file.
-
-```bash
-docker compose -f docker-compose.dev.yml up
-````
-
-➡️ This will:
-
-* Start the **PostgreSQL** database.
-* Start the **Django development server** with `python manage.py runserver 0.0.0.0:8000`.
-* Automatically **reload** the app when you change any `.py`, `.html`, or `.css` file.
-
-You can access the app locally at:
-
- [http://localhost:8101](http://localhost:8101)
-
----
-
-##  Rebuild When Dependencies Change (rare)
-
-If you modify `requirements.txt` or the `Dockerfile`, rebuild your image once:
-
+## Command Pack: core-dev
+Start:
 ```bash
 docker compose -f docker-compose.dev.yml up -d --build
 ```
 
->  You **don’t** need to rebuild for normal code changes — only when installing or removing Python packages.
+Stop:
+```bash
+docker compose -f docker-compose.dev.yml down
+```
 
----
+Logs:
+```bash
+docker compose -f docker-compose.dev.yml logs -f
+```
 
-##  Create a Superuser (Admin Account)
+Migrate:
+```bash
+docker compose -f docker-compose.dev.yml exec -T web python manage.py migrate
+```
 
-If this is your first run and you need an admin account for Django:
-
+Create admin:
 ```bash
 docker compose -f docker-compose.dev.yml exec web python manage.py createsuperuser
 ```
 
-Then follow the prompts:
-
-```
-Username: admin
-Email address: admin@example.com
-Password:
-Password (again):
+Run all tests:
+```bash
+docker compose -f docker-compose.dev.yml exec -T web python manage.py test --keepdb --noinput
 ```
 
-Once created, you can log in to the Django admin panel:
+URLs:
+- App: `http://localhost:8101`
+- Traefik dashboard: `http://localhost:8101/traefik/dashboard/`
+- draw.io UI: `http://localhost:8102`
+- draw.io export: `http://localhost:8103`
 
-👉 [http://localhost:8101/admin/](http://localhost:8101/admin/)
+## Command Pack: scaling
+Start:
+```bash
+docker compose -f docker-compose.scaling.dev.yml up -d --build
+```
 
----
+Stop:
+```bash
+docker compose -f docker-compose.scaling.dev.yml down
+```
 
-## 🧹 Useful Commands
+Logs:
+```bash
+docker compose -f docker-compose.scaling.dev.yml logs -f
+```
 
-| Action                                  | Command                                                                                      |
-| --------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Stop the stack                          | `docker compose -f docker-compose.dev.yml down`                                              |
-| View logs                               | `docker compose -f docker-compose.dev.yml logs -f`                                           |
-| Access a shell inside the web container | `docker compose -f docker-compose.dev.yml exec web bash`                                     |
-| Apply migrations manually               | `docker compose -f docker-compose.dev.yml exec web python manage.py migrate`                 |
-| Collect static files (if needed)        | `docker compose -f docker-compose.dev.yml exec web python manage.py collectstatic --noinput` |
+Scale example:
+```bash
+docker compose -f docker-compose.scaling.dev.yml up -d --scale web=2 --scale worker=2 --scale likec4-exporter=2 --scale drawio-export=2
+```
 
----
+Readiness check:
+```bash
+docker compose -f docker-compose.scaling.dev.yml exec -T web python manage.py check_runtime_dependencies --profile web --json-output
+```
+
+Targeted scaling tests:
+```bash
+docker compose -f docker-compose.scaling.dev.yml exec -T web python manage.py test --keepdb --noinput cintafactory.tests_ops.tests_health cintafactory.tests_ops.tests_async_worker
+```
+
+URL:
+- Through Traefik: `http://localhost:8101`
+
+## Command Pack: observability
+Important:
+- Start `core-dev` or `scaling` first.
+- Observability stack expects Docker network `cintaarchifactory_app` unless overridden with `APP_MONITORING_NETWORK`.
+
+Start:
+```bash
+docker compose -f cintafactory/docker-compose.observability.dev.yml up -d
+```
+
+Stop:
+```bash
+docker compose -f cintafactory/docker-compose.observability.dev.yml down
+```
+
+Logs:
+```bash
+docker compose -f cintafactory/docker-compose.observability.dev.yml logs -f
+```
+
+Dashboard asset validation:
+```bash
+deploy/scripts/test_dashboard_assets.sh
+```
+
+Dashboard test suite:
+```bash
+docker compose -f docker-compose.dev.yml exec -T web python manage.py test --keepdb --noinput cintafactory.tests_ops.tests_dashboard_assets
+```
+
+URLs:
+- Grafana: `http://localhost:3000` (`admin` / `admin`)
+- Prometheus: `http://localhost:9090`
+- Loki ready: `http://localhost:3100/ready`
+- cAdvisor: `http://localhost:8088`
+
+Prometheus alerts:
+- Rule file path: `cintafactory/deploy/observability/prometheus/rules/cinta-alerts.yml`
+- Check active alerts: `http://localhost:9090/alerts`
+
+Grafana folder:
+- `Cinta Platform`
+
+## Command Pack: full-platform
+Start everything (recommended order):
+```bash
+docker compose -f docker-compose.scaling.dev.yml up -d --build
+docker compose -f cintafactory/docker-compose.observability.dev.yml up -d
+```
+
+Stop everything:
+```bash
+docker compose -f cintafactory/docker-compose.observability.dev.yml down
+docker compose -f docker-compose.scaling.dev.yml down
+```
+
+Smoke checks:
+```bash
+docker compose -f docker-compose.scaling.dev.yml exec -T web python manage.py check_runtime_dependencies --profile web --json-output
+curl -fsS http://localhost:3000/api/health >/dev/null && echo grafana_ok
+curl -fsS http://localhost:9090/-/healthy >/dev/null && echo prometheus_ok
+curl -fsS http://localhost:3100/ready >/dev/null && echo loki_ok
+```
+
+## App Health and Metrics Endpoints
+- Liveness: `http://localhost:8101/health/live`
+- Readiness: `http://localhost:8101/health/ready`
+- Metrics: `http://localhost:8101/metrics`
+
+## References
+- `params_dev/PLAN6_DASHBOARD_RUNBOOK.md`
+- `params_dev/PLAN5_ALERTING_RUNBOOK.md`
+- `params_dev/PLAN5_BACKUP_DR_RUNBOOK.md`

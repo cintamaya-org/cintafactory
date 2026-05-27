@@ -1,26 +1,60 @@
 {% extends current_module.base_template %}
-{% load material_form material_frontend %}
+{% load material_form material_frontend static %}
+{% block extrahead %}
+  {{ block.super }}
+  <script src="{% static 'js/dat_dat_form.js' %}"></script>
+{% endblock %}
 {% comment %} {% block breadcrumbs_items %}
   <a href="{% url 'dat:my_list' %}">Mes DAT</a>
   {% if object.pk %}
     <a class="active">Modifier {{ object }}</a>
   {% else %}
-    <a class="active">Nouveau DAT</a>
+    <a class="active">Nouveau DAT</a> Occasionelement
   {% endif %}
 {% endblock %} {% endcomment %}
 {% block content %}
-  <form method="post" novalidate>
-    {% csrf_token %}
-    {% form form=form %}
-      {% part form reference %}{% endpart %}
-      {% part form title %}{% endpart %}
-      {% part form description %}{% endpart %}
-      {% part form status %}{% endpart %}
-      {% part form owner %}{% endpart %}
-    {% endform %}
-    <div class="right-align">
-      <button type="submit" class="btn waves-effect waves-light">Enregistrer</button>
-      <a href="{% url 'dat:my_list' %}" class="btn-flat waves-effect">Annuler</a>
-    </div>
-  </form>
+
+<div class="card cinta-card">
+  <div class="card-content">
+    {% if form.errors %}
+      <div class="card-panel red lighten-4 red-text text-darken-4" role="alert">
+        <p class="no-margin"><strong>Impossible d'enregistrer le DAT.</strong></p>
+        <ul class="browser-default u-m-0">
+          {% for error in form.non_field_errors %}
+            <li>{{ error }}</li>
+          {% endfor %}
+          {% for field in form %}
+            {% for error in field.errors %}
+              <li>{{ field.label }} : {{ error }}</li>
+            {% endfor %}
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+    <form method="post" novalidate>
+      {% csrf_token %}
+      {% form form=form %}
+        {% part form reference %}{% endpart %}
+        {% part form title %}{% endpart %}
+        {% part form application %}{% endpart %}
+        {% part form description %}{% endpart %}
+        {% part form status %}{% endpart %}
+        {% part form owner %}{% endpart %}
+        {% part form secure_export_requires_dual_admin_approval %}{% endpart %}
+        {% part form participant_porteur_demande %}{% endpart %}
+        {% part form participant_architecte_referent %}{% endpart %}
+        {% part form participant_architecte_technique %}{% endpart %}
+        {% part form participant_urbaniste %}{% endpart %}
+        {% part form participant_analyste_secu %}{% endpart %}
+        {% part form participant_rssi %}{% endpart %}
+        {% part form participant_comite_validation %}{% endpart %}
+        {% part form participant_infra_exploitation %}{% endpart %}
+      {% endform %}
+      <div class="right-align">
+        <button type="submit" class="btn waves-effect waves-light cinta-btn-primary">Enregistrer</button>
+        <a href="{% url 'dat:my_list' %}" class="btn-flat waves-effect">Annuler</a>
+      </div>
+    </form>
+  </div>
+</div>
 {% endblock %}

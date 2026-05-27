@@ -1,0 +1,52 @@
+{% extends current_module.base_template %}
+{% load i18n material_form material_form_internal material_frontend %}
+
+{% block breadcrumbs_items %}
+<a class="active" href="{% url view.model|frontend_urlname:'list' %}">{{ view.model|verbose_name_plural|title }}</a>
+{% endblock %}
+
+{% block content %}
+{% comment %} {% block left-panel %}
+<div class="left-panel"> {% endcomment %}
+    <div class="card list-card{% if view.model|verbose_name_plural|lower == 'applications' %} list-card--full{% endif %}">
+        <div class="card-content">
+            <dmc-datatable config="{{ datatable_config|to_json_attr }}">
+                <table id="table" class="table bordered datatable-table" data-form-control="datatable">
+                    <thead>
+                        <tr>
+                            {% for header, header_title in headers %}
+                            <th data-name="{{ header }}" class="{{ header }}">{{ header_title|title }}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="datatable-empty-row"><td></td></tr> {# fix for invalid colpan on datatable init #}
+                        {% for item, row in data %}
+                        <tr>
+                            {% for column_name, item in row.items %}
+                            <td>
+                                {% if column_name in view.datalist.list_display_links %}
+                                <a href="#">{{ item }}</a>
+                                {% else %}
+                                {{ item }}
+                                {% endif %}
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </dmc-datatable>
+        </div>
+    </div>
+{% comment %} </div>
+{% endblock left-panel %} {% endcomment %}
+{% comment %} {% block right-panel %}{% endblock right-panel %} {% endcomment %}
+{% comment %} {% block action_btn %}
+<div class="fixed-action-btn">
+    {% if add_url %}
+      <a class="btn-floating btn-large waves-effect waves-light red z-depth-2" href="{{ add_url }}"><i class="large material-icons">add</i></a>
+    {% endif %}
+</div>
+{% endblock %} {% endcomment %}
+{% endblock %}

@@ -1,17 +1,20 @@
 <tr>
-  <td><a href="/dat/manage/dats/crud/{{ obj.pk }}/detail/">{{ obj.reference }}</a></td>
+  <td><a href="{% url 'dat:my_detail' obj.pk %}">{{ obj.reference }}</a></td>
   <td>{{ obj.title }}</td>
+  <td>{{ obj.application|default:"—" }}</td>
+  <td>{{ obj.business_direction|default:"—" }}</td>
   <td>{{ obj.get_status_display }}</td>
   <td>{{ obj.owner|default:"—" }}</td>
   <td>{{ obj.created_at|date:"Y-m-d H:i" }}</td>
   <td>
+    <a href="{% url 'dat:my_detail' obj.pk %}" class="btn-flat waves-effect">Détails</a>
     {% if request.user.is_superuser or request.user.is_staff or owner_can_edit %}
       <a href="/dat/manage/dats/crud/{{ obj.pk }}/change/" class="btn-flat waves-effect">Modifier</a>
     {% else %}
       {% if obj.owner_id == request.user.id and obj.status in owner_editable_statuses %}
         <a href="/dat/manage/dats/crud/{{ obj.pk }}/change/" class="btn-flat waves-effect">Modifier</a>
       {% else %}
-        <span style="color:#aaa;">—</span>
+        <span class="text-muted-faint">—</span>
       {% endif %}
     {% endif %}
   </td>

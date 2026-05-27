@@ -5,12 +5,28 @@ services:
     ports:
       - "${TEST_HTTP_PORT:-8050}:8050"
     environment:
-      DJANGO_SECRET_KEY: "${TEST_DJANGO_SECRET_KEY:-dev-secret-change-me}"
+      DJANGO_SECRET_KEY: "${TEST_DJANGO_SECRET_KEY:?Set TEST_DJANGO_SECRET_KEY in deploy/env/test.env}"
       DJANGO_ALLOWED_HOSTS: "${TEST_ALLOWED_HOSTS:-localhost,127.0.0.1}"
+      ALLOWED_HOSTS: "${TEST_ALLOWED_HOSTS:-localhost,127.0.0.1}"
+      CSRF_TRUSTED: "${TEST_CSRF_TRUSTED:-}"
       DJANGO_DEBUG: "1"
+      DRAWIO_BASE_URL: "${TEST_DRAWIO_BASE_URL:-}"
+      DRAWIO_PUBLIC_URL: "${TEST_DRAWIO_PUBLIC_URL:-}"
+      DRAWIO_LIBS: "${TEST_DRAWIO_LIBS:-general}"
+      DRAWIO_CLIBS: "${TEST_DRAWIO_CLIBS:-}"
+      SEAWEEDFS_FILER_URL: "${TEST_SEAWEEDFS_FILER_URL:-http://seaweedfs:8888}"
+      SEAWEEDFS_PUBLIC_URL: "${TEST_SEAWEEDFS_PUBLIC_URL:-http://seaweedfs:8888}"
+      SEAWEEDFS_BASE_DIR: "${TEST_SEAWEEDFS_BASE_DIR:-media}"
+      SEAWEEDFS_TIMEOUT: "${TEST_SEAWEEDFS_TIMEOUT:-30}"
+      CLAMAV_HOST: "${TEST_CLAMAV_HOST:-clamav}"
+      CLAMAV_PORT: "${TEST_CLAMAV_PORT:-3310}"
+      CLAMAV_TIMEOUT: "${TEST_CLAMAV_TIMEOUT:-30}"
     volumes:
       - cinta_test_static:/archifactory/cintafactory/staticfiles
       - cinta_test_media:/archifactory/cintafactory/media
+
+  likec4:
+    # keep likec4 internal-only; access goes through app proxy routes
 
 volumes:
   cinta_test_static:

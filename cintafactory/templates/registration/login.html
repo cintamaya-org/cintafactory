@@ -1,0 +1,95 @@
+{% extends "material/frontend/base.html" %}
+{% load static i18n %}
+
+{% block title %}{% trans "Connexion" %}{% endblock %}
+
+{% block css %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'css/login.css' %}">
+{% endblock css %}
+
+{% block bodyclass %}login-body{% endblock %}
+
+{% block extrahead %}
+    {{ block.super }}
+{% endblock %}
+
+{% block body %}
+    <div class="login-page">
+        <section class="login-page__form">
+            <div class="login-card cinta-card cinta-card--narrow">
+                <h1 class="login-card__title">{% trans "Connexion" %}</h1>
+                <p class="login-card__subtitle">{% trans "Accedez a votre espace Cintafactory" %}</p>
+
+                <form method="post" novalidate class="login-form">
+                    {% csrf_token %}
+
+                    {% if form.errors or form.non_field_errors %}
+                        <div class="login-errors">
+                            {% for error in form.non_field_errors %}
+                                <p>{{ error }}</p>
+                            {% endfor %}
+
+                            {% for field in form %}
+                                {% for error in field.errors %}
+                                    <p>{{ error }}</p>
+                                {% endfor %}
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+
+                    <div class="input-field">
+                        <label for="{{ form.username.id_for_label }}">{{ form.username.label }}</label>
+                        {{ form.username }}
+                    </div>
+
+                    <div class="input-field">
+                        <label for="{{ form.password.id_for_label }}">{{ form.password.label }}</label>
+                        {{ form.password }}
+                    </div>
+
+                    <div class="input-field login-form__actions">
+                        <button type="submit" class="btn waves-effect waves-light cinta-btn-primary cinta-btn-primary--block">
+                            {% trans "Se connecter" %}
+                        </button>
+                    </div>
+
+                    {% if next %}
+                        <input type="hidden" name="next" value="{{ next }}">
+                    {% endif %}
+                </form>
+                {% if oauth_providers %}
+                    <div class="login-divider">{% trans "Ou" %}</div>
+                    <div class="login-oauth">
+                        {% for provider in oauth_providers %}
+                            {% if provider.enabled %}
+                                {% blocktrans with label=provider.label asvar provider_login_label %}Se connecter avec {{ label }}{% endblocktrans %}
+                                <a href="{{ provider.login_url }}"
+                                   class="btn waves-effect waves-light cinta-btn-secondary login-oauth__button login-oauth__button--icon"
+                                   aria-label="{{ provider_login_label }}"
+                                   title="{{ provider_login_label }}">
+                                    {% if provider.icon %}
+                                        <img src="{% static provider.icon %}" class="login-oauth__icon" alt="" aria-hidden="true">
+                                    {% endif %}
+                                </a>
+                            {% else %}
+                                {% blocktrans with label=provider.label asvar provider_login_label %}Se connecter avec {{ label }}{% endblocktrans %}
+                                <span class="btn waves-effect waves-light cinta-btn-secondary login-oauth__button login-oauth__button--icon login-oauth__button--disabled"
+                                      aria-disabled="true"
+                                      aria-label="{{ provider_login_label }}"
+                                      title="{{ provider_login_label }}">
+                                    {% if provider.icon %}
+                                        <img src="{% static provider.icon %}" class="login-oauth__icon" alt="" aria-hidden="true">
+                                    {% endif %}
+                                </span>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+        </section>
+        <aside class="login-page__illustration">
+            <img src="{% static 'imgs/cintamata_logo_typogramme_signature.png' %}" alt="{% trans 'Logo CINTAMATA' %}">
+        </aside>
+    </div>
+{% endblock %}

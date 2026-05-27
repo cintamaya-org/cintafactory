@@ -1,0 +1,25 @@
+http:
+  routers:
+    traefik-dashboard:
+      rule: PathPrefix(`/traefik`)
+      entryPoints:
+        - web
+      service: api@internal
+
+    web:
+      rule: PathPrefix(`/`)
+      entryPoints:
+        - web
+      service: web
+      middlewares:
+        - web-compress
+
+  services:
+    web:
+      loadBalancer:
+        servers:
+          - url: http://web:8000
+
+  middlewares:
+    web-compress:
+      compress: {}

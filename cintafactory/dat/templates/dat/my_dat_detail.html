@@ -1,0 +1,385 @@
+{% extends current_module.base_template %}
+{% load material_frontend dat_extras static %}
+
+{% block extrahead %}
+{{ block.super }}
+<link
+  rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24..48,400..700,0..1,-50..200"
+/>
+<script src="{% static 'js/tooltip_utils.js' %}" defer></script>
+<script src="{% static 'js/dat_workflow_diagram.js' %}" defer></script>
+{% endblock %}
+
+{% block content %}
+{% include "dat/components/drawio_viewer_loader.html" %}
+
+<div class="card cinta-card cinta-card--transparent">
+  <div class="card-content">
+    {% if section_nav %}
+    <div class="card dat-section-sticky-cinta-card">
+      <div class="card-content">
+      <div class="dat-section-header">
+        <div class="dat-section-nav u-flex u-flex-wrap u-gap-0-5 u-items-center">
+          {% for entry in section_nav %}
+            {% with status_info=section_status_map|get_item:entry.slug %}
+              <div class="dat-section-nav-item">
+                <a
+                  href="?section={{ entry.slug }}"
+                  class="dat-section-link dat-section-link--with-status {% if selected_section_slug == entry.slug %}active-section{% else %}{% endif %}"
+                  title="{% if status_info.has_status %}Statut : {{ status_info.label|default:'—' }}{% else %}Pas de statut{% endif %}"
+                >
+                  <!--{% if status_info.has_status %}
+                    {% section_status_icon status_info.value as section_status_icon %}
+                    <span
+                      class="{{ section_status_icon.variant }} dat-section-status-icon"
+                      aria-hidden="true"
+                      style="color: {{ section_status_icon.color|default:'#546e7a' }};"
+                    >
+                      {{ section_status_icon.name|default:'radio_button_unchecked' }}
+                    </span>
+                  {% endif %}-->
+                  {{ entry.title }}
+                  {% if status_info.has_status %}
+                    <span class="chip dat-section-status-pill{% if status_info.value == 'bloque' %} dat-section-status-pill--blocked{% elif status_info.value == 'valide' %} dat-section-status-pill--validated{% elif status_info.value == 'reserve' %} dat-section-status-pill--reserve{% elif status_info.value == 'en_cours' %} dat-section-status-pill--in-progress{% endif %}">{{ status_info.label|default:"—" }}</span>
+                  {% endif %}
+                </a>
+              </div>
+              {% if entry.title == "BESOIN(S)" or entry.title == "EXPLOITATION" %}
+                <span class="dat-section-nav-divider" aria-hidden="true"></span>
+              {% endif %}
+            {% endwith %}
+          {% endfor %}
+          <span
+            class="dat-section-status-pill dat-section-link"
+            data-dat-created-at="{{ dat.created_at|date:'c' }}"
+            title="Créé le {{ dat.created_at|date:'d/m/Y' }} à {{ dat.created_at|time:'H\\hi' }}"
+          >
+            <span>Créé il y a</span>
+            <span class="dat-section-age-value" data-dat-created-value>—</span>
+          </span>
+        </div>
+
+      </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="dat-section-body">
+      {% if selected_section_slug == "informations-generales" %}
+        {% include "dat/partials/dat_overview.html" %}
+      {% endif %}
+      <div{% if selected_section_slug == "informations-generales" %} class="u-mt-1-5"{% endif %}>
+        {% for container in selected_sections %}
+          {% include "dat/partials/dat_section_card.html" with container=container dat=dat wrap=False %}
+        {% empty %}
+          {% if selected_section_slug != "informations-generales" %}
+            <p class="u-m-0">Aucune donnée n'est disponible pour cette section.</p>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="dat-modal-overlay" class="dat-modal-overlay"></div>
+<div id="dat-history-modal" class="dat-modal" role="dialog" aria-modal="true" aria-labelledby="dat-history-modal-title">
+  <div class="dat-modal-card">
+    <div class="dat-modal-content">
+      <span id="dat-history-modal-title" class="card-title dat-modal-title">
+        <i class="material-icons" aria-hidden="true">history</i>
+        Historique du dossier
+      </span>
+      {% if history_entries %}
+        <div class="responsive-table dat-history-table">
+          <table class="highlight">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Action</th>
+                <th>Utilisateur</th>
+                <th>Détails</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for entry in history_entries %}
+                <tr>
+                  <td>{{ entry.performed_at|date:"d/m/Y" }} à {{ entry.performed_at|time:"H\\hi" }}</td>
+                  <td>{{ entry.get_action_display }}</td>
+                  <td>{{ entry.actor_name }}</td>
+                  <td>
+                    {% if entry.action == history_actions.STATUS_CHANGED %}
+                      Passage de <strong>{{ entry.details.from|default:"-" }}</strong> à <strong>{{ entry.details.to|default:"-" }}</strong>.
+                    {% elif entry.action == history_actions.OWNER_CHANGED %}
+                      Responsable : <strong>{{ entry.details.from_username|default:"-" }}</strong> -> <strong>{{ entry.details.to_username|default:"-" }}</strong>.
+                    {% elif entry.action == history_actions.UPDATED %}
+                      {% if entry.details.changes %}
+                        <ul>
+                          {% for field, data in entry.details.changes.items %}
+                            <li>
+                              <strong>{{ field|capfirst }}</strong> :
+                              <span>{{ data.from|default:"-" }}</span> -> <span>{{ data.to|default:"-" }}</span>
+                            </li>
+                          {% endfor %}
+                        </ul>
+                      {% else %}
+                        —
+                      {% endif %}
+                    {% elif entry.action == history_actions.RESPONSIBLE_VALIDATION %}
+                      {% with details=entry.details %}
+                        {% if details.section %}
+                          Section <strong>{{ details.section.title|default:details.section.slug }}</strong>
+                          {% if details.section.slug %}
+                            (<code>{{ details.section.slug }}</code>)
+                          {% endif %}
+                          :
+                        {% endif %}
+                        {% if details.from or details.to %}
+                          <strong>{{ details.from|default:"-" }}</strong> -> <strong>{{ details.to|default:"-" }}</strong>.
+                        {% else %}
+                          Validation référent mise à jour.
+                        {% endif %}
+                      {% endwith %}
+                    {% elif entry.action == history_actions.SECTION_UPDATED %}
+                      {% with details=entry.details %}
+                        {% if details.section %}
+                          Section <strong>{{ details.section.title|default:details.section.slug }}</strong>
+                          {% if details.section.slug %}
+                            (<code>{{ details.section.slug }}</code>)
+                          {% endif %}
+                          :
+                        {% endif %}
+                        {% if details.changes %}
+                          <ul>
+                            {% for key, change in details.changes.items %}
+                              <li>
+                                {% if change.part %}<strong>{{ change.part }}</strong> · {% endif %}
+                                <span>{{ change.label|default:key }}</span> :
+                                <span>{{ change.from|default:"-" }}</span> -> <span>{{ change.to|default:"-" }}</span>
+                              </li>
+                            {% endfor %}
+                          </ul>
+                        {% else %}
+                          —
+                        {% endif %}
+                      {% endwith %}
+                    {% else %}
+                      —
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="u-m-0">Aucun événement n'a encore été enregistré.</p>
+      {% endif %}
+    </div>
+    <div class="dat-modal-footer">
+      <button type="button" class="btn-flat waves-effect dat-modal-close">
+        Fermer
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="dat-reserve-history-modal" class="dat-modal" role="dialog" aria-modal="true" aria-labelledby="dat-reserve-history-modal-title">
+  <div class="dat-modal-card">
+    <div class="dat-modal-content">
+      <span id="dat-reserve-history-modal-title" class="card-title dat-modal-title">
+        <i class="material-icons" aria-hidden="true">bookmark</i>
+        Historique des réserves et validations
+      </span>
+      {% if reserve_validation_history_entries %}
+        <div class="dat-section-history-meta">
+          <div class="dat-section-history-meta__item">
+            <label for="dat-history-type-filter" class="active">Type</label>
+            <select id="dat-history-type-filter" class="browser-default" data-history-filter="type">
+              <option value="all">Tous</option>
+              <option value="reserve">Réserves</option>
+              <option value="validation">Validations</option>
+            </select>
+          </div>
+          <div class="dat-section-history-meta__item">
+            <label for="dat-history-user-filter" class="active">Utilisateur</label>
+            <select id="dat-history-user-filter" class="browser-default" data-history-filter="user">
+              <option value="all">Tous les utilisateurs</option>
+              {% for user in dat_history_user_choices %}
+                <option value="{{ user.id }}">{{ user.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="responsive-table dat-history-table">
+          <table class="highlight">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Utilisateur</th>
+                <th>Détails</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in reserve_validation_history_entries %}
+                {% with entry=item.entry %}
+                  <tr data-history-entry data-history-type="{{ item.kind }}" data-history-user="{{ item.user_id|default_if_none:'system' }}">
+                    <td>
+                      {% if item.kind == "validation" %}
+                        {{ entry.performed_at|date:"d/m/Y" }} à {{ entry.performed_at|time:"H\\hi" }}
+                      {% else %}
+                        {{ entry.reserved_at|date:"d/m/Y" }} à {{ entry.reserved_at|time:"H\\hi" }}
+                      {% endif %}
+                    </td>
+                    <td>{{ entry.actor_name }}</td>
+                    <td>
+                      {% if item.kind == "validation" %}
+                        {% if entry.action == history_actions.RESPONSIBLE_VALIDATION %}
+                          <div class="dat-section-history-entry">
+                            <span class="chip green lighten-4">Validation référent</span>
+                          </div>
+                          {% with details=entry.details %}
+                            {% if details.section %}
+                              Section <strong>{{ details.section.title|default:details.section.slug }}</strong>
+                              {% if details.section.slug %}
+                                (<code>{{ details.section.slug }}</code>)
+                              {% endif %}
+                              ·
+                            {% endif %}
+                            {% if details.from or details.to %}
+                              Statut référent : <strong>{{ details.from|default:"-" }}</strong> -> <strong>{{ details.to|default:"-" }}</strong>.
+                            {% else %}
+                              Validation référent mise à jour.
+                            {% endif %}
+                          {% endwith %}
+                        {% else %}
+                          <div class="dat-section-history-entry">
+                            <span class="chip green lighten-4">Validation</span>
+                          </div>
+                          {% if entry.details.from or entry.details.to %}
+                            Passage de <strong>{{ entry.details.from|default:"-" }}</strong> à <strong>{{ entry.details.to|default:"-" }}</strong>.
+                          {% else %}
+                            Statut de validation mis à jour.
+                          {% endif %}
+                        {% endif %}
+                      {% else %}
+                        <div class="dat-section-history-entry">
+                          {% if entry.action == "cleared" %}
+                            <span class="chip blue lighten-4">Réserve levée</span>
+                          {% else %}
+                            <span class="chip grey lighten-3">Mise en réserve</span>
+                          {% endif %}
+                        </div>
+                        {% if entry.section_title or entry.section_slug %}
+                          <div class="dat-section-history-entry dat-section-history-entry--muted">
+                            {% if entry.section_title %}<strong>{{ entry.section_title }}</strong>{% endif %}
+                            {% if entry.section_slug %}
+                              {% if entry.section_title %} · {% endif %}
+                              <code>{{ entry.section_slug }}</code>
+                            {% endif %}
+                          </div>
+                        {% endif %}
+                        {% if entry.action == "cleared" and entry.reserve_message %}
+                          <p class="dat-section-history-entry__label">Commentaire initial :</p>
+                        {% endif %}
+                        <p class="dat-section-history-entry__message">{{ entry.reserve_message|default:"—" }}</p>
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endwith %}
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <p class="dat-history-empty">Aucun événement pour ces filtres.</p>
+      {% else %}
+        <p class="u-m-0">Aucune réserve ou validation n'a encore été enregistrée.</p>
+      {% endif %}
+    </div>
+    <div class="dat-modal-footer">
+      <button type="button" class="btn-flat waves-effect dat-modal-close">
+        Fermer
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="dat-block-comment-modal" class="dat-modal" role="dialog" aria-modal="true" aria-labelledby="dat-block-comment-modal-title">
+  <div class="dat-modal-card dat-modal-card--compact">
+    <div class="dat-modal-content">
+      <span id="dat-block-comment-modal-title" class="card-title dat-modal-title">
+        <i class="material-icons dat-block-modal-icon" aria-hidden="true">block</i>
+        Bloquer la section
+      </span>
+      <p class="dat-modal-note">
+        Merci d’indiquer un commentaire de blocage pour <strong id="dat-block-comment-section-title">cette section</strong>.
+      </p>
+      <div class="input-field dat-modal-textarea">
+        <textarea id="dat-block-comment-textarea" class="materialize-textarea" rows="3"></textarea>
+        <label for="dat-block-comment-textarea" class="active">Commentaire (obligatoire)</label>
+      </div>
+      <p id="dat-block-comment-error" class="dat-modal-error">Le commentaire est obligatoire.</p>
+    </div>
+    <div class="dat-modal-footer">
+      <button type="button" class="btn-flat waves-effect dat-modal-close">Annuler</button>
+      <button type="button" id="dat-block-comment-confirm" class="btn waves-effect waves-light cinta-btn-primary dat-modal-action--danger">
+        Bloquer
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="dat-reserve-modal" class="dat-modal" role="dialog" aria-modal="true" aria-labelledby="dat-reserve-modal-title">
+  <div class="dat-modal-card dat-modal-card--compact">
+    <div class="dat-modal-content">
+      <span id="dat-reserve-modal-title" class="card-title dat-modal-title">
+        <i class="material-icons dat-reserve-modal-icon" aria-hidden="true">bookmark</i>
+        Mettre en réserve
+      </span>
+      <p class="dat-modal-note">
+        Ajoutez un message pour la réserve sur <strong id="dat-reserve-section-title">cette section</strong>.
+      </p>
+      <div class="input-field dat-modal-textarea">
+        <textarea id="dat-reserve-textarea" class="materialize-textarea" rows="3"></textarea>
+        <label for="dat-reserve-textarea" class="active">Message (obligatoire)</label>
+      </div>
+      <p id="dat-reserve-error" class="dat-modal-error">Le message est obligatoire.</p>
+    </div>
+    <div class="dat-modal-footer">
+      <button type="button" class="btn-flat waves-effect dat-modal-close">Annuler</button>
+      <button type="button" id="dat-reserve-confirm" class="btn waves-effect waves-light cinta-btn-primary dat-modal-action--neutral">
+        Mettre en réserve
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="dat-devalidate-responsible-modal" class="dat-modal" role="dialog" aria-modal="true" aria-labelledby="dat-devalidate-responsible-modal-title">
+  <div class="dat-modal-card dat-modal-card--compact">
+    <div class="dat-modal-content">
+      <span id="dat-devalidate-responsible-modal-title" class="card-title dat-modal-title">
+        <i class="material-icons dat-block-modal-icon" aria-hidden="true">warning</i>
+        Confirmer la dévalidation
+      </span>
+      <p class="dat-modal-note">
+        La section <strong id="dat-devalidate-section-title">cette section</strong> a déjà été validée par le responsable.
+        Si vous dévalidez, la validation responsable sera aussi réinitialisée.
+      </p>
+    </div>
+    <div class="dat-modal-footer">
+      <button type="button" class="btn-flat waves-effect dat-modal-close">Annuler</button>
+      <button type="button" id="dat-devalidate-responsible-confirm" class="btn waves-effect waves-light cinta-btn-primary dat-modal-action--danger">
+        Dévalider
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="wf-tooltip" class="wf-tooltip" hidden>
+  <div class="wf-tooltip__spinner">
+    {% include "components/_loading_spinner.html" %}
+  </div>
+  <span class="wf-tooltip__text" hidden></span>
+</div>
+<script src="{% static 'js/dat_my_dat_detail.js' %}"></script>
+{% endblock %}
