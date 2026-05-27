@@ -3,6 +3,7 @@
 
 {% block extrahead %}
 {{ block.super }}
+{# SRI is intentionally omitted: Google Fonts CSS is generated per request/user agent. CSP limits this external stylesheet to fonts.googleapis.com and fonts to fonts.gstatic.com. #}
 <link
   rel="stylesheet"
   href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24..48,400..700,0..1,-50..200"
