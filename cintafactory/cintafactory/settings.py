@@ -53,6 +53,11 @@ def _split_env_list(value: str | None, default: str = "") -> list[str]:
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 
+def _internal_service_url(service: str, port: str, *, scheme: str = "http") -> str:
+    # Docker-internal service endpoint. Public browser URLs stay separately configurable.
+    return f"{scheme}://{service}:{port}"
+
+
 _allowed_hosts_default = "localhost,127.0.0.1" if DEBUG else ""
 _allowed_hosts_env = os.environ.get("ALLOWED_HOSTS")
 if _allowed_hosts_env is None:
@@ -64,23 +69,31 @@ if _csrf_env_raw is None:
 _csrf_trusted_env = _split_env_list(_csrf_env_raw)
 
 
-def _build_csrf_trusted_origins(hosts: list[str]) -> set[str]:
+def _build_csrf_trusted_origins(hosts: list[str], *, include_http: bool) -> set[str]:
     origins: set[str] = set()
     for host in hosts:
         if host in {"*", ""} or host.startswith("."):
             # Wildcard entries are invalid for CSRF trusted origins.
             continue
         if "://" in host:
+            if not include_http and host.startswith("http://"):
+                continue
             origins.add(host)
         else:
-            origins.add(f"http://{host}")
-            origins.add(f"https://{host}")
+            schemes = ("http", "https") if include_http else ("https",)
+            for scheme in schemes:
+                origins.add(f"{scheme}://{host}")
     return origins
 
 
-_csrf_candidates = _build_csrf_trusted_origins(_csrf_trusted_env) | _build_csrf_trusted_origins(ALLOWED_HOSTS)
-if STRICT_HTTP_SECURITY:
-    _csrf_candidates = {origin for origin in _csrf_candidates if origin.startswith("https://")}
+_include_http_csrf_origins = not STRICT_HTTP_SECURITY
+_csrf_candidates = _build_csrf_trusted_origins(
+    _csrf_trusted_env,
+    include_http=_include_http_csrf_origins,
+) | _build_csrf_trusted_origins(
+    ALLOWED_HOSTS,
+    include_http=_include_http_csrf_origins,
+)
 CSRF_TRUSTED_ORIGINS = sorted(_csrf_candidates)
 
 # Honour reverse-proxy HTTPS headers so absolute URLs use the correct scheme.
@@ -284,14 +297,14 @@ SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
 EXTERNAL_NOTIFICATION_BACKENDS: list[str | dict] = []
 EXTERNAL_NOTIFICATION_BACKEND_CONFIG: dict[str, dict] = {}
 
-SEAWEEDFS_FILER_URL = os.getenv("SEAWEEDFS_FILER_URL", "http://seaweedfs:8888").rstrip("/")
+SEAWEEDFS_FILER_URL = os.getenv("SEAWEEDFS_FILER_URL", _internal_service_url("seaweedfs", "8888")).rstrip("/")
 SEAWEEDFS_PUBLIC_URL = os.getenv("SEAWEEDFS_PUBLIC_URL", SEAWEEDFS_FILER_URL).rstrip("/")
 SEAWEEDFS_PUBLIC_URL_PP = os.getenv("SEAWEEDFS_PUBLIC_URL_PP", "http://localhost:8888").rstrip("/")
 SEAWEEDFS_BASE_DIR = os.getenv("SEAWEEDFS_BASE_DIR", "media").strip("/")
 SEAWEEDFS_TIMEOUT = int(os.getenv("SEAWEEDFS_TIMEOUT", "30"))
 LIKEC4_METADATA_TOKEN = (os.getenv("LIKEC4_METADATA_TOKEN") or ("dev_token_idHaf" if DEBUG else "")).strip()
 LIKEC4_API_TOKEN = (os.getenv("LIKEC4_API_TOKEN") or ("dev_likec4_api_token_change_me" if DEBUG else "")).strip()
-LIKEC4_EDITOR_URL = os.getenv("LIKEC4_EDITOR_URL", "http://likec4:4173").rstrip("/")
+LIKEC4_EDITOR_URL = os.getenv("LIKEC4_EDITOR_URL", _internal_service_url("likec4", "4173")).rstrip("/")
 LIKEC4_EXPORT_URL = os.getenv("LIKEC4_EXPORT_URL", "")
 LIKEC4_EXPORT_TIMEOUT = int(os.getenv("LIKEC4_EXPORT_TIMEOUT", "60"))
 LIKEC4_EXPORT_DELETE_OLD = os.getenv("LIKEC4_EXPORT_DELETE_OLD", "1").lower() in {"1", "true", "yes", "on"}
@@ -371,9 +384,10 @@ OAUTH_PROVIDERS = {
     }
 }
 
-DRAWIO_BASE_URL = os.getenv("DRAWIO_BASE_URL", "http://drawio:8080").rstrip("/")
+_drawio_internal_url = _internal_service_url("drawio", "8080")
+DRAWIO_BASE_URL = os.getenv("DRAWIO_BASE_URL", _drawio_internal_url).rstrip("/")
 if not DRAWIO_BASE_URL:
-    DRAWIO_BASE_URL = "http://drawio:8080"
+    DRAWIO_BASE_URL = _drawio_internal_url
 
 DRAWIO_PUBLIC_URL = os.getenv("DRAWIO_PUBLIC_URL", DRAWIO_BASE_URL).rstrip("/")
 if not DRAWIO_PUBLIC_URL:
@@ -385,7 +399,7 @@ DRAWIO_CLIBS = tuple(
     for item in os.getenv("DRAWIO_CLIBS", "").split(",")
     if item.strip()
 )
-DRAWIO_EXPORT_URL = "http://drawio-export:8000/export"
+DRAWIO_EXPORT_URL = f"{_internal_service_url('drawio-export', '8000')}/export"
 DRAWIO_EXPORT_DELETE_OLD = os.getenv("DRAWIO_EXPORT_DELETE_OLD", "1").lower() in {"1", "true", "yes", "on"}
 
 def _origin_from_url(url: str) -> str:

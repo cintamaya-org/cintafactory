@@ -20,6 +20,10 @@ _ACTIVE_STATUSES = (
     AsyncJob.Status.QUEUED,
     AsyncJob.Status.RUNNING,
 )
+LIKEC4_EXPORT_JOB_TYPE = "exports.likec4"
+DRAWIO_EXPORT_JOB_TYPE = "exports.drawio"
+PDF_EXPORT_JOB_TYPE = "exports.pdf"
+ASYNC_JOB_EXECUTE_METRIC = "async_job.execute"
 
 
 def _likec4_backoff_schedule() -> list[float]:
@@ -102,8 +106,8 @@ def enqueue_likec4_export_job(
     backoff = _likec4_backoff_schedule()
     max_attempts = max(1, len(backoff))
     job = AsyncJob.objects.create(
-        job_type="exports.likec4",
-        queue_name="exports.likec4",
+        job_type=LIKEC4_EXPORT_JOB_TYPE,
+        queue_name=LIKEC4_EXPORT_JOB_TYPE,
         status=AsyncJob.Status.QUEUED,
         resource_ref=storage_path,
         requested_by=requested_by if getattr(requested_by, "is_authenticated", False) else None,
@@ -141,8 +145,8 @@ def enqueue_drawio_export_job(
         return existing
     backoff = _drawio_backoff_schedule()
     job = AsyncJob.objects.create(
-        job_type="exports.drawio",
-        queue_name="exports.drawio",
+        job_type=DRAWIO_EXPORT_JOB_TYPE,
+        queue_name=DRAWIO_EXPORT_JOB_TYPE,
         status=AsyncJob.Status.QUEUED,
         resource_ref=str(diagram_id),
         requested_by=requested_by if getattr(requested_by, "is_authenticated", False) else None,
@@ -179,8 +183,8 @@ def enqueue_pdf_export_job(
         return existing
     backoff = _pdf_backoff_schedule()
     job = AsyncJob.objects.create(
-        job_type="exports.pdf",
-        queue_name="exports.pdf",
+        job_type=PDF_EXPORT_JOB_TYPE,
+        queue_name=PDF_EXPORT_JOB_TYPE,
         status=AsyncJob.Status.QUEUED,
         resource_ref=str(dat_id),
         requested_by=requested_by if getattr(requested_by, "is_authenticated", False) else None,
@@ -245,10 +249,10 @@ def _run_likec4_job(job_id) -> None:
                     last_error="",
                 )
                 emit_baseline_metric(
-                    "async_job.execute",
+                    ASYNC_JOB_EXECUTE_METRIC,
                     duration_ms=(time.perf_counter() - started) * 1000.0,
                     success=True,
-                    dimensions={"job_type": "exports.likec4", "status": AsyncJob.Status.SUCCEEDED},
+                    dimensions={"job_type": LIKEC4_EXPORT_JOB_TYPE, "status": AsyncJob.Status.SUCCEEDED},
                 )
                 return
             last_error = "Exporter request failed."
@@ -256,10 +260,10 @@ def _run_likec4_job(job_id) -> None:
             if is_last_attempt:
                 _set_job_failed(job, last_error, dead_lettered=True)
                 emit_baseline_metric(
-                    "async_job.execute",
+                    ASYNC_JOB_EXECUTE_METRIC,
                     duration_ms=(time.perf_counter() - started) * 1000.0,
                     success=False,
-                    dimensions={"job_type": "exports.likec4", "status": AsyncJob.Status.DEAD_LETTERED},
+                    dimensions={"job_type": LIKEC4_EXPORT_JOB_TYPE, "status": AsyncJob.Status.DEAD_LETTERED},
                 )
                 return
             time.sleep(max(0.0, float(delay)))
@@ -269,10 +273,10 @@ def _run_likec4_job(job_id) -> None:
         if job:
             _set_job_failed(job, f"{type(exc).__name__}: {exc}", dead_lettered=True)
             emit_baseline_metric(
-                "async_job.execute",
+                ASYNC_JOB_EXECUTE_METRIC,
                 duration_ms=(time.perf_counter() - started) * 1000.0,
                 success=False,
-                dimensions={"job_type": "exports.likec4", "status": AsyncJob.Status.DEAD_LETTERED},
+                dimensions={"job_type": LIKEC4_EXPORT_JOB_TYPE, "status": AsyncJob.Status.DEAD_LETTERED},
             )
     finally:
         if current_thread() is not main_thread():
@@ -320,19 +324,19 @@ def _run_drawio_job(job_id) -> None:
                     last_error="",
                 )
                 emit_baseline_metric(
-                    "async_job.execute",
+                    ASYNC_JOB_EXECUTE_METRIC,
                     duration_ms=(time.perf_counter() - started) * 1000.0,
                     success=True,
-                    dimensions={"job_type": "exports.drawio", "status": AsyncJob.Status.SUCCEEDED},
+                    dimensions={"job_type": DRAWIO_EXPORT_JOB_TYPE, "status": AsyncJob.Status.SUCCEEDED},
                 )
                 return
             if attempt_index >= len(schedule):
                 _set_job_failed(job, "Draw.io export failed.", dead_lettered=True)
                 emit_baseline_metric(
-                    "async_job.execute",
+                    ASYNC_JOB_EXECUTE_METRIC,
                     duration_ms=(time.perf_counter() - started) * 1000.0,
                     success=False,
-                    dimensions={"job_type": "exports.drawio", "status": AsyncJob.Status.DEAD_LETTERED},
+                    dimensions={"job_type": DRAWIO_EXPORT_JOB_TYPE, "status": AsyncJob.Status.DEAD_LETTERED},
                 )
                 return
             time.sleep(max(0.0, float(delay)))
@@ -379,19 +383,19 @@ def _run_pdf_job(job_id) -> None:
                     last_error="",
                 )
                 emit_baseline_metric(
-                    "async_job.execute",
+                    ASYNC_JOB_EXECUTE_METRIC,
                     duration_ms=(time.perf_counter() - started) * 1000.0,
                     success=True,
-                    dimensions={"job_type": "exports.pdf", "status": AsyncJob.Status.SUCCEEDED},
+                    dimensions={"job_type": PDF_EXPORT_JOB_TYPE, "status": AsyncJob.Status.SUCCEEDED},
                 )
                 return
             if attempt_index >= len(schedule):
                 _set_job_failed(job, "PDF export failed.", dead_lettered=True)
                 emit_baseline_metric(
-                    "async_job.execute",
+                    ASYNC_JOB_EXECUTE_METRIC,
                     duration_ms=(time.perf_counter() - started) * 1000.0,
                     success=False,
-                    dimensions={"job_type": "exports.pdf", "status": AsyncJob.Status.DEAD_LETTERED},
+                    dimensions={"job_type": PDF_EXPORT_JOB_TYPE, "status": AsyncJob.Status.DEAD_LETTERED},
                 )
                 return
             time.sleep(max(0.0, float(delay)))
@@ -425,13 +429,13 @@ def dispatch_async_job(job_id) -> None:
     trace_id = str((job.payload or {}).get("trace_id", "") or "")
     bind_request_context(request_id=trace_id or f"job-{job_id}", job_id=str(job_id))
     try:
-        if job.job_type == "exports.likec4":
+        if job.job_type == LIKEC4_EXPORT_JOB_TYPE:
             _run_likec4_job(job_id)
             return
-        if job.job_type == "exports.drawio":
+        if job.job_type == DRAWIO_EXPORT_JOB_TYPE:
             _run_drawio_job(job_id)
             return
-        if job.job_type == "exports.pdf":
+        if job.job_type == PDF_EXPORT_JOB_TYPE:
             _run_pdf_job(job_id)
             return
         logger.warning("Async job %s has unsupported job_type=%s", job_id, job.job_type)

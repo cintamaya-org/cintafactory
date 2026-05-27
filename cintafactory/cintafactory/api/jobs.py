@@ -12,6 +12,9 @@ from cintafactory.async_jobs import dispatch_async_job
 from cintafactory.models import AsyncJob
 
 
+STAFF_PERMISSION_REQUIRED = "Staff permission required."
+
+
 class AsyncJobSerializer(serializers.ModelSerializer):
     job_id = serializers.UUIDField(source="id", read_only=True)
 
@@ -55,7 +58,7 @@ class AsyncJobViewSet(viewsets.ReadOnlyModelViewSet):
     def cancel(self, request, pk=None):
         job = self.get_object()
         if not self._ensure_staff(request):
-            return Response({"detail": "Staff permission required."}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"detail": STAFF_PERMISSION_REQUIRED}, status=status.HTTP_403_FORBIDDEN)
         if job.status not in {AsyncJob.Status.QUEUED, AsyncJob.Status.RUNNING}:
             return Response({"ok": False, "error": "invalid_status", "status": job.status}, status=status.HTTP_400_BAD_REQUEST)
         job.status = AsyncJob.Status.CANCELLED
@@ -68,7 +71,7 @@ class AsyncJobViewSet(viewsets.ReadOnlyModelViewSet):
     def requeue(self, request, pk=None):
         job = self.get_object()
         if not self._ensure_staff(request):
-            return Response({"detail": "Staff permission required."}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"detail": STAFF_PERMISSION_REQUIRED}, status=status.HTTP_403_FORBIDDEN)
         if job.status not in {AsyncJob.Status.DEAD_LETTERED, AsyncJob.Status.FAILED, AsyncJob.Status.CANCELLED}:
             return Response({"ok": False, "error": "invalid_status", "status": job.status}, status=status.HTTP_400_BAD_REQUEST)
         job.status = AsyncJob.Status.QUEUED
@@ -84,7 +87,7 @@ class AsyncJobViewSet(viewsets.ReadOnlyModelViewSet):
     def ignore(self, request, pk=None):
         job = self.get_object()
         if not self._ensure_staff(request):
-            return Response({"detail": "Staff permission required."}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"detail": STAFF_PERMISSION_REQUIRED}, status=status.HTTP_403_FORBIDDEN)
         reason = str(request.data.get("reason", "")).strip() or "ignored"
         job.status = AsyncJob.Status.CANCELLED
         job.finished_at = timezone.now()

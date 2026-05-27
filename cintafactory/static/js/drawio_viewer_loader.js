@@ -8,6 +8,12 @@
     container: null,
     viewer: null,
   };
+  const VIEWERJS_CSS_URL = "https://cdnjs.cloudflare.com/ajax/libs/viewerjs/1.11.6/viewer.min.css";
+  const VIEWERJS_CSS_INTEGRITY =
+    "sha384-k+swX2i6jE7YLgIRI5Gs81wcyww8As59DuESi6wnY3SpqHyNAEIZ+AAcOW4RPLYA";
+  const VIEWERJS_SCRIPT_URL = "https://cdnjs.cloudflare.com/ajax/libs/viewerjs/1.11.6/viewer.min.js";
+  const VIEWERJS_SCRIPT_INTEGRITY =
+    "sha384-JlDbB7XeuzJcCwdtPD4ud7U5dVRWYjL9AnghIKgx9yeidvfELnZcpgqe930fjTHM";
   const EASTER_EGG_DURATION_MS = 3500;
   const EASTER_EGG_INTERVAL_MS = 90;
   const K_CODE_SEQUENCE = ["up", "up", "down", "down", "left", "right", "left", "right", "b", "a"];
@@ -159,7 +165,9 @@
         const link = document.createElement("link");
         link.id = "viewerjs-style";
         link.rel = "stylesheet";
-        link.href = "https://cdnjs.cloudflare.com/ajax/libs/viewerjs/1.11.6/viewer.min.css";
+        link.href = VIEWERJS_CSS_URL;
+        link.integrity = VIEWERJS_CSS_INTEGRITY;
+        link.crossOrigin = "anonymous";
         head.appendChild(link);
       }
       const existingScript = document.getElementById("viewerjs-script");
@@ -183,7 +191,9 @@
       }
       const script = document.createElement("script");
       script.id = "viewerjs-script";
-      script.src = "https://cdnjs.cloudflare.com/ajax/libs/viewerjs/1.11.6/viewer.min.js";
+      script.src = VIEWERJS_SCRIPT_URL;
+      script.integrity = VIEWERJS_SCRIPT_INTEGRITY;
+      script.crossOrigin = "anonymous";
       script.async = true;
       script.dataset.loaded = "false";
       script.addEventListener("load", () => {

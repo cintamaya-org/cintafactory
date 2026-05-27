@@ -248,7 +248,7 @@ class OAuthServiceTests(TestCase):
 class ProfilePictureTests(TestCase):
     def test_extract_extension_handles_paths(self):
         self.assertEqual(_extract_extension("avatar.JPG"), ".jpg")
-        self.assertEqual(_extract_extension("/tmp/avatar.png"), ".png")
+        self.assertEqual(_extract_extension("/var/lib/cinta/uploads/avatar.png"), ".png")
         self.assertEqual(_extract_extension(""), "")
 
     def test_storage_name_falls_back_on_invalid_extension(self):

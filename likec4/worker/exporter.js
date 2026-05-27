@@ -1,23 +1,49 @@
 const http = require('http');
-const { mkdir, readFile, readdir, rm, writeFile } = require('fs').promises;
+const { chmod, lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } = require('fs').promises;
 const { createHash } = require('crypto');
 const { dirname, join, posix, relative, resolve, sep } = require('path');
 const { spawn } = require('child_process');
 const { URL } = require('url');
+const { tmpdir } = require('os');
 
 const EXPORT_HOST = process.env.LIKEC4_EXPORT_HOST || '0.0.0.0';
 const EXPORT_PORT = Number.parseInt(process.env.LIKEC4_EXPORT_PORT || '9000', 10);
 const MAX_BODY_BYTES = Number.parseInt(process.env.LIKEC4_EXPORT_MAX_BODY_BYTES || '1048576', 10);
-const SEAWEEDFS_FILER_URL = (process.env.SEAWEEDFS_FILER_URL || '').replace(/\/+$/, '');
-const SEAWEEDFS_BASE_DIR = (process.env.SEAWEEDFS_BASE_DIR || '').replace(/^\/+|\/+$/g, '');
+
+const stripTrailingSlashes = (value) => {
+  let result = String(value || '');
+  let end = result.length;
+  while (end > 0 && result[end - 1] === '/') {
+    end -= 1;
+  }
+  return end === result.length ? result : result.slice(0, end);
+};
+
+const stripLeadingSlashes = (value) => {
+  const result = String(value || '');
+  let start = 0;
+  while (start < result.length && result[start] === '/') {
+    start += 1;
+  }
+  return start === 0 ? result : result.slice(start);
+};
+
+const stripBoundarySlashes = (value) => {
+  const withoutLeading = stripLeadingSlashes(value);
+  return stripTrailingSlashes(withoutLeading);
+};
+
+const SEAWEEDFS_FILER_URL = stripTrailingSlashes(process.env.SEAWEEDFS_FILER_URL);
+const SEAWEEDFS_BASE_DIR = stripBoundarySlashes(process.env.SEAWEEDFS_BASE_DIR);
 const LIKEC4_METADATA_URL = process.env.LIKEC4_METADATA_URL || '';
 const LIKEC4_METADATA_TOKEN = process.env.LIKEC4_METADATA_TOKEN || 'dev_token_idHaf';
 const LIKEC4_API_TOKEN = (process.env.LIKEC4_API_TOKEN || 'dev_likec4_api_token_change_me').trim();
-const EXPORT_ROOT = process.env.LIKEC4_EXPORT_TMP || '/tmp/likec4-export';
-const LOCAL_EXPORT_DIR = (process.env.LIKEC4_EXPORT_LOCAL_DIR || '/var/likec4-exports').replace(/\/+$/, '');
+const EXPORT_ROOT = stripTrailingSlashes(process.env.LIKEC4_EXPORT_TMP || '');
+const LOCAL_EXPORT_DIR = stripTrailingSlashes(process.env.LIKEC4_EXPORT_LOCAL_DIR || '/var/likec4-exports');
 const EXPORT_FORMAT = process.env.LIKEC4_EXPORT_FORMAT || 'png';
 const EXPORT_VIEW = process.env.LIKEC4_EXPORT_VIEW || '';
 const MAX_RETRIES = Number.parseInt(process.env.LIKEC4_EXPORT_MAX_RETRIES || '3', 10);
+const PRIVATE_DIR_MODE = 0o700;
 const parseBool = (value, defaultValue = true) => {
   if (value === undefined || value === null || value === '') {
     return defaultValue;
@@ -34,10 +60,49 @@ const parseBool = (value, defaultValue = true) => {
 
 const DELETE_OLD_EXPORTS = parseBool(process.env.LIKEC4_EXPORT_DELETE_OLD, true);
 
+const ensurePrivateExportRoot = async (dir) => {
+  const resolved = resolve(dir);
+  await mkdir(resolved, { recursive: true, mode: PRIVATE_DIR_MODE });
+  const stats = await lstat(resolved);
+  if (stats.isSymbolicLink()) {
+    throw new Error(`LIKEC4_EXPORT_TMP must not be a symlink: ${resolved}`);
+  }
+  if (!stats.isDirectory()) {
+    throw new Error(`LIKEC4_EXPORT_TMP must be a directory: ${resolved}`);
+  }
+  if (typeof process.getuid === 'function' && stats.uid !== process.getuid()) {
+    throw new Error(`LIKEC4_EXPORT_TMP must be owned by current user: ${resolved}`);
+  }
+  if ((stats.mode & 0o077) !== 0) {
+    await chmod(resolved, PRIVATE_DIR_MODE);
+  }
+  return resolved;
+};
+
+const ensurePrivateWorkDir = async (dir) => {
+  const stats = await lstat(dir);
+  if (!stats.isDirectory() || stats.isSymbolicLink()) {
+    throw new Error(`Export work dir must be a private directory: ${dir}`);
+  }
+  if ((stats.mode & 0o077) !== 0) {
+    await chmod(dir, PRIVATE_DIR_MODE);
+  }
+  return dir;
+};
+
+const createPrivateWorkDir = async (jobId) => {
+  const prefix = `likec4-export-${jobId}-`;
+  if (!EXPORT_ROOT) {
+    return ensurePrivateWorkDir(await mkdtemp(join(tmpdir(), prefix)));
+  }
+  const root = await ensurePrivateExportRoot(EXPORT_ROOT);
+  return ensurePrivateWorkDir(await mkdtemp(join(root, prefix)));
+};
+
 const sanitizeStoragePath = (input) => {
   const raw = String(input ?? '').trim();
   if (!raw) return '';
-  const unified = raw.replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '');
+  const unified = stripBoundarySlashes(raw.replace(/\\/g, '/'));
   if (!unified) return '';
   const segments = unified.split('/');
   if (segments.some(segment => !segment || segment === '.' || segment === '..')) {
@@ -57,7 +122,7 @@ const requireCleanStoragePath = (input, label = 'storage_path') => {
 };
 
 const encodeSeaweedPath = (path) => {
-  const clean = String(path || '').replace(/^\/+/, '');
+  const clean = stripLeadingSlashes(path);
   const full = SEAWEEDFS_BASE_DIR ? `${SEAWEEDFS_BASE_DIR}/${clean}` : clean;
   return full
     .split('/')
@@ -138,9 +203,7 @@ const likec4ViewsDirFor = (storagePath) => {
 };
 
 const safeLocalJoin = (baseDir, relativePath) => {
-  const cleaned = String(relativePath || '')
-    .replace(/\\/g, '/')
-    .replace(/^\/+/, '');
+  const cleaned = stripLeadingSlashes(String(relativePath || '').replace(/\\/g, '/'));
   if (!cleaned) return '';
   const segments = cleaned.split('/').filter(Boolean);
   if (!segments.length || segments.some(segment => segment === '.' || segment === '..')) {
@@ -309,10 +372,10 @@ const processJob = async (payload) => {
   console.log('LikeC4 export: reading metadata from SeaweedFS');
   const { size, contentType } = await headFromSeaweed(storagePath);
   const jobId = createHash('sha256').update(`${storagePath}-${Date.now()}`).digest('hex').slice(0, 12);
-  const workDir = join(EXPORT_ROOT, jobId);
+  console.log('LikeC4 export: creating private work dir');
+  const workDir = await createPrivateWorkDir(jobId);
   const inputPath = join(workDir, 'diagram.c4');
-  console.log(`LikeC4 export: creating work dir ${workDir}`);
-  await mkdir(workDir, { recursive: true });
+  console.log(`LikeC4 export: created work dir ${workDir}`);
   try {
     console.log(`LikeC4 export: writing input file ${inputPath}`);
     await writeFile(inputPath, content ?? '', 'utf8');

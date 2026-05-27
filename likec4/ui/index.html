@@ -308,12 +308,40 @@
       }
     };
 
-    const stripComments = (text) =>
-      String(text || '')
-        .replace(/\/\*[\s\S]*?\*\//g, '')
-        .split('\n')
-        .map(line => line.replace(/\/\/.*$/, ''))
-        .join('\n');
+    const stripComments = (text) => {
+      const source = String(text || '');
+      let result = '';
+      for (let i = 0; i < source.length; i++) {
+        const ch = source[i];
+        const next = source[i + 1];
+        if (ch === '/' && next === '*') {
+          i += 2;
+          while (i < source.length) {
+            if (source[i] === '\n') {
+              result += '\n';
+            }
+            if (source[i] === '*' && source[i + 1] === '/') {
+              i++;
+              break;
+            }
+            i++;
+          }
+          continue;
+        }
+        if (ch === '/' && next === '/') {
+          i += 2;
+          while (i < source.length && source[i] !== '\n') {
+            i++;
+          }
+          if (i < source.length) {
+            result += source[i];
+          }
+          continue;
+        }
+        result += ch;
+      }
+      return result;
+    };
 
     const extractViews = (content) => {
       const cleaned = stripComments(content);
@@ -481,7 +509,7 @@
           ],
           whitespace: [
             [/[ \t\r\n]+/, 'white'],
-            [/\/\/.*$/, 'comment'],
+            [/\/\/[^\r\n]*/, 'comment'],
             [/\/\*/, 'comment', '@comment'],
           ],
           comment: [

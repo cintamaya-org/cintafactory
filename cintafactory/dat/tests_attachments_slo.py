@@ -9,13 +9,16 @@ from django.test import SimpleTestCase, override_settings
 from .attachments import scan_file_with_clamav
 
 
+CLAMAV_SCAN_RESULT_PATH = "/var/lib/cinta/clamav-scan/upload"
+
+
 class ClamAVBaselineTests(SimpleTestCase):
     @override_settings(CLAMAV_HOST="clamav", CLAMAV_PORT=3310, CLAMAV_TIMEOUT=1, CLAMAV_RETRY_COUNT=0)
     @mock.patch("dat.attachments.emit_baseline_metric")
     @mock.patch("dat.attachments._probe_clamav")
     @mock.patch("dat.attachments._scan_file_with_scan_command")
     def test_scan_emits_ok_metric(self, scan_command, _probe, emit_metric):
-        scan_command.return_value = b"/tmp/upload: OK\n"
+        scan_command.return_value = f"{CLAMAV_SCAN_RESULT_PATH}: OK\n".encode()
         uploaded = SimpleUploadedFile("safe.txt", b"safe payload", content_type="text/plain")
 
         scan_file_with_clamav(uploaded)
@@ -30,7 +33,7 @@ class ClamAVBaselineTests(SimpleTestCase):
     @mock.patch("dat.attachments._probe_clamav")
     @mock.patch("dat.attachments._scan_file_with_scan_command")
     def test_scan_emits_infected_metric(self, scan_command, _probe, emit_metric):
-        scan_command.return_value = b"/tmp/upload: Eicar-Test-Signature FOUND\n"
+        scan_command.return_value = f"{CLAMAV_SCAN_RESULT_PATH}: Eicar-Test-Signature FOUND\n".encode()
         uploaded = SimpleUploadedFile("bad.txt", b"infected", content_type="text/plain")
 
         with self.assertRaises(ValidationError):

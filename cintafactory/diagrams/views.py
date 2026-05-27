@@ -272,7 +272,8 @@ def _proxy_path_is_allowed(path: str) -> bool:
     if not candidate:
         return True
     lowered = candidate.lower()
-    if lowered.startswith(("http://", "https://", "//", "/")):
+    parsed = urlsplit(lowered)
+    if parsed.scheme in {"http", "https"} or parsed.netloc or candidate.startswith("/"):
         return False
     if "\x00" in candidate or "\\" in candidate:
         return False
@@ -534,6 +535,29 @@ def _regenerate_drawio_thumbnail(diagram: DrawIODiagram, xml_payload: str) -> bo
     )
 
 
+def _request_same_origin(request) -> bool:
+    expected_scheme = "https" if request.is_secure() else "http"
+    expected = f"{expected_scheme}://{request.get_host()}"
+    origin = request.headers.get("Origin")
+    if origin:
+        return origin == expected
+    referer = request.headers.get("Referer")
+    if not referer:
+        return False
+    parts = urlsplit(referer)
+    referer_origin = urlunsplit((parts.scheme, parts.netloc, "", "", ""))
+    return referer_origin == expected
+
+
+def _reject_unsafe_session_request(request, surface: str):
+    if request.method in {"GET", "HEAD", "OPTIONS", "TRACE"}:
+        return None
+    if _request_same_origin(request):
+        return None
+    logger.warning("%s blocked unsafe session request: cross-origin or missing origin", surface)
+    return JsonResponse({"ok": False, "error": "csrf_failed"}, status=403)
+
+
 class DiagramEditView(ModuleContextMixin, LoginRequiredMixin, TemplateView):
     template_name = "diagrams/edit.html"
 
@@ -613,6 +637,10 @@ def likec4_metadata(request):
             request.headers.get("User-Agent", ""),
         )
         return JsonResponse({"ok": False, "error": "unauthorized"}, status=403)
+    if is_authenticated and not token_valid:
+        csrf_response = _reject_unsafe_session_request(request, "likec4_metadata")
+        if csrf_response is not None:
+            return csrf_response
     path = data.get("path")
     storage_path = _normalize_likec4_path(path if isinstance(path, str) else None)
     if not storage_path:
@@ -1000,6 +1028,9 @@ def likec4_proxy(request, path: str = ""):
         upstream = f"{upstream}?{query}"
 
     method = "HEAD" if request.method == "HEAD" else request.method
+    csrf_response = _reject_unsafe_session_request(request, "likec4_proxy")
+    if csrf_response is not None:
+        return csrf_response
     headers = {}
     content_type = request.headers.get("Content-Type")
     if content_type:

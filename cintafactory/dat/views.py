@@ -29,7 +29,7 @@ from django.template.loader import render_to_string
 from django.urls import reverse, reverse_lazy
 from django.views import View
 from django.views.generic import DetailView, ListView, TemplateView, FormView
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_safe
 
 from material import Fieldset, Layout, Row
 from material.frontend.registry import modules as module_registry
@@ -2779,6 +2779,7 @@ class DATDetailView(LoginRequiredMixin, ModuleContextMixin, DetailModelView):
         return context
 
 
+@require_safe
 def dat_crud_detail_unavailable(request, pk):
     return DATDetailView.as_view()(request, pk=pk)
 

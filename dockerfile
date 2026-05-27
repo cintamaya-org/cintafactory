@@ -24,7 +24,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock /app/
 RUN uv sync --frozen --no-dev
 
-# Copier le code (le repo complet est rsync côté CI)
+# Copier le code; .dockerignore exclut secrets, caches et données locales.
 COPY . /app
 
 # Entrypoint (migrations, collectstatic, etc.)
