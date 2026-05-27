@@ -10,6 +10,7 @@ from django.core.exceptions import SuspiciousOperation
 from django.http import Http404, HttpRequest, HttpResponse
 from django.shortcuts import redirect
 from django.urls import reverse
+from django.views.decorators.http import require_GET
 
 from .oauth_providers import get_oauth_provider, list_oauth_providers
 from .oauth_service import (
@@ -73,6 +74,7 @@ class LoginViewWithProviders(auth_views.LoginView):
         return context
 
 
+@require_GET
 def oauth_login(request: HttpRequest, provider: str) -> HttpResponse:
     provider_config = get_oauth_provider(provider)
     if provider_config is None:
@@ -93,6 +95,7 @@ def oauth_login(request: HttpRequest, provider: str) -> HttpResponse:
     return redirect(auth_url)
 
 
+@require_GET
 def oauth_callback(request: HttpRequest, provider: str) -> HttpResponse:
     provider_config = get_oauth_provider(provider)
     if provider_config is None:

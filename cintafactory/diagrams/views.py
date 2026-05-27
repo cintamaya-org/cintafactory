@@ -22,7 +22,7 @@ from django.utils import timezone
 from django.utils.text import slugify
 from django.views.decorators.clickjacking import xframe_options_exempt
 from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
-from django.views.decorators.http import require_POST, require_http_methods
+from django.views.decorators.http import require_GET, require_POST, require_http_methods, require_safe
 from django.views.generic import CreateView, DetailView, ListView, TemplateView
 from django.templatetags.static import static
 from material.frontend.registry import modules as module_registry
@@ -851,6 +851,7 @@ def likec4_png(request):
 
 
 @login_required
+@require_safe
 def likec4_views(request):
     raw_path = request.GET.get("file")
     storage_path = _normalize_likec4_path(raw_path)
@@ -887,6 +888,7 @@ def likec4_views(request):
 
 
 @login_required
+@require_safe
 def likec4_export(request):
     storage_path = _normalize_likec4_path(request.GET.get("file"))
     if not storage_path:
@@ -1007,6 +1009,10 @@ def drawio_proxy(request, path: str = ""):
 def likec4_proxy(request, path: str = ""):
     """
     Reverse proxy for the LikeC4 editor UI/API behind authenticated Django sessions.
+
+    POST is required by the embedded editor API. Because the proxy is CSRF-exempt
+    for that integration, unsafe session requests are restricted to same-origin
+    requests by _reject_unsafe_session_request before forwarding any body.
     """
     upstream_base = getattr(settings, "LIKEC4_EDITOR_URL", "").rstrip("/")
     if not upstream_base:
@@ -1074,6 +1080,7 @@ def likec4_proxy(request, path: str = ""):
 
 
 @login_required
+@require_safe
 def diagram_embed_context(request, pk: int):
     diagram = get_object_or_404(DrawIODiagram, pk=pk, owner=request.user)
     library_urls = _collect_library_urls(request)
@@ -1095,6 +1102,7 @@ def diagram_embed_context(request, pk: int):
 
 
 @login_required
+@require_GET
 def diagram_viewer_context(request, pk: int):
     diagram = get_object_or_404(DrawIODiagram, pk=pk, owner=request.user)
     thumbnail_url = _current_thumbnail_url(diagram)
@@ -1279,6 +1287,7 @@ def diagram_import_xml(request, pk: int):
 
 
 @login_required
+@require_safe
 def diagram_export_xml(request, pk: int):
     diagram = get_object_or_404(DrawIODiagram, pk=pk, owner=request.user)
     xml_payload = diagram.read_xml() or "<mxGraphModel/>"
