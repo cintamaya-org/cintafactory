@@ -4,6 +4,24 @@
 
 L'objectif est de fournir un espace commun aux équipes métier, architecture et validation pour préparer, relire et tracer les dossiers d'architecture d'une application.
 
+## Quick start
+
+1. Clone the repository.
+2. Populate `.env` like `.env.exemple`
+
+3. Start Docker:
+
+   ```bash
+   docker compose -f docker-compose.dev.yml up -d --build
+   ```
+
+4. Apply DB migrations:
+
+   ```bash
+   docker compose -f docker-compose.dev.yml exec -T web python manage.py migrate
+   docker compose -f docker-compose.dev.yml exec -T web python manage.py makemigrations
+   ```
+
 ## Ce que permet le projet
 
 - Gérer les **applications** et leurs rattachements aux directions métier.
