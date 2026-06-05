@@ -10,7 +10,7 @@ const { promisify } = require('util');
 
 const PORT = process.env.LIKEC4_EDITOR_PORT || 4173;
 const ROOT_DIR = __dirname; // always resolve relative to where server.js lives
-const DEFAULT_STORAGE_PATH = (process.env.C4_FILE || 'likec4/default.c4').replace(/^\/+/, '');
+const DEFAULT_STORAGE_PATH = (process.env.LIKEC4_C4_FILE || 'likec4/default.c4').replace(/^\/+/, '');
 const PRIVATE_DIR_MODE = 0o700;
 
 const preparePreviewDir = () => {

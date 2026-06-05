@@ -98,6 +98,8 @@ def _attach_drawio_support(entry: DATPart, widget: RepeatableTableWidget) -> Non
         return
     attrs = widget.attrs or {}
     attrs["data_drawio_create_url"] = reverse("dat:schema_create_diagram", args=[dat.pk])
+    attrs["data_drawio_section_slug"] = section.slug
+    attrs["data_drawio_sub_section_slug"] = sub_section.slug
     placeholder_uuid = uuid.UUID(int=0)
     placeholder_segment = f"/{placeholder_uuid}/"
     edit_template = reverse("diagrams:edit", kwargs={"pk": placeholder_uuid}).replace(

@@ -5,7 +5,7 @@ import uuid
 from collections import OrderedDict
 from pathlib import Path
 from types import SimpleNamespace
-from urllib.parse import urlencode
+from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -3669,58 +3669,126 @@ def topbar_search(request):
     return JsonResponse(payload)
 
 
+def _sub_section_has_drawio_repeater(sub_section: DATSubSection) -> bool:
+    for part in sub_section.parts.all():
+        if part.data_type != DATPartEntryType.REPEATER:
+            continue
+        config = part.config if isinstance(part.config, dict) else {}
+        columns = config.get("columns")
+        if not isinstance(columns, list):
+            continue
+        if any(isinstance(column, dict) and column.get("drawio") for column in columns):
+            return True
+    return False
+
+
 @login_required
 @require_POST
 def create_schema_diagram(request, dat_pk: int):
-    logger.warning(
-        "create_schema_diagram request dat_id=%s user_id=%s username=%s has_csrf_cookie=%s has_csrf_header=%s",
-        dat_pk,
-        getattr(request.user, "id", None),
-        getattr(request.user, "username", ""),
-        bool(request.COOKIES.get("csrftoken")),
-        bool(request.headers.get("X-CSRFToken")),
-    )
     dat = get_object_or_404(DAT.objects.prefetch_related("sections__allowed_roles"), pk=dat_pk)
-    architecture_sections = list(dat.sections.filter(metadata__slug="architecture"))
-    if not architecture_sections:
-        sync_dat_sections_if_needed(dat)
-        architecture_sections = list(dat.sections.filter(metadata__slug="architecture"))
-    if not architecture_sections:
-        logger.warning("create_schema_diagram denied: no architecture section dat_id=%s user_id=%s", dat_pk, request.user.id)
+    if dat.status in FINAL_DAT_STATUSES:
         raise PermissionDenied
-
-    schema_sub_sections = list(
-        DATSubSection.objects.filter(
-            section__dat=dat,
-            section__metadata__slug="architecture",
-            slug="schemas",
-        ).select_related("section", "section__dat")
-    )
-    if schema_sub_sections:
-        allowed = any(sub_section.can_user_edit(request.user) for sub_section in schema_sub_sections)
-        if not allowed:
-            logger.warning(
-                "create_schema_diagram denied: no editable schemas sub-section dat_id=%s user_id=%s sub_section_count=%s",
-                dat_pk,
-                request.user.id,
-                len(schema_sub_sections),
-            )
-            raise PermissionDenied
-    else:
-        allowed = any(section.can_user_edit(request.user) for section in architecture_sections)
-        if not allowed:
-            logger.warning(
-                "create_schema_diagram denied: no editable architecture section dat_id=%s user_id=%s section_count=%s",
-                dat_pk,
-                request.user.id,
-                len(architecture_sections),
-            )
-            raise PermissionDenied
 
     try:
         payload = json.loads(request.body.decode("utf-8") or "{}")
     except (json.JSONDecodeError, UnicodeDecodeError):
         payload = {}
+    section_slug = (payload.get("section_slug") or "").strip()
+    sub_section_slug = (payload.get("sub_section_slug") or "").strip()
+    if not section_slug:
+        referer = request.headers.get("Referer") or ""
+        try:
+            section_slug = (parse_qs(urlparse(referer).query).get("section") or [""])[0].strip()
+        except (TypeError, ValueError):
+            section_slug = ""
+    if section_slug and sub_section_slug:
+        sub_section = get_object_or_404(
+            DATSubSection.objects.select_related("section", "section__dat", "section__metadata").prefetch_related("parts"),
+            section__dat=dat,
+            section__metadata__slug=section_slug,
+            slug=sub_section_slug,
+        )
+        if not _sub_section_has_drawio_repeater(sub_section):
+            raise PermissionDenied
+        status_map, _choices = build_section_status_map(dat)
+        if section_is_locked(status_map.get(sub_section.section.slug), dat=dat):
+            raise PermissionDenied
+        if not sub_section.can_user_edit(request.user):
+            logger.warning(
+                "create_schema_diagram denied: sub-section not editable dat_id=%s user_id=%s section=%s sub_section=%s",
+                dat_pk,
+                request.user.id,
+                section_slug,
+                sub_section_slug,
+            )
+            raise PermissionDenied
+    elif section_slug:
+        sync_dat_sections_if_needed(dat)
+        sub_sections = list(
+            DATSubSection.objects.filter(
+                section__dat=dat,
+                section__metadata__slug=section_slug,
+                parts__data_type=DATPartEntryType.REPEATER,
+            )
+            .select_related("section", "section__dat", "section__metadata")
+            .prefetch_related("parts")
+            .distinct()
+        )
+        allowed = False
+        status_map, _choices = build_section_status_map(dat)
+        for sub_section in sub_sections:
+            if not sub_section.can_user_edit(request.user):
+                continue
+            if not _sub_section_has_drawio_repeater(sub_section):
+                continue
+            if section_is_locked(status_map.get(sub_section.section.slug), dat=dat):
+                continue
+            allowed = True
+            break
+        if not allowed:
+            logger.warning(
+                "create_schema_diagram denied: no editable drawio sub-section dat_id=%s user_id=%s section=%s",
+                dat_pk,
+                request.user.id,
+                section_slug,
+            )
+            raise PermissionDenied
+    else:
+        architecture_sections = list(dat.sections.filter(metadata__slug="architecture"))
+        if not architecture_sections:
+            sync_dat_sections_if_needed(dat)
+            architecture_sections = list(dat.sections.filter(metadata__slug="architecture"))
+        if not architecture_sections:
+            logger.warning("create_schema_diagram denied: no architecture section dat_id=%s user_id=%s", dat_pk, request.user.id)
+            raise PermissionDenied
+
+        schema_sub_sections = list(
+            DATSubSection.objects.filter(
+                section__dat=dat,
+                section__metadata__slug="architecture",
+                slug="schemas",
+            ).select_related("section", "section__dat")
+        )
+        if schema_sub_sections:
+            allowed = any(sub_section.can_user_edit(request.user) for sub_section in schema_sub_sections)
+            if not allowed:
+                logger.warning(
+                    "create_schema_diagram denied: no editable schemas sub-section dat_id=%s user_id=%s sub_section_count=%s",
+                    dat_pk,
+                    request.user.id,
+                    len(schema_sub_sections),
+                )
+                raise PermissionDenied
+        else:
+            allowed = any(section.can_user_edit(request.user) for section in architecture_sections)
+            if not allowed:
+                logger.warning(
+                    "create_schema_diagram denied: no editable architecture section dat_id=%s user_id=%s section_count=%s",
+                    dat_pk,
+                    request.user.id,
+                    len(architecture_sections),
+                )
+                raise PermissionDenied
     raw_title = (payload.get("title") or "").strip()
     if raw_title:
         try:

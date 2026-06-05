@@ -8,9 +8,9 @@ services:
     environment:
       DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE}
       APP_MODULE: ${APP_MODULE}
-      DEBUG: ${DEBUG:-0}
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-${SECRET_KEY:?Set DJANGO_SECRET_KEY in .env}}
-      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-*}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-0}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in .env}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}
       PORT: ${APP_PORT:-8000}
       RUN_MIGRATIONS: ${RUN_MIGRATIONS:-1}
       COLLECT_STATIC: ${COLLECT_STATIC:-1}
@@ -116,7 +116,7 @@ services:
     security_opt:
       - no-new-privileges:true
     environment:
-      C4_FILE: ${LIKEC4_C4_FILE:-likec4/default.c4}
+      LIKEC4_C4_FILE: ${LIKEC4_C4_FILE:-likec4/default.c4}
       LIKEC4_EDITOR_PORT: ${LIKEC4_EDITOR_PORT:-4173}
       LIKEC4_PREVIEW_DIR: ${LIKEC4_PREVIEW_DIR:-/tmp/likec4-previews}
       SEAWEEDFS_FILER_URL: ${SEAWEEDFS_FILER_URL:-http://seaweedfs:8888}

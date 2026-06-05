@@ -35,19 +35,19 @@ jobs:
       - name: Deploy on VPS (docker compose up -d) as demo_factory
         shell: bash
         env:
-          DEMO_DJANGO_SECRET_KEY: ${{ secrets.DEMO_DJANGO_SECRET_KEY }}
+          DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
           DEMO_LIKEC4_METADATA_TOKEN: ${{ secrets.DEMO_LIKEC4_METADATA_TOKEN }}
           DEMO_LIKEC4_API_TOKEN: ${{ secrets.DEMO_LIKEC4_API_TOKEN }}
         run: |
           set -euo pipefail
-          : "${DEMO_DJANGO_SECRET_KEY:?Missing DEMO_DJANGO_SECRET_KEY secret}"
+          : "${DJANGO_SECRET_KEY:?Missing DJANGO_SECRET_KEY secret}"
 
-          DEMO_DJANGO_SECRET_KEY_B64="$(printf '%s' "${DEMO_DJANGO_SECRET_KEY}" | base64 -w0)"
+          DJANGO_SECRET_KEY_B64="$(printf '%s' "${DJANGO_SECRET_KEY}" | base64 -w0)"
           DEMO_LIKEC4_METADATA_TOKEN_B64="$(printf '%s' "${DEMO_LIKEC4_METADATA_TOKEN}" | base64 -w0)"
           DEMO_LIKEC4_API_TOKEN_B64="$(printf '%s' "${DEMO_LIKEC4_API_TOKEN}" | base64 -w0)"
 
           ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
-            "DEMO_DJANGO_SECRET_KEY_B64='${DEMO_DJANGO_SECRET_KEY_B64}' DEMO_LIKEC4_METADATA_TOKEN_B64='${DEMO_LIKEC4_METADATA_TOKEN_B64}' DEMO_LIKEC4_API_TOKEN_B64='${DEMO_LIKEC4_API_TOKEN_B64}' bash -se" <<'REMOTE'
+            "DJANGO_SECRET_KEY_B64='${DJANGO_SECRET_KEY_B64}' DEMO_LIKEC4_METADATA_TOKEN_B64='${DEMO_LIKEC4_METADATA_TOKEN_B64}' DEMO_LIKEC4_API_TOKEN_B64='${DEMO_LIKEC4_API_TOKEN_B64}' bash -se" <<'REMOTE'
             set -euo pipefail
             docker network inspect swag-network >/dev/null 2>&1 || docker network create swag-network
             cd /opt/cintafactory/demo
@@ -56,11 +56,11 @@ jobs:
             export APP_NAME="demo_factory"
             export DJANGO_SETTINGS_MODULE="cintafactory.settings"
             export APP_MODULE="cintafactory.wsgi:application"
-            export DEBUG=0
-            export SECRET_KEY="$(printf '%s' "${DEMO_DJANGO_SECRET_KEY_B64}" | base64 -d)"
+            export DJANGO_DEBUG=0
+            export DJANGO_SECRET_KEY="$(printf '%s' "${DJANGO_SECRET_KEY_B64}" | base64 -d)"
             export LIKEC4_METADATA_TOKEN="$(printf '%s' "${DEMO_LIKEC4_METADATA_TOKEN_B64}" | base64 -d)"
             export LIKEC4_API_TOKEN="$(printf '%s' "${DEMO_LIKEC4_API_TOKEN_B64}" | base64 -d)"
-            export ALLOWED_HOSTS="*"
+            export DJANGO_ALLOWED_HOSTS="*"
             export APP_PORT=8000
             export HOST_PORT=8102          # HTTP externe app DEMO
             export POSTGRES_DB="demo_factory_db"
