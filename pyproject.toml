@@ -4,7 +4,7 @@ version = "0.1.0"
 description = ""
 requires-python = ">=3.12"
 dependencies = [
-  "Django==5.2.14",
+  "Django==5.2.15",
   "python-dotenv>=1.2.2",
   "asgiref==3.11.1",
   "click==8.4.1",
@@ -13,7 +13,7 @@ dependencies = [
   "django-extensions==4.1",
   "django-workflow==1.6",
   "dotfile==0.9.0",
-  "djangorestframework==3.16.1",
+  "djangorestframework==3.17.1",
   "drf-spectacular==0.29.0",
   "defusedxml==0.7.1",
   "graphviz==0.21",
@@ -24,13 +24,13 @@ dependencies = [
   "tzdata==2026.2",
   "django-viewflow==2.2.15",
   "django-material==1.12.0",
-  "django-oauth-toolkit==3.2.0 ",
+  "django-oauth-toolkit==3.3.0 ",
   "gunicorn==26.0.0",
   "psycopg2-binary==2.9.12",
   "whitenoise==6.12.0",
-  "Pillow==12.1.1",
+  "Pillow==12.2.0",
   "requests==2.34.2",
-  "WeasyPrint==68.0",
+  "WeasyPrint==69.0",
   "pydyf>=0.10.0,<0.12",
 ]
 

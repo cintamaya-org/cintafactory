@@ -42,7 +42,7 @@ def _required_secret(*env_names: str) -> str:
 
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = _required_secret("DJANGO_SECRET_KEY", "SECRET_KEY")
+SECRET_KEY = _required_secret("DJANGO_SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DJANGO_DEBUG", "True").lower() in {"1", "true", "yes", "on"}
@@ -59,13 +59,9 @@ def _internal_service_url(service: str, port: str, *, scheme: str = "http") -> s
 
 
 _allowed_hosts_default = "localhost,127.0.0.1" if DEBUG else ""
-_allowed_hosts_env = os.environ.get("ALLOWED_HOSTS")
-if _allowed_hosts_env is None:
-    _allowed_hosts_env = os.environ.get("DJANGO_ALLOWED_HOSTS")
+_allowed_hosts_env = os.environ.get("DJANGO_ALLOWED_HOSTS")
 ALLOWED_HOSTS = _split_env_list(_allowed_hosts_env, default=_allowed_hosts_default) or ["localhost"]
-_csrf_env_raw = os.environ.get("CSRF_TRUSTED")
-if _csrf_env_raw is None:
-    _csrf_env_raw = os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS")
+_csrf_env_raw = os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS")
 _csrf_trusted_env = _split_env_list(_csrf_env_raw)
 
 

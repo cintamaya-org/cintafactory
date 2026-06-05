@@ -48,7 +48,7 @@ services:
     tmpfs:
       - /tmp
     environment:
-      C4_FILE: ${LIKEC4_C4_FILE:-likec4/default.c4}
+      LIKEC4_C4_FILE: ${LIKEC4_C4_FILE:-likec4/default.c4}
       LIKEC4_EDITOR_PORT: ${LIKEC4_EDITOR_PORT:-4173}
       LIKEC4_PREVIEW_DIR: ${LIKEC4_PREVIEW_DIR:-/tmp/likec4-previews}
       SEAWEEDFS_FILER_URL: ${SEAWEEDFS_FILER_URL:-http://seaweedfs:8888}
