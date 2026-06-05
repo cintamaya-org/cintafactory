@@ -1257,7 +1257,6 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
         }
         if (drawio.embed_url) {
           modal.iframe.src = drawio.embed_url;
-          sendToDrawio({ action: "save" });
         } else {
           throw new Error("URL d'intégration manquante.");
         }
@@ -1318,6 +1317,8 @@ window.CintaDatRepeater = window.CintaDatRepeater || (function () {
     }
     const payload = {
       title: schemaTitle.trim(),
+      section_slug: container.getAttribute("data-drawio-section-slug") || "",
+      sub_section_slug: container.getAttribute("data-drawio-sub-section-slug") || "",
     };
     const headers = {
       "Content-Type": "application/json",

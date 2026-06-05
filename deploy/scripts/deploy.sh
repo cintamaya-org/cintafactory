@@ -12,12 +12,12 @@ case "$ENVIRONMENT" in
   test)
     COMPOSE_OVERRIDE="deploy/docker-compose.test.yml"
     DEFAULT_PROJECT_NAME="cintafactory_test"
-    DEFAULT_COLLECTSTATIC="0"
+    DEFAULT_COLLECT_STATIC="0"
     ;;
   prod)
     COMPOSE_OVERRIDE="deploy/docker-compose.prod.yml"
     DEFAULT_PROJECT_NAME="cintafactory_prod"
-    DEFAULT_COLLECTSTATIC="1"
+    DEFAULT_COLLECT_STATIC="1"
     ;;
   *)
     echo "Unknown environment '$ENVIRONMENT' (expected 'test' or 'prod')." >&2
@@ -52,13 +52,13 @@ fi
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$DEFAULT_PROJECT_NAME}"
 
 RUN_MANAGEMENT_COMMANDS="${RUN_MANAGEMENT_COMMANDS:-1}"
-RUN_COLLECTSTATIC="${RUN_COLLECTSTATIC:-$DEFAULT_COLLECTSTATIC}"
+COLLECT_STATIC="${COLLECT_STATIC:-$DEFAULT_COLLECT_STATIC}"
 
 "${COMPOSE_BIN[@]}" "${COMPOSE_FILES[@]}" up -d --build
 
 if [ "$RUN_MANAGEMENT_COMMANDS" = "1" ]; then
   "${COMPOSE_BIN[@]}" "${COMPOSE_FILES[@]}" exec -T web python3 manage.py migrate --noinput
-  if [ "$RUN_COLLECTSTATIC" = "1" ]; then
+  if [ "$COLLECT_STATIC" = "1" ]; then
     "${COMPOSE_BIN[@]}" "${COMPOSE_FILES[@]}" exec -T web python3 manage.py collectstatic --noinput
   fi
 fi

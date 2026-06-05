@@ -15,6 +15,6 @@ services:
     volumes:
       - ./:/data
     environment:
-      - C4_FILE=likec4/default.c4
+      - LIKEC4_C4_FILE=likec4/default.c4
       - LIKEC4_PREVIEW_DIR=/tmp/likec4-previews
       - LIKEC4_API_TOKEN=${LIKEC4_API_TOKEN:-}

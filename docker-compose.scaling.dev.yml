@@ -33,8 +33,8 @@ services:
       dockerfile: cintafactory/dockerfile
     environment:
       DJANGO_SETTINGS_MODULE: cintafactory.settings
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-${SECRET_KEY:?Set DJANGO_SECRET_KEY in .env}}
-      DEBUG: 1
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in .env}
+      DJANGO_DEBUG: 1
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}
       DATABASE_HOST: pgbouncer
       DATABASE_PORT: 6432
@@ -106,8 +106,8 @@ services:
       dockerfile: cintafactory/dockerfile
     environment:
       DJANGO_SETTINGS_MODULE: cintafactory.settings
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-${SECRET_KEY:?Set DJANGO_SECRET_KEY in .env}}
-      DEBUG: 1
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in .env}
+      DJANGO_DEBUG: 1
       DATABASE_HOST: pgbouncer
       DATABASE_PORT: 6432
       DATABASE_NAME: test_factory_db
@@ -241,7 +241,7 @@ services:
     tmpfs:
       - /tmp
     environment:
-      C4_FILE: ${LIKEC4_C4_FILE:-likec4/default.c4}
+      LIKEC4_C4_FILE: ${LIKEC4_C4_FILE:-likec4/default.c4}
       LIKEC4_EDITOR_PORT: ${LIKEC4_EDITOR_PORT:-4173}
       LIKEC4_PREVIEW_DIR: ${LIKEC4_PREVIEW_DIR:-/tmp/likec4-previews}
       SEAWEEDFS_FILER_URL: ${SEAWEEDFS_FILER_URL:-http://seaweedfs:8888}

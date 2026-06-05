@@ -59,7 +59,7 @@ The included `docker-compose.yml` runs two things inside one container: the Like
   - Rendering happens client-side via the LikeC4 webcomponent bundle served by the editor server.
 
 ### Tweaks
-- Edit a different file: set `C4_FILE` before `docker compose up`, e.g. `C4_FILE=data/yourfile.c4 docker compose up`.
+- Edit a different file: set `LIKEC4_C4_FILE` before `docker compose up`, e.g. `LIKEC4_C4_FILE=data/yourfile.c4 docker compose up`.
 - Override build args when needed:  
   ```bash
   GRAPHVIZ_VERSION=10.0.1 PLAYWRIGHT_VER=1.56.1 LIKEC4_VER=0.66.0 docker compose build
