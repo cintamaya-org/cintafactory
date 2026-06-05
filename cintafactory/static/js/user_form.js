@@ -1,4 +1,61 @@
 (function () {
+  function refreshSelect(select) {
+    if (!window.M || !M.FormSelect) {
+      return;
+    }
+    var instance = M.FormSelect.getInstance(select);
+    if (instance) {
+      instance.destroy();
+    }
+    M.FormSelect.init(select);
+  }
+
+  function getSelectedDirection(select) {
+    var selectedOption = select.options[select.selectedIndex];
+    if (!selectedOption) {
+      return "";
+    }
+    return selectedOption.getAttribute("data-direction") || "";
+  }
+
+  function cloneOptions(select) {
+    return Array.prototype.map.call(select.options, function (option) {
+      return option.cloneNode(true);
+    });
+  }
+
+  function getDirectionForValue(options, value) {
+    var direction = "";
+    Array.prototype.some.call(options, function (option) {
+      if (option.value === value) {
+        direction = option.getAttribute("data-direction") || "";
+        return true;
+      }
+      return false;
+    });
+    return direction;
+  }
+
+  function rebuildOptions(select, sourceOptions, shouldShow) {
+    var selectedValue = select.value;
+    while (select.options.length) {
+      select.remove(0);
+    }
+
+    Array.prototype.forEach.call(sourceOptions, function (option) {
+      if (!option.value || shouldShow(option)) {
+        select.add(option.cloneNode(true));
+      }
+    });
+
+    select.value = selectedValue;
+    if (select.value !== selectedValue) {
+      select.value = "";
+    }
+    select.disabled = false;
+    refreshSelect(select);
+  }
+
   function applyRoleFilter(form) {
     var groupField = form.querySelector('[data-group-selector]');
     var roleField = form.querySelector('[data-role-selector]');
@@ -6,45 +63,36 @@
       return;
     }
 
+    var groupOptions = cloneOptions(groupField);
+    var roleOptions = cloneOptions(roleField);
+
     function runFilter() {
-      var selectedDirection = "";
-      var selectedOption = groupField.options[groupField.selectedIndex];
-      if (selectedOption) {
-        selectedDirection = selectedOption.getAttribute("data-direction") || "";
-      }
-      var options = roleField.options;
-      var hasVisible = false;
-      Array.prototype.forEach.call(options, function (option) {
-        if (!option.value) {
-          option.hidden = false;
-          option.disabled = false;
-          return;
+      var selectedRoleDirection = getDirectionForValue(roleOptions, roleField.value);
+
+      rebuildOptions(groupField, groupOptions, function (option) {
+        if (!roleField.value) {
+          return true;
         }
         var optionDirection = option.getAttribute("data-direction") || "";
-        var matches;
-        if (!selectedDirection) {
-          matches = optionDirection === "";
-        } else {
-          matches = optionDirection === selectedDirection;
+        if (selectedRoleDirection) {
+          return optionDirection === selectedRoleDirection;
         }
-        option.hidden = !matches;
-        option.disabled = !matches;
-        if (matches) {
-          hasVisible = true;
-        }
+        return optionDirection === "";
       });
 
-      if (roleField.value) {
-        var currentOption = roleField.options[roleField.selectedIndex];
-        if (currentOption && currentOption.disabled) {
-          roleField.value = "";
-        }
-      }
+      var selectedGroupDirection = getSelectedDirection(groupField);
 
-      roleField.disabled = !hasVisible;
+      rebuildOptions(roleField, roleOptions, function (option) {
+        var optionDirection = option.getAttribute("data-direction") || "";
+        if (selectedGroupDirection) {
+          return optionDirection === selectedGroupDirection;
+        }
+        return true;
+      });
     }
 
     groupField.addEventListener("change", runFilter);
+    roleField.addEventListener("change", runFilter);
     runFilter();
   }
 

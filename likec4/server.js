@@ -1,6 +1,6 @@
 // Minimal Node server to edit a C4 file and view the LikeC4 diagram side by side.
 const { createServer } = require('http');
-const { access, mkdir, writeFile, readdir, unlink } = require('fs').promises;
+const { access, mkdir, rename, writeFile, readdir, unlink } = require('fs').promises;
 const { chmodSync, createReadStream, lstatSync, mkdirSync, mkdtempSync, realpathSync } = require('fs');
 const { execFile } = require('child_process');
 const { createHash } = require('crypto');
@@ -65,7 +65,14 @@ const ROOT_PUBLIC_ASSETS = new Map([
   ['Cintamaya_Logo.svg', join(ROOT_DIR, 'Cintamaya_Logo.svg')],
 ]);
 const LIKEC4_BIN = (process.env.LIKEC4_BIN || 'likec4').trim() || 'likec4';
-const LIKEC4_WEBCOMPONENT_OUTPUT = process.env.LIKEC4_WEBCOMPONENT_OUTPUT || join(PUBLIC_DIR, 'likec4-webcomponent.js');
+const LIKEC4_WEBCOMPONENT_PUBLIC_NAME = 'likec4-webcomponent.js';
+const LIKEC4_WEBCOMPONENT_DIR = process.env.LIKEC4_WEBCOMPONENT_OUTPUT
+  ? dirname(process.env.LIKEC4_WEBCOMPONENT_OUTPUT)
+  : mkdtempSync(join(tmpdir(), 'likec4-bundles-'));
+const LIKEC4_WEBCOMPONENT_OUTPUT = process.env.LIKEC4_WEBCOMPONENT_OUTPUT || join(
+  LIKEC4_WEBCOMPONENT_DIR,
+  LIKEC4_WEBCOMPONENT_PUBLIC_NAME,
+);
 const LIKEC4_RENDER_TIMEOUT_MS = Number.parseInt(process.env.LIKEC4_RENDER_TIMEOUT_MS || '120000', 10);
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -361,7 +368,28 @@ const fileExists = async (path) => {
 
 const bundleUrlFor = (timestamp) => {
   const stamp = timestamp || Date.now();
-  return `likec4-webcomponent.js?v=${stamp}`;
+  return `${LIKEC4_WEBCOMPONENT_PUBLIC_NAME}?v=${stamp}`;
+};
+
+const replaceLikeC4Webcomponent = async () => {
+  const outputDir = dirname(LIKEC4_WEBCOMPONENT_OUTPUT);
+  const tempOutput = join(outputDir, `.likec4-webcomponent-${process.pid}-${Date.now()}.js`);
+  try {
+    await execFileAsync(
+      LIKEC4_BIN,
+      ['codegen', 'webcomponent', '-o', tempOutput],
+      { cwd: PREVIEW_DIR, timeout: LIKEC4_RENDER_TIMEOUT_MS },
+    );
+    await rename(tempOutput, LIKEC4_WEBCOMPONENT_OUTPUT);
+  } finally {
+    try {
+      await unlink(tempOutput);
+    } catch (err) {
+      if (err && err.code !== 'ENOENT') {
+        console.warn(`Cannot remove temporary LikeC4 bundle ${tempOutput}: ${err.message}`);
+      }
+    }
+  }
 };
 
 const renderLikeC4 = async (content) => {
@@ -372,11 +400,7 @@ const renderLikeC4 = async (content) => {
   }
   try {
     await mkdir(dirname(LIKEC4_WEBCOMPONENT_OUTPUT), { recursive: true });
-    await execFileAsync(
-      LIKEC4_BIN,
-      ['codegen', 'webcomponent', '-o', LIKEC4_WEBCOMPONENT_OUTPUT],
-      { cwd: PREVIEW_DIR, timeout: LIKEC4_RENDER_TIMEOUT_MS },
-    );
+    await replaceLikeC4Webcomponent();
     lastRenderHash = hash;
     lastRenderAt = Date.now();
     return { ok: true, rendered_at: lastRenderAt, bundle_url: bundleUrlFor(lastRenderAt) };
@@ -845,9 +869,14 @@ const server = createServer(async (req, res) => {
     decodedPath = url;
   }
   const requestPath = decodedPath.replace(/^\//, '');
-  const filePath = url === '/'
-    ? join(PUBLIC_DIR, 'index.html')
-    : ROOT_PUBLIC_ASSETS.get(requestPath) || safePublicPath(requestPath);
+  let filePath;
+  if (url === '/') {
+    filePath = join(PUBLIC_DIR, 'index.html');
+  } else if (requestPath === LIKEC4_WEBCOMPONENT_PUBLIC_NAME && await fileExists(LIKEC4_WEBCOMPONENT_OUTPUT)) {
+    filePath = LIKEC4_WEBCOMPONENT_OUTPUT;
+  } else {
+    filePath = ROOT_PUBLIC_ASSETS.get(requestPath) || safePublicPath(requestPath);
+  }
   if (!filePath) {
     send(res, 404, 'Not Found');
     return;

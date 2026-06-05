@@ -76,7 +76,10 @@ class UserForm(forms.ModelForm):
         role_field = self.fields.get("role")
         if role_field:
             role_field.queryset = Role.objects.select_related("technical_direction").order_by("name")
-            role_field.widget = RoleSelect(attrs={"data-role-selector": "1"})
+            role_field.widget = RoleSelect(
+                attrs={"data-role-selector": "1"},
+                choices=role_field.choices,
+            )
             role_field.help_text = (
                 "Si le rôle est rattaché à une direction technique, l'utilisateur doit appartenir à un groupe de cette direction."
             )
@@ -85,7 +88,10 @@ class UserForm(forms.ModelForm):
         if business_group:
             business_group.required = False
             business_group.queryset = business_group.queryset.select_related("direction").order_by("name")
-            business_group.widget = BusinessGroupSelect(attrs={"data-group-selector": "1"})
+            business_group.widget = BusinessGroupSelect(
+                attrs={"data-group-selector": "1"},
+                choices=business_group.choices,
+            )
             business_group.help_text = (
                 "Sélectionnez un groupe uniquement si le rôle choisi est associé à une direction technique."
             )
