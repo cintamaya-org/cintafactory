@@ -1644,6 +1644,136 @@ class CreateSchemaDiagramViewTest(TestCase):
         payload = response.json()
         self.assertTrue(payload.get("ok"))
 
+    def test_creates_diagram_for_editable_non_architecture_sub_section(self):
+        urbanisme_metadata = DATSectionMetadata.objects.create(
+            title="Urbanisme",
+            slug="urbanisme",
+            description="",
+        )
+        urbanisme_section = DATSection.objects.create(
+            dat=self.dat,
+            metadata=urbanisme_metadata,
+            order=2,
+        )
+        DATSectionParticipant.objects.create(dat=self.dat, section=urbanisme_section, user=self.user)
+        sub_section = DATSubSection.objects.create(
+            section=urbanisme_section,
+            title="Mapping dans l'urbanisation du SI",
+            slug="mapping-urbanisation-si",
+            order=1,
+        )
+        DATPart.objects.create(
+            sub_section=sub_section,
+            key="cartographie",
+            label="Cartographie",
+            data_type=DATPartEntryType.REPEATER,
+            config={
+                "columns": [
+                    {"key": "nom_schema", "label": "Nom du diagramme", "type": "text"},
+                    {"key": "diagramme_id", "label": "Diagramme", "drawio": True},
+                ]
+            },
+        )
+
+        self.client.force_login(self.user)
+        response = self.client.post(
+            self.url,
+            data=json.dumps(
+                {
+                    "title": "Cartographie urbanisme",
+                    "section_slug": "urbanisme",
+                    "sub_section_slug": sub_section.slug,
+                }
+            ),
+            content_type="application/json",
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        self.assertTrue(payload.get("ok"))
+        self.assertEqual(payload["diagram"]["title"], "Cartographie urbanisme")
+
+    def test_rejects_non_architecture_sub_section_when_user_cannot_edit_it(self):
+        urbanisme_metadata = DATSectionMetadata.objects.create(
+            title="Urbanisme",
+            slug="urbanisme",
+            description="",
+        )
+        urbanisme_section = DATSection.objects.create(
+            dat=self.dat,
+            metadata=urbanisme_metadata,
+            order=2,
+        )
+        sub_section = DATSubSection.objects.create(
+            section=urbanisme_section,
+            title="Mapping dans l'urbanisation du SI",
+            slug="mapping-urbanisation-si",
+            order=1,
+        )
+
+        self.client.force_login(self.user)
+        response = self.client.post(
+            self.url,
+            data=json.dumps(
+                {
+                    "title": "Cartographie interdite",
+                    "section_slug": "urbanisme",
+                    "sub_section_slug": sub_section.slug,
+                }
+            ),
+            content_type="application/json",
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(DrawIODiagram.objects.count(), 0)
+
+    def test_creates_diagram_from_referer_section_when_payload_has_no_context(self):
+        urbanisme_metadata = DATSectionMetadata.objects.create(
+            title="Urbanisme",
+            slug="urbanisme",
+            description="",
+        )
+        urbanisme_section = DATSection.objects.create(
+            dat=self.dat,
+            metadata=urbanisme_metadata,
+            order=2,
+        )
+        DATSectionParticipant.objects.create(dat=self.dat, section=urbanisme_section, user=self.user)
+        sub_section = DATSubSection.objects.create(
+            section=urbanisme_section,
+            title="Mapping dans l'urbanisation du SI",
+            slug="mapping-urbanisation-si",
+            order=1,
+        )
+        DATPart.objects.create(
+            sub_section=sub_section,
+            key="cartographie",
+            label="Cartographie",
+            data_type=DATPartEntryType.REPEATER,
+            config={
+                "columns": [
+                    {"key": "nom_schema", "label": "Nom du diagramme", "type": "text"},
+                    {"key": "diagramme_id", "label": "Diagramme", "drawio": True},
+                ]
+            },
+        )
+
+        self.client.force_login(self.user)
+        response = self.client.post(
+            self.url,
+            data=json.dumps({"title": "Cartographie depuis referer"}),
+            content_type="application/json",
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            HTTP_REFERER=f"/dat/my/{self.dat.pk}/?section=urbanisme",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        self.assertTrue(payload.get("ok"))
+        self.assertEqual(payload["diagram"]["title"], "Cartographie depuis referer")
+
 
 class DatPdfExportNotificationTest(TestCase):
     def setUp(self) -> None:
