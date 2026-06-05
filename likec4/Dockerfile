@@ -26,6 +26,12 @@ RUN set -eux; \
     fi; \
     rm -rf /root/.npm
 
+RUN set -eux; \
+    mkdir -p /home/pwuser/.cache/likec4-vite; \
+    rm -rf /usr/local/lib/node_modules/likec4/node_modules/.vite; \
+    ln -s /home/pwuser/.cache/likec4-vite /usr/local/lib/node_modules/likec4/node_modules/.vite; \
+    chown -R pwuser:pwuser /home/pwuser/.cache/likec4-vite
+
 WORKDIR /opt/likec4-worker
 COPY worker/package.json ./
 RUN npm install --omit=dev
