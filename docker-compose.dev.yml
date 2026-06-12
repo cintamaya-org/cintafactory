@@ -29,6 +29,8 @@ services:
       SEAWEEDFS_PUBLIC_URL: ${SEAWEEDFS_PUBLIC_URL:-http://seaweedfs:8888}
       SEAWEEDFS_BASE_DIR: ${SEAWEEDFS_BASE_DIR:-media}
       SEAWEEDFS_TIMEOUT: ${SEAWEEDFS_TIMEOUT:-30}
+      SEAWEEDFS_JWT_WRITE_KEY: ${SEAWEEDFS_JWT_WRITE_KEY:?Set SEAWEEDFS_JWT_WRITE_KEY in .env}
+      SEAWEEDFS_JWT_READ_KEY: ${SEAWEEDFS_JWT_READ_KEY:?Set SEAWEEDFS_JWT_READ_KEY in .env}
       LIKEC4_EXPORT_URL: ${LIKEC4_EXPORT_URL:-http://likec4-exporter:9000/export}
       LIKEC4_EXPORT_DELETE_OLD: ${LIKEC4_EXPORT_DELETE_OLD:-1}
       LIKEC4_EXPORT_ENABLED: ${LIKEC4_EXPORT_ENABLED:-1}
@@ -49,7 +51,7 @@ services:
       - ./cintafactory:/app
       - clamav_scan:/clamav_scan
     ports:
-      - "8101:8000"
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:8101:8000"
     command: python manage.py runserver 0.0.0.0:8000
 
   db:
@@ -62,7 +64,7 @@ services:
     volumes:
       - pgdata_dev:/var/lib/postgresql/data
     ports:
-      - "5433:5432"
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:5433:5432"
 
   drawio:
     image: jgraph/drawio
@@ -70,7 +72,7 @@ services:
     environment:
       EXPORT_URL: http://drawio-export:8000/export
     ports:
-      - "${DRAWIO_HOST_PORT:-8102}:8080"
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${DRAWIO_HOST_PORT:-8102}:8080"
     depends_on:
       - drawio-export
 
@@ -78,7 +80,7 @@ services:
     image: jgraph/export-server
     container_name: test_factory_drawio_export
     ports:
-      - "${DRAWIO_EXPORT_HOST_PORT:-8103}:8000"
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${DRAWIO_EXPORT_HOST_PORT:-8103}:8000"
 
   likec4:
     image: likec4-cli
@@ -100,13 +102,15 @@ services:
       LIKEC4_PREVIEW_DIR: ${LIKEC4_PREVIEW_DIR:-/tmp/likec4-previews}
       SEAWEEDFS_FILER_URL: ${SEAWEEDFS_FILER_URL:-http://seaweedfs:8888}
       SEAWEEDFS_BASE_DIR: ${SEAWEEDFS_BASE_DIR:-media}
+      SEAWEEDFS_JWT_WRITE_KEY: ${SEAWEEDFS_JWT_WRITE_KEY:?Set SEAWEEDFS_JWT_WRITE_KEY in .env}
+      SEAWEEDFS_JWT_READ_KEY: ${SEAWEEDFS_JWT_READ_KEY:?Set SEAWEEDFS_JWT_READ_KEY in .env}
       LIKEC4_METADATA_URL: http://web:8000/diagrams/likec4/metadata/
       LIKEC4_METADATA_TOKEN: ${LIKEC4_METADATA_TOKEN:-dev_token_idHaf}
       LIKEC4_API_TOKEN: ${LIKEC4_API_TOKEN:-dev_likec4_api_token_change_me}
     ports:
-      - "${LIKEC4_DEV_HOST_PORT:-5173}:5173"
-      - "${LIKEC4_HMR_HOST_PORT:-24678}:24678"
-      - "${LIKEC4_EDITOR_HOST_PORT:-4173}:4173"
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${LIKEC4_DEV_HOST_PORT:-5173}:5173"
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${LIKEC4_HMR_HOST_PORT:-24678}:24678"
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${LIKEC4_EDITOR_HOST_PORT:-4173}:4173"
     volumes:
       - ./likec4:/data
 
@@ -132,6 +136,8 @@ services:
       LIKEC4_EXPORT_LOCAL_DIR: ${LIKEC4_EXPORT_LOCAL_DIR:-/var/likec4-exports}
       SEAWEEDFS_FILER_URL: ${SEAWEEDFS_FILER_URL:-http://seaweedfs:8888}
       SEAWEEDFS_BASE_DIR: ${SEAWEEDFS_BASE_DIR:-media}
+      SEAWEEDFS_JWT_WRITE_KEY: ${SEAWEEDFS_JWT_WRITE_KEY:?Set SEAWEEDFS_JWT_WRITE_KEY in .env}
+      SEAWEEDFS_JWT_READ_KEY: ${SEAWEEDFS_JWT_READ_KEY:?Set SEAWEEDFS_JWT_READ_KEY in .env}
       LIKEC4_METADATA_URL: http://web:8000/diagrams/likec4/metadata/
       LIKEC4_METADATA_TOKEN: ${LIKEC4_METADATA_TOKEN:-dev_token_idHaf}
       LIKEC4_API_TOKEN: ${LIKEC4_API_TOKEN:-dev_likec4_api_token_change_me}
@@ -145,7 +151,7 @@ services:
     image: clamav/clamav:latest
     container_name: test_factory_clamav
     ports:
-      - "${CLAMAV_HOST_PORT:-3310}:3310"
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${CLAMAV_HOST_PORT:-3310}:3310"
     volumes:
       - clamav_scan:/clamav_scan
 
@@ -153,10 +159,21 @@ services:
     image: chrislusf/seaweedfs:latest
     container_name: test_factory_seaweedfs
     command: "server -dir=/data -master -volume -filer"
+    environment:
+      WEED_JWT_FILER_SIGNING_KEY: ${SEAWEEDFS_JWT_WRITE_KEY:?Set SEAWEEDFS_JWT_WRITE_KEY in .env}
+      WEED_JWT_FILER_SIGNING_EXPIRES_AFTER_SECONDS: ${SEAWEEDFS_JWT_TTL_SECONDS:-60}
+      WEED_JWT_FILER_SIGNING_READ_KEY: ${SEAWEEDFS_JWT_READ_KEY:?Set SEAWEEDFS_JWT_READ_KEY in .env}
+      WEED_JWT_FILER_SIGNING_READ_EXPIRES_AFTER_SECONDS: ${SEAWEEDFS_JWT_TTL_SECONDS:-60}
+      WEED_JWT_SIGNING_KEY: ${SEAWEEDFS_VOLUME_JWT_WRITE_KEY:?Set SEAWEEDFS_VOLUME_JWT_WRITE_KEY in .env}
+      WEED_JWT_SIGNING_EXPIRES_AFTER_SECONDS: ${SEAWEEDFS_JWT_TTL_SECONDS:-60}
+      WEED_JWT_SIGNING_READ_KEY: ${SEAWEEDFS_VOLUME_JWT_READ_KEY:?Set SEAWEEDFS_VOLUME_JWT_READ_KEY in .env}
+      WEED_JWT_SIGNING_READ_EXPIRES_AFTER_SECONDS: ${SEAWEEDFS_JWT_TTL_SECONDS:-60}
+      WEED_CORS_ALLOWED_ORIGINS_VALUES: ${SEAWEEDFS_ALLOWED_ORIGINS:-http://localhost:8101}
+      WEED_FILER_EXPOSE_DIRECTORY_METADATA_ENABLED: "false"
     ports:
-      - "${SEAWEEDFS_MASTER_PORT:-9333}:9333"
-      - "${SEAWEEDFS_FILER_PORT:-8888}:8888"
-      - "${SEAWEEDFS_VOLUME_PORT:-8080}:8080"
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${SEAWEEDFS_MASTER_PORT:-9333}:9333"
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${SEAWEEDFS_FILER_PORT:-8888}:8888"
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${SEAWEEDFS_VOLUME_PORT:-8080}:8080"
     volumes:
       - seaweedfs_data:/data
 

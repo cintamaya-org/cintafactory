@@ -5,6 +5,7 @@ const { dirname, join, posix, relative, resolve, sep } = require('path');
 const { spawn } = require('child_process');
 const { URL } = require('url');
 const { tmpdir } = require('os');
+const { seaweedAuthHeaders } = require('./seaweedfs_auth');
 
 const EXPORT_HOST = process.env.LIKEC4_EXPORT_HOST || '0.0.0.0';
 const EXPORT_PORT = Number.parseInt(process.env.LIKEC4_EXPORT_PORT || '9000', 10);
@@ -138,9 +139,14 @@ const buildSeaweedUrl = (path) => {
   return `${SEAWEEDFS_FILER_URL}/${encodeSeaweedPath(cleaned)}`;
 };
 
+const seaweedPath = (path) => {
+  const clean = stripLeadingSlashes(path);
+  return SEAWEEDFS_BASE_DIR ? `${SEAWEEDFS_BASE_DIR}/${clean}` : clean;
+};
+
 const readFromSeaweed = async (path) => {
   const url = buildSeaweedUrl(path);
-  const response = await fetch(url, { method: 'GET' });
+  const response = await fetch(url, { method: 'GET', headers: seaweedAuthHeaders(seaweedPath(path), 'GET') });
   if (response.status === 404) {
     throw new Error(`SeaweedFS file not found: ${path}`);
   }
@@ -152,7 +158,7 @@ const readFromSeaweed = async (path) => {
 
 const headFromSeaweed = async (path) => {
   const url = buildSeaweedUrl(path);
-  const response = await fetch(url, { method: 'HEAD' });
+  const response = await fetch(url, { method: 'HEAD', headers: seaweedAuthHeaders(seaweedPath(path), 'HEAD') });
   if (response.status === 404) {
     throw new Error(`SeaweedFS file not found: ${path}`);
   }
@@ -170,6 +176,7 @@ const writeToSeaweed = async (path, buffer, contentType) => {
   const response = await fetch(url, {
     method: 'PUT',
     headers: {
+      ...seaweedAuthHeaders(seaweedPath(path), 'PUT'),
       'Content-Type': contentType,
       'Content-Length': String(buffer.length),
     },

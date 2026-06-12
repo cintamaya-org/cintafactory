@@ -63,6 +63,19 @@ def check_runtime_secrets(app_configs=None, **_kwargs):
             )
         )
 
+    for setting_name, error_id in (
+        ("SEAWEEDFS_JWT_WRITE_KEY", "cintafactory.E008"),
+        ("SEAWEEDFS_JWT_READ_KEY", "cintafactory.E009"),
+    ):
+        value = str(getattr(settings, setting_name, "") or "").strip()
+        if len(value) < 32:
+            errors.append(
+                Error(
+                    f"{setting_name} must be set to a random value of at least 32 characters.",
+                    id=error_id,
+                )
+            )
+
     return errors
 
 
