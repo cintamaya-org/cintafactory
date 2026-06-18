@@ -83,6 +83,7 @@ jobs:
             export APP_MODULE="cintafactory.wsgi:application"
             export DJANGO_DEBUG=0
             export DEV_DJANGO_SECRET_KEY="$(printf '%s' "${DEV_DJANGO_SECRET_KEY_B64}" | base64 -d)"
+            export DJANGO_SECRET_KEY="$(printf '%s' "${DEV_DJANGO_SECRET_KEY_B64}" | base64 -d)"
             export LIKEC4_METADATA_TOKEN="$(printf '%s' "${DEV_LIKEC4_METADATA_TOKEN_B64}" | base64 -d)"
             export LIKEC4_API_TOKEN="$(printf '%s' "${DEV_LIKEC4_API_TOKEN_B64}" | base64 -d)"
             export DJANGO_ALLOWED_HOSTS="$(printf '%s' "${DEV_ALLOWED_HOST_B64}" | base64 -d)"
