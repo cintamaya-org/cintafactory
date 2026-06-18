@@ -1,0 +1,45 @@
+name: SBOM & Vulnerabilitées Scan
+
+on:
+  push:
+    branches: [ main ]
+  push:
+    branches: [ "dev" ]
+
+jobs:
+  scan:
+    runs-on: [ self-hosted ]
+
+    steps:
+
+      # Récupère le code source du repo sur le runner
+      - name: Importation du repo
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # 4.3.1
+        with:
+          clean: true
+
+      # Génère la date du jour      
+      - name: Génération de la Date
+        run: echo "DATE=$(date +%d-%m-%Y)" >> "$GITHUB_ENV"
+
+      # Création des dossier /nom du repo/syft et /nom du repo/grype s'ils sont inexistant
+      - name : Création des dossiers de destinations
+        run: mkdir -p /home/debian/\${{ github.repository }}/syft /home/debian/\${{ github.repository }}/grype /home/debian/\${{ github.repository }}/grant
+
+      # Génération SBOM
+      - name: Génération du SBOM
+        run: |
+          syft dir:. -o cyclonedx-json > /home/debian/\${{ github.repository }}/syft/${DATE}_SBOM.json
+
+      # Mise à jour de la base de donnée Grype 
+      - name: Mise à jour de la db Grype
+        run : grype db update
+
+      # Recherche les vulnérabilites associées au sbom
+      - name: Scan vulnerabilities with Grype
+        run: |
+          grype sbom:/home/debian/\${{ github.repository }}/syft/${DATE}_SBOM.json -o table > /home/debian/\${{ github.repository }}/grype/${DATE}_SCA.txt
+      # Vérification de compliance avec grant
+      - name: Vérifier les licences
+        run: |
+           grant list /home/debian/\${{ github.repository }}/syft/${DATE}_SBOM.json > /home/debian/\${{ github.repository }}/grant/${DATE}_LICENSE.txt
