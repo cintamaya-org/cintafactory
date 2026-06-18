@@ -44,7 +44,7 @@ jobs:
       - name: Déploiement sur le VPS
         shell: bash
         env:
-          DEV_DEV_DJANGO_SECRET_KEY: ${{ secrets.DEV_DJANGO_SECRET_KEY }}
+          DEV_DJANGO_SECRET_KEY: ${{ secrets.DEV_DJANGO_SECRET_KEY }}
           DEV_LIKEC4_METADATA_TOKEN: ${{ secrets.DEV_LIKEC4_METADATA_TOKEN }}
           DEV_LIKEC4_API_TOKEN: ${{ secrets.DEV_LIKEC4_API_TOKEN }}
           DEV_POSTGRES_DB: ${{ secrets.DEV_POSTGRES_DB }}
