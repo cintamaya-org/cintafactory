@@ -3,9 +3,6 @@ name: SBOM & Vulnerabilitées Scan
 on:
   push:
     branches: [ main ]
-  push:
-    branches: [ "dev" ]
-
 jobs:
   scan:
     runs-on: [ self-hosted ]
