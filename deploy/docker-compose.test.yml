@@ -24,8 +24,8 @@ services:
       - cinta_test_static:/archifactory/cintafactory/staticfiles
       - cinta_test_media:/archifactory/cintafactory/media
 
-  likec4:
-    # keep likec4 internal-only; access goes through app proxy routes
+  # keep likec4 internal-only; access goes through app proxy routes
+  likec4: {}
 
 volumes:
   cinta_test_static:
