@@ -5,7 +5,7 @@ on:
     branches: [ main, dev ]
 
 env:
-  PATH:/home/debian/\${{ github.repository }}
+  DEPLOY_PATH:/home/debian/${{ github.repository }}
 
 jobs:
   scan:
@@ -25,12 +25,12 @@ jobs:
 
       # Création des dossier /nom du repo/syft et /nom du repo/grype s'ils sont inexistant
       - name : Création des dossiers de destinations
-        run: mkdir -p PATH/syft PATH/grype PATH/grant
+        run: mkdir -p DEPLOY_PATH/syft DEPLOY_PATH/grype PATH/grant
 
       # Génération SBOM
       - name: Génération du SBOM
         run: |
-          syft dir:. -o cyclonedx-json > PATH/syft/${DATE}_SBOM.json
+          syft dir:. -o cyclonedx-json > DEPLOY_PATH/syft/${DATE}_SBOM.json
 
       # Mise à jour de la base de donnée Grype 
       - name: Mise à jour de la db Grype
@@ -39,8 +39,8 @@ jobs:
       # Recherche les vulnérabilites associées au sbom
       - name: Scan vulnerabilities with Grype
         run: |
-          grype sbom:PATH/syft/${DATE}_SBOM.json -o table > PATH/grype/${DATE}_SCA.txt
+          grype sbom:DEPLOY_PATH/syft/${DATE}_SBOM.json -o table > DEPLOY_PATH/grype/${DATE}_SCA.txt
       # Vérification de compliance avec grant
       - name: Vérifier les licences
         run: |
-           grant list PATH/syft/${DATE}_SBOM.json > PATH/grant/${DATE}_LICENSE.txt
+           grant list DEPLOY_PATH/syft/${DATE}_SBOM.json > DEPLOY_PATH/grant/${DATE}_LICENSE.txt

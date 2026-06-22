@@ -70,4 +70,4 @@ AGENTS.md
 tmp/
 
 .sonarlint/
-.sonarlint
+.sonarlintshell.sh
