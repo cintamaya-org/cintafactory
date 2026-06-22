@@ -1,11 +1,11 @@
-name: SBOM & Vulnerabilitées Scan
+name: SBOM & Vulnerabilitées & Licences Scan
 
 on:
   pull_request:
     branches: [ main, dev ]
 
 env:
-  DEPLOY_PATH:/home/debian/${{ github.repository }}
+  DEPLOY_PATH: /home/debian/${{ github.repository }}
 
 jobs:
   scan:
