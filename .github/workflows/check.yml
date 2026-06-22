@@ -25,7 +25,7 @@ jobs:
 
       # Création des dossier /nom du repo/syft et /nom du repo/grype s'ils sont inexistant
       - name : Création des dossiers de destinations
-        run: mkdir -p DEPLOY_PATH/syft DEPLOY_PATH/grype PATH/grant
+        run: mkdir -p DEPLOY_PATH/syft DEPLOY_PATH/grype DEPLOY_PATH/grant
 
       # Génération SBOM
       - name: Génération du SBOM
