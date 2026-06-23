@@ -1,4 +1,4 @@
-name: SBOM & Vulnerabilitées & Licences Scan
+name: SBOM & VulneraScibilitées & Licences Scan
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
 
 env:
   RAPPORT_PATH: /home/debian/${{ github.repository }}
-  SCRIPT_PATH: /home/debian/script/blocage-grype
+  SCRIPT_PATH: /home/debian/script/blocage-grype.py
     
 jobs:
   scan:
@@ -46,6 +46,9 @@ jobs:
       # Vérification de compliance avec grant
       - name: Vérifier les licences
         run: |
-           grant list $RAPPORT_PATH/syft/${DATE}_SBOM.json > $RAPPORT_PATH/grant/${DATE}_LICENSE.txt
+           grant list $RAPPORT_PATH/syft/${DATE}_SBOM.json > $RAPPORT_PATH/grant/${DATE}_LICENCE.txt
 
-      # Utilisation du script pour vérifier la cévérité des CVEs  
+      # Utilisation du script pour vérifier la cévérité des CVEs 
+      - name: Utilisation du script pour bloquer ou non. 
+        run: |
+           python3 $SCRIPT_PATH $RAPPORT_PATH/grype/json/${DATE}_SCA.json
