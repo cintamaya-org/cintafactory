@@ -14,6 +14,9 @@ jobs:
 
     steps:
 
+      - name: Debug
+        run: echo "RAPPORT_PATH=$RAPPORT_PATH"
+
       # Récupère le code source du repo sur le runner
       - name: Importation du repo
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # 4.3.1
