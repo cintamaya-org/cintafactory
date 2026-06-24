@@ -1,7 +1,7 @@
 name: Déploiement DEV (test_factory)
 
 on:
-  push:
+  pull_request:
     branches: [ main ]
 
 # Empêche que deux déploiements tournent en même temps 
