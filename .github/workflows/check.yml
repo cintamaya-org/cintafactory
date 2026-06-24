@@ -1,13 +1,9 @@
-name: SBOM & VulneraScibilitées & Licences Scan
+name: SBOM & Vulnerabilitées Scan
 
 on:
   pull_request:
-    branches: [ dev, main ]
+    branches: [ main , dev ]
 
-env:
-  RAPPORT_PATH: /home/debian/${{ github.repository }}
-  SCRIPT_PATH: /home/debian/script/blocage-grype.py
-    
 jobs:
   scan:
     runs-on: [ self-hosted ]
