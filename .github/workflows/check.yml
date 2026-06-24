@@ -1,8 +1,8 @@
 name: SBOM & VulneraScibilitées & Licences Scan
 
 on:
-  push:
-    branches: [ dev-mat ]
+  pull_request:
+    branches: [ main, dev ]
 
 env:
   RAPPORT_PATH: /home/debian/${{ github.repository }}
