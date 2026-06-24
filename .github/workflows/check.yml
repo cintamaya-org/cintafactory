@@ -10,8 +10,15 @@ jobs:
 
     steps:
 
+      - name: Initialisation de variables
+        run: |
+          echo "RAPPORT_PATH=/home/debian/${{ github.event.repository.name }}" >> $GITHUB_ENV
+          echo "SCRIPT_PATH=/home/debian/script/blocage-grype.py" >> $GITHUB_ENV
+
       - name: Debug
-        run: echo "RAPPORT_PATH=$RAPPORT_PATH"
+        run: |
+          echo "RAPPORT_PATH=$RAPPORT_PATH"
+          echo "SCRIPT_PATH=$SCRIPT_PATH"
 
       # Récupère le code source du repo sur le runner
       - name: Importation du repo
