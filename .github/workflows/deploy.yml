@@ -1,0 +1,106 @@
+name: Déploiement DEV (test_factory)
+
+on:
+  pull_request:
+    branches: [ main ]
+
+# Empêche que deux déploiements tournent en même temps 
+concurrency:
+  group: deploy-dev-test_factory
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Récupère le code du dépôt sur le runner GitHub.
+      - name: Récupération du code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # 4.3.1 
+
+      # Prépare la connexion ssh avec le vps
+      - name: Configuration de la connexion SSH
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
+
+      # Envoie le contenu du dépôt vers le VPS en supprimer les fichiers qui ne sont plus dans le rep
+      - name: Synchronisation du dépôt vers le VPS
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEST="/opt/cintafactory/test"
+          ssh -i ~/.ssh/id_rsa "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" "mkdir -p ${DEST}"
+          rsync -az --delete \
+            --exclude='.git' \
+            --exclude='.github' \
+            -e "ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=yes" \
+            ./ "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:${DEST}/"
+
+      # Trasmission des secrets au vps et lancement des dockers
+      - name: Déploiement sur le VPS
+        shell: bash
+        env:
+          DEV_DJANGO_SECRET_KEY: ${{ secrets.DEV_DJANGO_SECRET_KEY }}
+          DEV_LIKEC4_METADATA_TOKEN: ${{ secrets.DEV_LIKEC4_METADATA_TOKEN }}
+          DEV_LIKEC4_API_TOKEN: ${{ secrets.DEV_LIKEC4_API_TOKEN }}
+          DEV_POSTGRES_DB: ${{ secrets.DEV_POSTGRES_DB }}
+          DEV_POSTGRES_USER: ${{ secrets.DEV_POSTGRES_USER }}
+          DEV_POSTGRES_PASSWORD: ${{ secrets.DEV_POSTGRES_PASSWORD }}
+          DEV_ALLOWED_HOST: ${{ secrets.DEV_ALLOWED_HOST }}
+        run: |
+          set -euo pipefail
+          : "${DEV_DJANGO_SECRET_KEY:?Missing DEV_DJANGO_SECRET_KEY secret}"
+          : "${DEV_POSTGRES_PASSWORD:?Missing DEV_POSTGRES_PASSWORD secret}"
+          : "${DEV_ALLOWED_HOST:?Missing DEV_ALLOWED_HOST secret}"
+
+          DEV_DJANGO_SECRET_KEY_B64="$(printf '%s' "${DEV_DJANGO_SECRET_KEY}" | base64 -w0)"
+          DEV_LIKEC4_METADATA_TOKEN_B64="$(printf '%s' "${DEV_LIKEC4_METADATA_TOKEN}" | base64 -w0)"
+          DEV_LIKEC4_API_TOKEN_B64="$(printf '%s' "${DEV_LIKEC4_API_TOKEN}" | base64 -w0)"
+          DEV_POSTGRES_DB_B64="$(printf '%s' "${DEV_POSTGRES_DB}" | base64 -w0)"
+          DEV_POSTGRES_USER_B64="$(printf '%s' "${DEV_POSTGRES_USER}" | base64 -w0)"
+          DEV_POSTGRES_PASSWORD_B64="$(printf '%s' "${DEV_POSTGRES_PASSWORD}" | base64 -w0)"
+          DEV_ALLOWED_HOST_B64="$(printf '%s' "${DEV_ALLOWED_HOST}" | base64 -w0)"
+
+          ssh -i ~/.ssh/id_rsa "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+            "DEV_DJANGO_SECRET_KEY_B64='${DEV_DJANGO_SECRET_KEY_B64}' \
+             DEV_LIKEC4_METADATA_TOKEN_B64='${DEV_LIKEC4_METADATA_TOKEN_B64}' \
+             DEV_LIKEC4_API_TOKEN_B64='${DEV_LIKEC4_API_TOKEN_B64}' \
+             DEV_POSTGRES_DB_B64='${DEV_POSTGRES_DB_B64}' \
+             DEV_POSTGRES_USER_B64='${DEV_POSTGRES_USER_B64}' \
+             DEV_POSTGRES_PASSWORD_B64='${DEV_POSTGRES_PASSWORD_B64}' \
+             DEV_ALLOWED_HOST_B64='${DEV_ALLOWED_HOST_B64}' \
+             bash -se" <<'REMOTE'
+            set -euo pipefail
+            docker network inspect swag-network >/dev/null 2>&1 || docker network create swag-network
+            cd /opt/cintafactory/test
+
+            export APP_NAME="test_factory"
+            export DJANGO_SETTINGS_MODULE="cintafactory.settings"
+            export APP_MODULE="cintafactory.wsgi:application"
+            export DJANGO_DEBUG=0
+            export DEV_DJANGO_SECRET_KEY="$(printf '%s' "${DEV_DJANGO_SECRET_KEY_B64}" | base64 -d)"
+            export DJANGO_SECRET_KEY="$(printf '%s' "${DEV_DJANGO_SECRET_KEY_B64}" | base64 -d)"
+            export LIKEC4_METADATA_TOKEN="$(printf '%s' "${DEV_LIKEC4_METADATA_TOKEN_B64}" | base64 -d)"
+            export LIKEC4_API_TOKEN="$(printf '%s' "${DEV_LIKEC4_API_TOKEN_B64}" | base64 -d)"
+            export DJANGO_ALLOWED_HOSTS="$(printf '%s' "${DEV_ALLOWED_HOST_B64}" | base64 -d)"
+            export APP_PORT=8000
+            export HOST_PORT=8101
+            export POSTGRES_DB="$(printf '%s' "${DEV_POSTGRES_DB_B64}" | base64 -d)"
+            export POSTGRES_USER="$(printf '%s' "${DEV_POSTGRES_USER_B64}" | base64 -d)"
+            export POSTGRES_PASSWORD="$(printf '%s' "${DEV_POSTGRES_PASSWORD_B64}" | base64 -d)"
+            export DB_HOST_PORT=5433
+            export DATABASE_HOST="${APP_NAME}_db"
+            export DATABASE_PORT="5432"
+
+            docker compose -p "${APP_NAME}" up -d --build
+          REMOTE
+
+      # Supprime la clé SSH privée du runner, même si une étape précédente a échoué.
+      - name: Nettoyage de la clé SSH locale
+        if: always()
+        shell: bash
+        run: rm -f ~/.ssh/id_rsa
