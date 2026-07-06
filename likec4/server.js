@@ -7,6 +7,7 @@ const { createHash } = require('crypto');
 const { tmpdir } = require('os');
 const { extname, join, basename, dirname, posix, resolve, sep } = require('path');
 const { promisify } = require('util');
+const { seaweedAuthHeaders } = require('./worker/seaweedfs_auth');
 
 const PORT = process.env.LIKEC4_EDITOR_PORT || 4173;
 const ROOT_DIR = __dirname; // always resolve relative to where server.js lives
@@ -102,9 +103,14 @@ const buildSeaweedUrl = (path) => {
   return `${SEAWEEDFS_FILER_URL}/${encodeSeaweedPath(path)}`;
 };
 
+const seaweedPath = (path) => {
+  const clean = path.replace(/^\/+/, '');
+  return SEAWEEDFS_BASE_DIR ? `${SEAWEEDFS_BASE_DIR}/${clean}` : clean;
+};
+
 const readFromSeaweed = async (path) => {
   const url = buildSeaweedUrl(path);
-  const response = await fetch(url, { method: 'GET' });
+  const response = await fetch(url, { method: 'GET', headers: seaweedAuthHeaders(seaweedPath(path), 'GET') });
   if (response.status === 404) {
     return { content: '', missing: true };
   }
@@ -122,6 +128,7 @@ const writeToSeaweed = async (path, content) => {
   const response = await fetch(url, {
     method: 'PUT',
     headers: {
+      ...seaweedAuthHeaders(seaweedPath(path), 'PUT'),
       'Content-Type': 'text/plain; charset=utf-8',
       'Content-Length': String(payload.length),
     },

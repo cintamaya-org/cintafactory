@@ -26,46 +26,23 @@ PDF_EXPORT_JOB_TYPE = "exports.pdf"
 ASYNC_JOB_EXECUTE_METRIC = "async_job.execute"
 
 
-def _likec4_backoff_schedule() -> list[float]:
-    configured = getattr(settings, "ASYNC_JOBS_LIKEC4_BACKOFF_SECONDS", None)
+def _configured_backoff_schedule(setting_name: str, fallback: list[float]) -> list[float]:
+    configured = getattr(settings, setting_name, None)
     if isinstance(configured, (list, tuple)):
-        out: list[float] = []
-        for item in configured:
-            try:
-                out.append(float(item))
-            except (TypeError, ValueError):
-                continue
-        if out:
-            return out
-    return [5.0, 20.0]
+        return _normalize_backoff(configured, fallback)
+    return fallback
+
+
+def _likec4_backoff_schedule() -> list[float]:
+    return _configured_backoff_schedule("ASYNC_JOBS_LIKEC4_BACKOFF_SECONDS", [5.0, 20.0])
 
 
 def _drawio_backoff_schedule() -> list[float]:
-    configured = getattr(settings, "ASYNC_JOBS_DRAWIO_BACKOFF_SECONDS", None)
-    if isinstance(configured, (list, tuple)):
-        out: list[float] = []
-        for item in configured:
-            try:
-                out.append(float(item))
-            except (TypeError, ValueError):
-                continue
-        if out:
-            return out
-    return [5.0, 20.0]
+    return _configured_backoff_schedule("ASYNC_JOBS_DRAWIO_BACKOFF_SECONDS", [5.0, 20.0])
 
 
 def _pdf_backoff_schedule() -> list[float]:
-    configured = getattr(settings, "ASYNC_JOBS_PDF_BACKOFF_SECONDS", None)
-    if isinstance(configured, (list, tuple)):
-        out: list[float] = []
-        for item in configured:
-            try:
-                out.append(float(item))
-            except (TypeError, ValueError):
-                continue
-        if out:
-            return out
-    return [10.0, 30.0, 120.0]
+    return _configured_backoff_schedule("ASYNC_JOBS_PDF_BACKOFF_SECONDS", [10.0, 30.0, 120.0])
 
 
 def _job_runner_mode() -> str:
@@ -218,18 +195,7 @@ def _run_likec4_job(job_id) -> None:
         if not storage_path:
             _set_job_failed(job, "Missing storage_path in payload.", dead_lettered=True)
             return
-        backoff = payload.get("backoff_seconds")
-        if isinstance(backoff, list):
-            schedule = []
-            for item in backoff:
-                try:
-                    schedule.append(float(item))
-                except (TypeError, ValueError):
-                    continue
-            if not schedule:
-                schedule = _likec4_backoff_schedule()
-        else:
-            schedule = _likec4_backoff_schedule()
+        schedule = _normalize_backoff(payload.get("backoff_seconds"), _likec4_backoff_schedule())
 
         for attempt_index, delay in enumerate(schedule, start=1):
             AsyncJob.objects.filter(id=job.id).update(
@@ -410,7 +376,7 @@ def _run_pdf_job(job_id) -> None:
 
 
 def _normalize_backoff(value: Any, fallback: list[float]) -> list[float]:
-    if isinstance(value, list):
+    if isinstance(value, (list, tuple)):
         out: list[float] = []
         for item in value:
             try:

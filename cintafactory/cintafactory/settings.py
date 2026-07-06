@@ -45,7 +45,7 @@ def _required_secret(*env_names: str) -> str:
 SECRET_KEY = _required_secret("DJANGO_SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv("DJANGO_DEBUG", "True").lower() in {"1", "true", "yes", "on"}
+DEBUG = os.getenv("DJANGO_DEBUG", "False").lower() in {"1", "true", "yes", "on"}
 STRICT_HTTP_SECURITY = os.getenv("DJANGO_ENFORCE_STRICT_HTTP", "0").lower() in {"1", "true", "yes", "on"}
 
 def _split_env_list(value: str | None, default: str = "") -> list[str]:
@@ -298,6 +298,10 @@ SEAWEEDFS_PUBLIC_URL = os.getenv("SEAWEEDFS_PUBLIC_URL", SEAWEEDFS_FILER_URL).rs
 SEAWEEDFS_PUBLIC_URL_PP = os.getenv("SEAWEEDFS_PUBLIC_URL_PP", "http://localhost:8888").rstrip("/")
 SEAWEEDFS_BASE_DIR = os.getenv("SEAWEEDFS_BASE_DIR", "media").strip("/")
 SEAWEEDFS_TIMEOUT = int(os.getenv("SEAWEEDFS_TIMEOUT", "30"))
+SEAWEEDFS_JWT_WRITE_KEY = os.getenv("SEAWEEDFS_JWT_WRITE_KEY", "").strip()
+SEAWEEDFS_JWT_READ_KEY = os.getenv("SEAWEEDFS_JWT_READ_KEY", "").strip()
+SEAWEEDFS_JWT_TTL_SECONDS = int(os.getenv("SEAWEEDFS_JWT_TTL_SECONDS", "60"))
+SEAWEEDFS_PUBLIC_JWT_TTL_SECONDS = int(os.getenv("SEAWEEDFS_PUBLIC_JWT_TTL_SECONDS", "300"))
 LIKEC4_METADATA_TOKEN = (os.getenv("LIKEC4_METADATA_TOKEN") or ("dev_token_idHaf" if DEBUG else "")).strip()
 LIKEC4_API_TOKEN = (os.getenv("LIKEC4_API_TOKEN") or ("dev_likec4_api_token_change_me" if DEBUG else "")).strip()
 LIKEC4_EDITOR_URL = os.getenv("LIKEC4_EDITOR_URL", _internal_service_url("likec4", "4173")).rstrip("/")
