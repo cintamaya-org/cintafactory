@@ -40,7 +40,9 @@ jobs:
 
       # Installation des dépendances Python
       - name: Installation des dépendances Python
-        run: uv sync --frozen --no-dev
+        run: |
+          echo "/home/debian/.local/bin" >> $GITHUB_PATH
+          uv sync --frozen --no-dev
 
       # Génération SBOM
       - name: Génération du SBOM
