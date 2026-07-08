@@ -1,8 +1,8 @@
 name: SBOM & Vulnerabilitées Scan
 
 on:
-  pull_request:
-    branches: [ main , dev ]
+  push:
+    branches: [ dev-mat ]
 
 jobs:
   scan:
@@ -38,6 +38,10 @@ jobs:
       - name : Création des dossiers de destinations
         run: mkdir -p $RAPPORT_PATH/syft $RAPPORT_PATH/grype/txt $RAPPORT_PATH/grype/json $RAPPORT_PATH/grant
 
+      # Installation des dépendances Python
+      - name: Installation des dépendances Python
+        run: uv sync --frozen --no-dev
+
       # Génération SBOM
       - name: Génération du SBOM
         run: |
@@ -62,3 +66,8 @@ jobs:
       - name: Utilisation du script pour bloquer ou non. 
         run: |
            python3 $SCRIPT_PATH $RAPPORT_PATH/grype/json/${DATE}_SCA.json
+      
+      # Nettoyage du venv
+      - name: Nettoyage du venv
+        if: always()
+        run: rm -rf .venv
