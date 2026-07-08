@@ -28,5 +28,7 @@ jobs:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         with:
           args: >
-            -Dsonar.projectKey=test-github-vps
-            -Dsonar.projectName="Test Connexion GitHub"
+            -Dsonar.projectKey=Cintafactory
+            -Dsonar.projectName="Cintafactory"
+
+"
