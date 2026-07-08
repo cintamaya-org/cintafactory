@@ -20,7 +20,7 @@ jobs:
       - name: Run Gitleaks Scan
         id: gitleaks
         run: |
-          docker run --rm -v ${{ github.workspace }}:/code zricethez/gitleaks:latest detect --source="/code" --log-opts="-1" --verbose --report-format=json --report-path="/code/gitleaks-report.json"
+          docker run --rm -v ${{ github.workspace }}:/code ghcr.io/gitleaks/gitleaks:latest detect --source="/code" --log-opts="-1" --verbose --report-format=json --report-path="/code/gitleaks-report.json"
         continue-on-error: true
 
       - name: Upload Secret Report
