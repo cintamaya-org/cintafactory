@@ -30,5 +30,3 @@ jobs:
           args: >
             -Dsonar.projectKey=Cintafactory
             -Dsonar.projectName="Cintafactory"
-
-"
