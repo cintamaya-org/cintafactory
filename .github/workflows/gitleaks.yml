@@ -1,0 +1,32 @@
+name: Gitleaks Scan
+
+on:
+  push:
+    branches: [ "main", "dev" ]
+  pull_request:
+    branches: [ "main", "dev" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Gitleaks Scan
+        id: gitleaks
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/code zricethez/gitleaks:latest detect --source="/code" --log-opts="-1" --verbose --report-format=json --report-path="/code/gitleaks-report.json"
+        continue-on-error: true
+
+      - name: Upload Secret Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Gitleaks-JSON-Report
+          path: gitleaks-report.json
+          retention-days: 7
