@@ -40,7 +40,7 @@ jobs:
 
       # Build image docker    
       - name: Build de l'image pour le scan
-        run: docker build -t ${{ github.event.repository.name }}:scan .
+        run: /usr/libexec/docker/cli-plugins/docker-buildx build -f dockerfile -t ${{ github.event.repository.name }}:scan .
 
       # Génération SBOM
       - name: Génération du SBOM
