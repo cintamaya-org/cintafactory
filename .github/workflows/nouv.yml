@@ -1,8 +1,8 @@
 name: SBOM & Vulnerability & License Scan
 
 on:
-  pull_request:
-    branches: [ main, dev ]
+  push:
+    branches: [ dev-mat ]
 
 jobs:
   scan:
@@ -96,5 +96,5 @@ jobs:
           key: ${{ secrets.VPS_CHECK_KEY }}
           port: ${{ secrets.VPS_CHECK_PORT }}
           source: "reports/*"
-          target: "/home/debian/reports/${{ github.event.repository.name }}"
+          target: "/home/debian/${{ github.event.repository.name }}"
           strip_components: 1
