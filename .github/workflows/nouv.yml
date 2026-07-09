@@ -80,9 +80,10 @@ jobs:
       - name: Envoi des rapports vers le VPS
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
+          host: ${{ secrets.VPS_CHECK_IP
+          username: ${{ secrets.VPS_CHECK_HOST }}
+          key: ${{ secrets.VPS_CHECK_KEY }}
+          port: ${{ secrets.VPS_CHECK_PORT }}
           source: "reports/*"
           target: "/home/debian/reports/${{ github.event.repository.name }}"
           strip_components: 1
