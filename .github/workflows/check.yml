@@ -1,9 +1,7 @@
 name: SBOM & Vulnerabilitées Scan
 
 on:
-  push:
-    branches: [ dev-mat ]
-
+  
 jobs:
   scan:
     runs-on: [ self-hosted ]
