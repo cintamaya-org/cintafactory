@@ -42,6 +42,7 @@ jobs:
           format: cyclonedx-json
           output-file: ${{ env.DATE }}_SBOM.json
           upload-artifact: false
+          config: .syft.yaml
  
       # Scan des vulnérabilités via l'action officielle Anchore (Grype)
       - name: Scan des vulnérabilités avec Grype
