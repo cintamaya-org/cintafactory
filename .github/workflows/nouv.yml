@@ -1,9 +1,9 @@
 name: SBOM & Vulnerability & License Scan
- 
+
 on:
-  push:
-    branches: [ dev-mat ]
- 
+  pull_request:
+    branches: [ main, dev ]
+
 jobs:
   scan:
     runs-on: ubuntu-latest
@@ -12,38 +12,42 @@ jobs:
     steps:
       - name: Importation du repo
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # 4.3.1
- 
+
       - name: Hadolint check
         uses: hadolint/hadolint-action@v3.1.0
         with:
           dockerfile: dockerfile
           failure-threshold: error
- 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
- 
-      - name: Build de l'image pour le scan
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: dockerfile
-          tags: ${{ github.event.repository.name }}:scan
-          push: false
-          load: true
- 
+
       - name: Génération de la Date
         run: echo "DATE=$(date +%d-%m-%Y)" >> "$GITHUB_ENV"
- 
-      # SBOM via l'action officielle Anchore (Syft toujours à jour)
+
+      # Paquets système nécessaires à la compilation de certaines deps
+      # Python (ex: psycopg2-binary a besoin de pg_config / libpq-dev)
+      - name: Installation des paquets système nécessaires au build des deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libpq-dev python3-dev build-essential
+
+      - name: Installation de uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # Crée un .venv local avec les vraies métadonnées de licences
+      # (.dist-info/METADATA), sans jamais toucher au Dockerfile de prod
+      - name: Installation des dépendances Python
+        run: uv sync --frozen --no-dev
+
+      # SBOM généré directement depuis le répertoire (le .venv y est inclus)
       - name: Génération du SBOM
         uses: anchore/sbom-action@v0
         with:
-          image: ${{ github.event.repository.name }}:scan
+          path: .
           format: cyclonedx-json
           output-file: ${{ env.DATE }}_SBOM.json
           upload-artifact: false
-          config: .syft.yaml
- 
+
       # Scan des vulnérabilités via l'action officielle Anchore (Grype)
       - name: Scan des vulnérabilités avec Grype
         uses: anchore/scan-action@v7
@@ -52,22 +56,28 @@ jobs:
           sbom: ${{ env.DATE }}_SBOM.json
           fail-build: false
           output-format: json
- 
+
       - name: Copie du rapport Grype JSON
         run: cp "${{ steps.grype-scan.outputs.json }}" ${{ env.DATE }}_SCA.json
- 
+
       - name: Génération du rapport Grype table (lisible)
         run: |
           curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
           grype sbom:${{ env.DATE }}_SBOM.json -o table > ${{ env.DATE }}_SCA.txt
- 
+
       # Licences via Grant
       - name: Installation de Grant
         run: curl -sSfL https://raw.githubusercontent.com/anchore/grant/main/install.sh | sh -s -- -b /usr/local/bin
- 
+
       - name: Vérifier les licences
         run: grant list ${{ env.DATE }}_SBOM.json > ${{ env.DATE }}_LICENCE.txt
- 
+
+      # Nettoyage du venv (pas utile en soi sur un runner éphémère,
+      # mais évite de le remonter par erreur dans les rapports envoyés)
+      - name: Nettoyage du venv
+        if: always()
+        run: rm -rf .venv
+
       # Regroupement des rapports dans une arborescence claire avant envoi
       - name: Préparation des rapports
         run: |
@@ -76,7 +86,7 @@ jobs:
           mv ${{ env.DATE }}_SCA.json reports/grype/json/
           mv ${{ env.DATE }}_SCA.txt reports/grype/txt/
           mv ${{ env.DATE }}_LICENCE.txt reports/grant/
- 
+
       # Envoi des rapports vers le VPS
       - name: Envoi des rapports vers le VPS
         uses: appleboy/scp-action@v0.1.7
@@ -86,5 +96,5 @@ jobs:
           key: ${{ secrets.VPS_CHECK_KEY }}
           port: ${{ secrets.VPS_CHECK_PORT }}
           source: "reports/*"
-          target: "/home/debian/${{ github.event.repository.name }}"
+          target: "/home/debian/reports/${{ github.event.repository.name }}"
           strip_components: 1
