@@ -45,7 +45,7 @@ jobs:
       # Génération SBOM
       - name: Génération du SBOM
         run: |
-          syft ${{ github.event.repository.name }}:scan -o cyclonedx-json > $RAPPORT_PATH/syft/${DATE}_SBOM.json
+          syft ${{ github.event.repository.name }}:scan -o cyclonedx-json --select-catalogers "-os" > $RAPPORT_PATH/syft/${DATE}_SBOM.json
 
       # Mise à jour de la base de donnée Grype 
       - name: Mise à jour de la db Grype
@@ -54,8 +54,8 @@ jobs:
       # Recherche les vulnérabilites associées au sbom
       - name: Scan vulnerabilities with Grype
         run: |
-          grype sbom:$RAPPORT_PATH/syft/${DATE}_SBOM.json -o table --select-catalogers "-os" > $RAPPORT_PATH/grype/txt/${DATE}_SCA.txt
-          grype sbom:$RAPPORT_PATH/syft/${DATE}_SBOM.json -o json --select-catalogers "-os" > $RAPPORT_PATH/grype/json/${DATE}_SCA.json
+          grype sbom:$RAPPORT_PATH/syft/${DATE}_SBOM.json -o table > $RAPPORT_PATH/grype/txt/${DATE}_SCA.txt
+          grype sbom:$RAPPORT_PATH/syft/${DATE}_SBOM.json -o json > $RAPPORT_PATH/grype/json/${DATE}_SCA.json
 
       # Vérification de compliance avec grant
       - name: Vérifier les licences
