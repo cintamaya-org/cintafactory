@@ -71,11 +71,9 @@ jobs:
 
       - name: Vérifier les licences
         run: |
-          ls -la .venv/lib/python*/site-packages | head -20
+          jq '.components[] | {name, licenses}' ${{ env.DATE }}_SBOM.json | head -60
           grant list ${{ env.DATE }}_SBOM.json > ${{ env.DATE }}_LICENCE.txt
-          cat .venv/lib/python*/site-packages/*.dist-info/METADATA | grep -i "^License" | head -20
-
-
+          
       # Nettoyage du venv (pas utile en soi sur un runner éphémère,
       # mais évite de le remonter par erreur dans les rapports envoyés)
       - name: Nettoyage du venv
