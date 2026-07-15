@@ -44,11 +44,7 @@ jobs:
         run : |
           curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
           syft dir:. -o cyclonedx-json@1.5="${{ env.DATE }}_SBOM.json" --select-catalogers "-python-package-cataloger" --source-name "${{ github.event.repository.name }}" --source-version "${{ github.sha }}"
-          ls -la ${{ env.DATE }}_SBOM.json
-          jq empty ${{ env.DATE }}_SBOM.json && echo "SBOM JSON valide dans le CI" || echo "SBOM JSON INVALIDE dans le CI"
-          jq '.bomFormat, .specVersion' ${{ env.DATE }}_SBOM.json
-          syft dir:. -o cyclonedx-json@1.5 2>&1 | head -5
-
+          
       # Scan des vulnérabilités via l'action officielle Anchore (Grype)
       - name: Scan des vulnérabilités avec Grype
         uses: anchore/scan-action@v7
