@@ -70,7 +70,11 @@ jobs:
         run: curl -sSfL https://raw.githubusercontent.com/anchore/grant/main/install.sh | sh -s -- -b /usr/local/bin
 
       - name: Vérifier les licences
-        run: grant list ${{ env.DATE }}_SBOM.json > ${{ env.DATE }}_LICENCE.txt
+        run: |
+          ls -la .venv/lib/python*/site-packages | head -20
+          grant list ${{ env.DATE }}_SBOM.json > ${{ env.DATE }}_LICENCE.txt
+          cat .venv/lib/python*/site-packages/*.dist-info/METADATA | grep -i "^License" | head -20
+
 
       # Nettoyage du venv (pas utile en soi sur un runner éphémère,
       # mais évite de le remonter par erreur dans les rapports envoyés)
