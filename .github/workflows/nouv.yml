@@ -47,6 +47,8 @@ jobs:
           format: cyclonedx-json
           output-file: ${{ env.DATE }}_SBOM.json
           upload-artifact: false
+        env:
+          SYFT_PYTHON_GUESS_UNPINNED_REQUIREMENTS: "false"
 
       # Scan des vulnérabilités via l'action officielle Anchore (Grype)
       - name: Scan des vulnérabilités avec Grype
@@ -71,7 +73,7 @@ jobs:
 
       - name: Vérifier les licences
         run: |
-          jq '.components[] | {name, licenses}' ${{ env.DATE }}_SBOM.json | head -60
+          syft dir:. -o cyclonedx-json -vv 2>&1 | grep -i cataloger          
           grant list ${{ env.DATE }}_SBOM.json > ${{ env.DATE }}_LICENCE.txt
           
       # Nettoyage du venv (pas utile en soi sur un runner éphémère,
