@@ -45,7 +45,7 @@ jobs:
           curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
           syft dir:. --help | grep -i catalog
           syft dir:. --help | grep -A 5 -i "catalog"
-          syft dir:. -o cyclonedx-json --select-catalogers "-python-package-cataloger" > ${{ env.DATE }}_SBOM.json
+          syft dir:. -o cyclonedx-json="${{ env.DATE }}_SBOM.json" --select-catalogers "-python-package-cataloger" --source-name "${{ github.event.repository.name }}" --source-version "${{ github.sha }}"
           
       # Scan des vulnérabilités via l'action officielle Anchore (Grype)
       - name: Scan des vulnérabilités avec Grype
