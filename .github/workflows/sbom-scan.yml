@@ -1,4 +1,4 @@
-name: SBOM & Vulnerability & License Scan
+name: SBOM & Dockerfile scan
 
 on:
   pull_request:
@@ -9,45 +9,40 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+
     steps:
       - name: Importation du repo
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # 4.3.1
-
+          
       - name: Hadolint check
-        uses: hadolint/hadolint-action@v3.1.0
+        uses: hadolint/hadolint-action@54c9adbab1582c2ef04b2016b760714a4bfde3cf # v3.1.0
         with:
           dockerfile: dockerfile
           failure-threshold: error
 
       - name: Génération de la Date
-        run: echo "DATE=$(date +%d-%m-%Y)" >> "$GITHUB_ENV"
+        run: echo "DATE=$(date +%Y-%m-%d)" >> "$GITHUB_ENV"
 
-      # Paquets système nécessaires à la compilation de certaines deps
-      # Python (ex: psycopg2-binary a besoin de pg_config / libpq-dev)
       - name: Installation des paquets système nécessaires au build des deps
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libpq-dev python3-dev build-essential
-
+      
       - name: Installation de uv
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      # Crée un .venv local avec les vraies métadonnées de licences
-      # (.dist-info/METADATA), sans jamais toucher au Dockerfile de prod
+          
       - name: Installation des dépendances Python
         run: uv sync --frozen --no-dev
-
-      # SBOM généré directement depuis le répertoire (le .venv y est inclus)
+      
       - name: Génération du SBOM
         run : |
           curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
           syft dir:. -o cyclonedx-json@1.5="${{ env.DATE }}_SBOM.json" --select-catalogers "-python-package-cataloger" --source-name "${{ github.event.repository.name }}" --source-version "${{ github.sha }}"
-          
-      # Scan des vulnérabilités via l'action officielle Anchore (Grype)
+
       - name: Scan des vulnérabilités avec Grype
-        uses: anchore/scan-action@v7
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
         id: grype-scan
         with:
           sbom: ${{ env.DATE }}_SBOM.json
@@ -61,21 +56,16 @@ jobs:
         run: |
           curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
           grype sbom:${{ env.DATE }}_SBOM.json -o table > ${{ env.DATE }}_SCA.txt
-
-      # Licences via Grant
+      
       - name: Installation de Grant
         run: curl -sSfL https://raw.githubusercontent.com/anchore/grant/main/install.sh | sh -s -- -b /usr/local/bin
-
       - name: Vérifier les licences
         run: grant list ${{ env.DATE }}_SBOM.json > ${{ env.DATE }}_LICENCE.txt
           
-      # Nettoyage du venv (pas utile en soi sur un runner éphémère,
-      # mais évite de le remonter par erreur dans les rapports envoyés)
       - name: Nettoyage du venv
         if: always()
         run: rm -rf .venv
-
-      # Regroupement des rapports dans une arborescence claire avant envoi
+          
       - name: Préparation des rapports
         run: |
           mkdir -p reports/syft reports/grype/json reports/grype/txt reports/grant
@@ -83,10 +73,9 @@ jobs:
           mv ${{ env.DATE }}_SCA.json reports/grype/json/
           mv ${{ env.DATE }}_SCA.txt reports/grype/txt/
           mv ${{ env.DATE }}_LICENCE.txt reports/grant/
-
-      # Envoi des rapports vers le VPS
+      
       - name: Envoi des rapports vers le VPS
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634 # v0.1.7
         with:
           host: ${{ secrets.VPS_CHECK_IP }}
           username: ${{ secrets.VPS_CHECK_HOST }}
