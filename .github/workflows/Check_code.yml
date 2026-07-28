@@ -36,6 +36,7 @@ jobs:
         id: Gitleaks
         run: |
           docker run --rm -v ${{ github.workspace }}:/code ghcr.io/gitleaks/gitleaks:latest detect --source="/code" --log-opts="-1" --verbose --report-format=json --report-path="${{ env.DATE }}_SECRETS.json"
+          touch "${{ env.DATE }}_SECRETS.json"
         continue-on-error: true
       
       - name: Syft
