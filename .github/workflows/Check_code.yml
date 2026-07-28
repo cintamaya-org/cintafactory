@@ -1,7 +1,7 @@
 name: Check code
 on:
-  push:
-    branches: [ dev-mat ]
+  pull_request:
+    branches: [ main, dev ]
 
 jobs:
   scan:
