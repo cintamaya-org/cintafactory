@@ -60,7 +60,7 @@ jobs:
       - name: Installation de Grant
         run: curl -sSfL https://raw.githubusercontent.com/anchore/grant/main/install.sh | sh -s -- -b /usr/local/bin
       - name: Vérifier les licences
-        run: grant list ${{ env.DATE }}_SBOM.json > ${{ env.DATE }}_LICENCE.txt
+        run: grant check ${{ env.DATE }}_SBOM.json > ${{ env.DATE }}_LICENCE.txt
           
       - name: Nettoyage du venv
         if: always()
