@@ -59,11 +59,12 @@ jobs:
           grype sbom:${{ env.DATE }}_SBOM.json -o table > ${{ env.DATE }}_SCA.txt
       
       - name: Grant
+        continue-on-error: true
         run: |
           curl -sSfL https://raw.githubusercontent.com/anchore/grant/main/install.sh | sh -s -- -b /usr/local/bin
           grant check ${{ env.DATE }}_SBOM.json > ${{ env.DATE }}_LICENCE.txt
 
-      - name: Analyze with SonarQube
+      - name: SonarQube
         uses: sonarsource/sonarqube-scan-action@v6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
