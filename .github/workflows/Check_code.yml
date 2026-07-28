@@ -33,38 +33,44 @@ jobs:
 
 
       - name: Gitleaks
+        id: Gitleaks
         run: |
           docker run --rm -v ${{ github.workspace }}:/code ghcr.io/gitleaks/gitleaks:latest detect --source="/code" --log-opts="-1" --verbose --report-format=json --report-path="${{ env.DATE }}_SECRETS.json"
         continue-on-error: true
       
       - name: Syft
+        id: Syft
         run : |
           curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
           syft dir:. -o cyclonedx-json@1.5="${{ env.DATE }}_SBOM.json" --select-catalogers "-python-package-cataloger" --source-name "${{ github.event.repository.name }}" --source-version "${{ github.sha }}"
 
       - name: Grype json
+        id: GrypeJson
         uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
-        id: grype-scan
         with:
           sbom: ${{ env.DATE }}_SBOM.json
           fail-build: false
           output-format: json
 
       - name: Copie du rapport Grype JSON
+        id: CopieGrype
         run: cp "${{ steps.grype-scan.outputs.json }}" ${{ env.DATE }}_SCA.json
 
       - name: Grype txt
+        id: GrypeTxt
         run: |
           curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
           grype sbom:${{ env.DATE }}_SBOM.json -o table > ${{ env.DATE }}_SCA.txt
       
       - name: Grant
+        id: Grant
         continue-on-error: true
         run: |
           curl -sSfL https://raw.githubusercontent.com/anchore/grant/main/install.sh | sh -s -- -b /usr/local/bin
           grant check ${{ env.DATE }}_SBOM.json > ${{ env.DATE }}_LICENCE.txt
 
       - name: SonarQube
+        id: SonarQube
         uses: sonarsource/sonarqube-scan-action@v6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -76,10 +82,11 @@ jobs:
             -Dsonar.projectName="Cintafactory"
           
       - name: Hadolint
+        id: Hadolint
         uses: hadolint/hadolint-action@54c9adbab1582c2ef04b2016b760714a4bfde3cf # v3.1.0
         with:
           dockerfile: dockerfile
-          failure-threshold: none
+          no-fail: true
 
       
 
@@ -88,6 +95,7 @@ jobs:
         run: rm -rf .venv
           
       - name: Préparation des rapports
+        if: always()
         run: |
           mkdir -p reports/syft reports/grype/json reports/grype/txt reports/grant reports/gitleaks
           mv ${{ env.DATE }}_SBOM.json reports/syft/
@@ -97,6 +105,7 @@ jobs:
           mv ${{ env.DATE }}_SECRETS.json reports/gitleaks
       
       - name: Envoi des rapports vers le VPS
+        if: always()
         uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634 # v0.1.7
         with:
           host: ${{ secrets.VPS_CHECK_IP }}
