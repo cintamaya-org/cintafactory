@@ -51,10 +51,7 @@ jobs:
           sbom: ${{ env.DATE }}_SBOM.json
           fail-build: false
           output-format: json
-
-      - name: Copie du rapport Grype JSON
-        id: CopieGrype
-        run: cp "${{ steps.grype-scan.outputs.json }}" ${{ env.DATE }}_SCA.json
+          output-file: ${{ env.DATE }}_SCA.json
 
       - name: Grype txt
         id: GrypeTxt
