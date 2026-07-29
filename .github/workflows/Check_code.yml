@@ -67,7 +67,10 @@ jobs:
         run: |
           curl -sSfL https://raw.githubusercontent.com/anchore/grant/main/install.sh | sh -s -- -b /usr/local/bin
           grant check ${{ env.DATE }}_SBOM.json > ${{ env.DATE }}_LICENCE.txt
-          mkdir -p reports && mv ${{ env.DATE }}_SBOM.json reports && mv ${{ env.DATE }}_SCA.json reports && mv ${{ env.DATE }}_SCA.txt reports && mv ${{ env.DATE }}_LICENCE.txt reports
+      
+      - name: Déplacement des raports
+        run: mkdir -p reports && mv ${{ env.DATE }}_SBOM.json reports && mv ${{ env.DATE }}_SCA.json reports && mv ${{ env.DATE }}_SCA.txt reports && mv ${{ env.DATE }}_LICENCE.txt reports
+
 
       - name: Upload artifact
         if: always()
