@@ -20,16 +20,16 @@ jobs:
       - name: lancement du scan
         id: Gitleaks
         run: |
-          docker run --rm -v ${{ github.workspace }}:/code ghcr.io/gitleaks/gitleaks:latest detect --source="/code" --log-opts="-1" --verbose --report-format=json --report-path="hadolint.json"
-          touch "hadolint.json"
+          docker run --rm -v ${{ github.workspace }}:/code ghcr.io/gitleaks/gitleaks:latest detect --source="/code" --log-opts="-1" --verbose --report-format=json --report-path="gitleaks.json"
+          touch "gitleaks.json"
         continue-on-error: true
       
       - name: Upload artifact
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # 7.0.1
         with:
-          name: hadolint-report
-          path: hadolint.json
+          name: gitleaks
+          path: gitleaks.json
 #-------------------------------------------------------------------------------------
 #                                    SBOM SCAN
 #-------------------------------------------------------------------------------------
@@ -132,4 +132,5 @@ jobs:
 
       - name: Reorganisation des rapports
         run: |
+          mkdir ${{ github.event.repository.name }}/syft && mkdir ${{ github.event.repository.name }}/grype && mkdir ${{ github.event.repository.name }}/grant && mkdir ${{ github.event.repository.name }}/gitleaks
           find ${{ github.event.repository.name }} -type f
