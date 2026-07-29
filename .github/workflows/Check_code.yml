@@ -136,5 +136,5 @@ jobs:
       - name: Reorganisation des rapports
         run: |
           mkdir -p ${{ github.event.repository.name }}/syft && mkdir -p ${{ github.event.repository.name }}/grype && mkdir -p ${{ github.event.repository.name }}/grant && mkdir -p ${{ github.event.repository.name }}/gitleaks
+          find ${{ github.event.repository.name }} -type f          
           mv ${{ github.event.repository.name }}/gitleaks.json ${{ github.event.repository.name }}/gitleaks/${{ env.DATE }}_SECRET.json
-          find ${{ github.event.repository.name }} -type f
