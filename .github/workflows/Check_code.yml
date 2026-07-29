@@ -26,7 +26,7 @@ jobs:
       
       - name: Upload artifact
         if: always()
-        uses: actions/upload-artifact@043fb46261bcb2b81e6b2c8fac4cff7010e05cbe # 7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # 7.0.1
         with:
           name: hadolint-report
           path: hadolint.json
@@ -71,7 +71,7 @@ jobs:
 
       - name: Upload artifact
         if: always()
-        uses: actions/upload-artifact@043fb46261bcb2b81e6b2c8fac4cff7010e05cbe # 7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # 7.0.1
         with:
           name: sbom-reports
           path: reports/
