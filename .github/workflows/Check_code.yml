@@ -131,7 +131,7 @@ jobs:
           path: ${{ github.event.repository.name }}
 
       - name: Génération de la Date
-        run: echo "DATE=$(date +%d-%m-%Y)" >> "$GITHUB_ENV"
+        run: echo "DATE=$(date +%Y-%m-%d)" >> "$GITHUB_ENV"
 
       - name: Reorganisation des rapports
         run: |
@@ -140,5 +140,17 @@ jobs:
           mv ${{ github.event.repository.name }}/sbom-reports/SCA.json ${{ github.event.repository.name }}/grype/${{ env.DATE }}_SCA.json
           mv ${{ github.event.repository.name }}/sbom-reports/SCA.txt ${{ github.event.repository.name }}/grype/${{ env.DATE }}_SCA.txt
           mv ${{ github.event.repository.name }}/sbom-reports/LICENCE.txt ${{ github.event.repository.name }}/grant/${{ env.DATE }}_LICENCE.txt
-          find ${{ github.event.repository.name }} -type f          
+          find ${{ github.event.repository.name }} -type f     
+        
+      - name: Envoie des rapports
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_CHECK_IP }}
+          username: ${{ secrets.VPS_CHECK_HOST }}
+          key: ${{ secrets.VPS_CHECK_KEY }}
+          port: ${{ secrets.VPS_CHECK_PORT }}
+          source: "${{ github.event.repository.name }}/*"
+          target: "/home/debian/${{ github.event.repository.name }}"
+          strip_components: 1
+
 
