@@ -130,7 +130,11 @@ jobs:
         with:
           path: ${{ github.event.repository.name }}
 
+      - name: Génération de la Date
+        run: echo "DATE=$(date +%d-%m-%Y)" >> "$GITHUB_ENV"
+
       - name: Reorganisation des rapports
         run: |
           mkdir ${{ github.event.repository.name }}/syft && mkdir ${{ github.event.repository.name }}/grype && mkdir ${{ github.event.repository.name }}/grant && mkdir ${{ github.event.repository.name }}/gitleaks
+          mv ${{ github.event.repository.name }}/gitleaks.json ${{ github.event.repository.name }}/gitleaks/${{ env.DATE }}_SECRET.json
           find ${{ github.event.repository.name }} -type f
