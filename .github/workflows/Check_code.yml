@@ -136,5 +136,9 @@ jobs:
       - name: Reorganisation des rapports
         run: |
           mkdir -p ${{ github.event.repository.name }}/syft && mkdir -p ${{ github.event.repository.name }}/grype && mkdir -p ${{ github.event.repository.name }}/grant
+          mv ${{ github.event.repository.name }}/sbom-reports/SBOM.json ${{ github.event.repository.name }}/syft/${{ env.DATE }}_SBOM.json
+          mv ${{ github.event.repository.name }}/sbom-reports/SCA.json ${{ github.event.repository.name }}/grype/${{ env.DATE }}_SCA.json
+          mv ${{ github.event.repository.name }}/sbom-reports/SCA.txt ${{ github.event.repository.name }}/grype/${{ env.DATE }}_SCA.txt
+          mv ${{ github.event.repository.name }}/sbom-reports/LICENCE.txt ${{ github.event.repository.name }}/grant/${{ env.DATE }}_LICENCE.txt
           find ${{ github.event.repository.name }} -type f          
-          mv ${{ github.event.repository.name }}/sbom-reports/SBOM.json ${{ github.event.repository.name }}/gitleaks/${{ env.DATE }}_SBOM.json
+
