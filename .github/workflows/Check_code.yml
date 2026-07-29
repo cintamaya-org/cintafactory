@@ -10,7 +10,7 @@ jobs:
 #-------------------------------------------------------------------------------------
 #                                    GITLEAKS SCAN
 #-------------------------------------------------------------------------------------
-  gitleaks:
+  Gitleaks:
     runs-on: ubuntu-latest
     
     steps:
@@ -33,7 +33,7 @@ jobs:
 #-------------------------------------------------------------------------------------
 #                                    SBOM SCAN
 #-------------------------------------------------------------------------------------
-  sbom_scan:
+  SbomScan:
     runs-on: ubuntu-latest
     
     steps:
@@ -44,32 +44,32 @@ jobs:
         id: Syft
         run : |
           curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
-          syft dir:. -o cyclonedx-json@1.5="${{ env.DATE }}_SBOM.json" --select-catalogers "-python-package-cataloger" --source-name "${{ github.event.repository.name }}" --source-version "${{ github.sha }}"
+          syft dir:. -o cyclonedx-json@1.5="SBOM.json" --select-catalogers "-python-package-cataloger" --source-name "${{ github.event.repository.name }}" --source-version "${{ github.sha }}"
 
       - name: Grype json
         id: GrypeJson
         uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
         with:
-          sbom: ${{ env.DATE }}_SBOM.json
+          sbom: SBOM.json
           fail-build: false
           output-format: json
-          output-file: ${{ env.DATE }}_SCA.json
+          output-file: SCA.json
 
       - name: Grype txt
         id: GrypeTxt
         run: |
           curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
-          grype sbom:${{ env.DATE }}_SBOM.json -o table > ${{ env.DATE }}_SCA.txt
+          grype sbom:SBOM.json -o table > SCA.txt
       
       - name: Grant
         id: Grant
         continue-on-error: true
         run: |
           curl -sSfL https://raw.githubusercontent.com/anchore/grant/main/install.sh | sh -s -- -b /usr/local/bin
-          grant check ${{ env.DATE }}_SBOM.json > ${{ env.DATE }}_LICENCE.txt
+          grant check SBOM.json > LICENCE.txt
       
       - name: Déplacement des raports
-        run: mkdir -p reports && mv ${{ env.DATE }}_SBOM.json reports && mv ${{ env.DATE }}_SCA.json reports && mv ${{ env.DATE }}_SCA.txt reports && mv ${{ env.DATE }}_LICENCE.txt reports
+        run: mkdir -p reports && mv SBOM.json reports && mv SCA.json reports && mv SCA.txt reports && mv LICENCE.txt reports
 
 
       - name: Upload artifact
@@ -109,14 +109,27 @@ jobs:
     steps:
       - name: Importation du repo
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # 4.3.1
-      
+
       - name: Hadolint
         id: Hadolint
-        uses: hadolint/hadolint-action@54c9adbab1582c2ef04b2016b760714a4bfde3cf # v3.1.0
+        uses: hadolint/hadolint-action@54c9adbab1582c2ef04b2016b760714a4bfde3cf # 3.1.0
         with:
           dockerfile: dockerfile
           no-fail: true
-      
-      - name: Envoie des rapports
-        run: 
+#-------------------------------------------------------------------------------------
+#                              Envoie des rapports sur le VPS
+#-------------------------------------------------------------------------------------
+  RapportVps:
+    needs: [Gitleaks, SbomScan]
+    if: always()
+    runs-on: ubuntu-latest
 
+    steps:
+      - name: Telechargement des artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # 8.0.1
+        with:
+          path: ${{ github.event.repository.name }}
+
+      - name: Reorganisation des rapports
+        run: |
+          find ${{ github.event.repository.name }} -type f
