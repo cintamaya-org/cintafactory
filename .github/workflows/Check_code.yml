@@ -139,7 +139,9 @@ jobs:
           mv ${{ github.event.repository.name }}/sbom-reports/SBOM.json ${{ github.event.repository.name }}/syft/${{ env.DATE }}_SBOM.json
           mv ${{ github.event.repository.name }}/sbom-reports/SCA.json ${{ github.event.repository.name }}/grype/${{ env.DATE }}_SCA.json
           mv ${{ github.event.repository.name }}/sbom-reports/SCA.txt ${{ github.event.repository.name }}/grype/${{ env.DATE }}_SCA.txt
-          mv ${{ github.event.repository.name }}/sbom-reports/LICENCE.txt ${{ github.event.repository.name }}/grant/${{ env.DATE }}_LICENCE.txt
+          mv ${{ github.event.repository.name }}/sbom-reports/LICENCE.txt ${{ github.event.repository.name }}/grant/${{ env.DATE }}_LICENCE.txt          
+          mv ${{ github.event.repository.name }}/gitleaks/gitleaks.json ${{ github.event.repository.name }}/gitleaks/${{ env.DATE }}_SECRETS.json
+          rm -rf ${{ github.event.repository.name }}/sbom-reports
           find ${{ github.event.repository.name }} -type f     
         
       - name: Envoie des rapports
