@@ -3,41 +3,42 @@ on:
   pull_request:
     branches: [ main, dev ]
 
+permissions:
+  contents: read   
+
 jobs:
-  scan:
+#-------------------------------------------------------------------------------------
+#                                    GITLEAKS SCAN
+#-------------------------------------------------------------------------------------
+  gitleaks:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-
+    
     steps:
-
-      - name: Génération de la Date
-        run: echo "DATE=$(date +%m-%d-%Y)" >> "$GITHUB_ENV"
-
       - name: Importation du repo
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # 4.3.1
-
-      - name: Installation des paquets système nécessaires au build des deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libpq-dev python3-dev build-essential
       
-      - name: Installation de uv
-        run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          
-      - name: Installation des dépendances Python
-        run: uv sync --frozen --no-dev
-
-
-
-      - name: Gitleaks
+      - name: lancement du scan
         id: Gitleaks
         run: |
-          docker run --rm -v ${{ github.workspace }}:/code ghcr.io/gitleaks/gitleaks:latest detect --source="/code" --log-opts="-1" --verbose --report-format=json --report-path="${{ env.DATE }}_SECRETS.json"
-          touch "${{ env.DATE }}_SECRETS.json"
+          docker run --rm -v ${{ github.workspace }}:/code ghcr.io/gitleaks/gitleaks:latest detect --source="/code" --log-opts="-1" --verbose --report-format=json --report-path="hadolint.json"
+          touch "hadolint.json"
         continue-on-error: true
+      
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@043fb46261bcb2b81e6b2c8fac4cff7010e05cbe 7.0.1
+        with:
+          name: hadolint-report
+          path: hadolint.json
+#-------------------------------------------------------------------------------------
+#                                    SBOM SCAN
+#-------------------------------------------------------------------------------------
+  sbom_scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Importation du repo
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # 4.3.1
       
       - name: Syft
         id: Syft
@@ -66,10 +67,28 @@ jobs:
         run: |
           curl -sSfL https://raw.githubusercontent.com/anchore/grant/main/install.sh | sh -s -- -b /usr/local/bin
           grant check ${{ env.DATE }}_SBOM.json > ${{ env.DATE }}_LICENCE.txt
+          mkdir -p reports && mv ${{ env.DATE }}_SBOM.json reports && mv ${{ env.DATE }}_SCA.json reports && mv ${{ env.DATE }}_SCA.txt reports && mv ${{ env.DATE }}_LICENCE.txt reports
 
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@043fb46261bcb2b81e6b2c8fac4cff7010e05cbe 7.0.1
+        with:
+          name: sbom-reports
+          path: reports/
+          
+#-------------------------------------------------------------------------------------
+#                                    SonarQube SCAN
+#-------------------------------------------------------------------------------------       
+  SonarQube:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Importation du repo
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # 4.3.1
+      
       - name: SonarQube
         id: SonarQube
-        uses: sonarsource/sonarqube-scan-action@v6
+        uses: sonarsource/sonarqube-scan-action@713881670b6b3676cda39549040e2d88c70d582e # 8.2.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -78,38 +97,23 @@ jobs:
           args: >
             -Dsonar.projectKey=Cintafactory-dev
             -Dsonar.projectName="Cintafactory"
-          
+#-------------------------------------------------------------------------------------
+#                                    Hadolint SCAN
+#-------------------------------------------------------------------------------------
+  Hadolint:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Importation du repo
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # 4.3.1
+      
       - name: Hadolint
         id: Hadolint
         uses: hadolint/hadolint-action@54c9adbab1582c2ef04b2016b760714a4bfde3cf # v3.1.0
         with:
           dockerfile: dockerfile
           no-fail: true
-
       
+      - name: Envoie des rapports
+        run: 
 
-      - name: Nettoyage du venv
-        if: always()
-        run: rm -rf .venv
-          
-      - name: Préparation des rapports
-        if: always()
-        run: |
-          mkdir -p reports/syft reports/grype/json reports/grype/txt reports/grant reports/gitleaks
-          mv ${{ env.DATE }}_SBOM.json reports/syft/
-          mv ${{ env.DATE }}_SCA.json reports/grype/json/
-          mv ${{ env.DATE }}_SCA.txt reports/grype/txt/
-          mv ${{ env.DATE }}_LICENCE.txt reports/grant/
-          mv ${{ env.DATE }}_SECRETS.json reports/gitleaks
-      
-      - name: Envoi des rapports vers le VPS
-        if: always()
-        uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634 # v0.1.7
-        with:
-          host: ${{ secrets.VPS_CHECK_IP }}
-          username: ${{ secrets.VPS_CHECK_HOST }}
-          key: ${{ secrets.VPS_CHECK_KEY }}
-          port: ${{ secrets.VPS_CHECK_PORT }}
-          source: "reports/*"
-          target: "/home/debian/${{ github.event.repository.name }}"
-          strip_components: 1
