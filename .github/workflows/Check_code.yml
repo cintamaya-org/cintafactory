@@ -1,7 +1,7 @@
 name: Check code
 on:
-  push:
-    branches: [ dev-mat ]
+  pull_request:
+    branches: [ dev, main ]
 
 permissions:
   contents: read   
@@ -78,7 +78,6 @@ jobs:
         with:
           name: sbom-reports
           path: reports/
-          
 #-------------------------------------------------------------------------------------
 #                                    SonarQube SCAN
 #-------------------------------------------------------------------------------------       
@@ -142,10 +141,9 @@ jobs:
           mv ${{ github.event.repository.name }}/sbom-reports/LICENCE.txt ${{ github.event.repository.name }}/grant/${{ env.DATE }}_LICENCE.txt          
           mv ${{ github.event.repository.name }}/gitleaks/gitleaks.json ${{ github.event.repository.name }}/gitleaks/${{ env.DATE }}_SECRETS.json
           rm -rf ${{ github.event.repository.name }}/sbom-reports
-          find ${{ github.event.repository.name }} -type f     
-        
+
       - name: Envoie des rapports
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634 # v0.1.7
         with:
           host: ${{ secrets.VPS_CHECK_IP }}
           username: ${{ secrets.VPS_CHECK_HOST }}
@@ -154,5 +152,3 @@ jobs:
           source: "${{ github.event.repository.name }}/*"
           target: "/home/debian/${{ github.event.repository.name }}"
           strip_components: 1
-
-
