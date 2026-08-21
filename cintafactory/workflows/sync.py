@@ -1,16 +1,25 @@
 from __future__ import annotations
 
-import logging
+import hashlib
+import json
 from typing import Iterable, Sequence, Tuple
 
 from django.apps import apps
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
 
-from .definitions import WORKFLOW_DEFINITIONS, StepPermissionDefinition, WorkflowDefinition, WorkflowStepDefinition
+from django.db.models import Max
 
-logger = logging.getLogger(__name__)
-
+from .definitions import (
+    WORKFLOW_DEFINITIONS,
+    StepPermissionDefinition,
+    WorkflowDefinition,
+    WorkflowStepDefinition,
+    definition_to_spec,
+)
+from .exceptions import WorkflowConfigurationError
+from .registry import get_workflow_adapter
+from .validation import validate_workflow_definition
 
 def _iter_expected_permissions(
     permission_def: StepPermissionDefinition,
@@ -27,18 +36,78 @@ def _iter_expected_permissions(
 def sync_workflow_definitions(definitions: Sequence[WorkflowDefinition] | None = None) -> None:
     """Synchronise declarative workflow definitions with the database."""
 
-    definitions = definitions or WORKFLOW_DEFINITIONS
+    definitions = WORKFLOW_DEFINITIONS if definitions is None else definitions
 
     Workflow = apps.get_model("workflows", "Workflow")
     WorkflowStep = apps.get_model("workflows", "WorkflowStep")
     WorkflowStepPermission = apps.get_model("workflows", "WorkflowStepPermission")
+    WorkflowDefinitionVersion = apps.get_model("workflows", "WorkflowDefinitionVersion")
+    WorkflowInstance = apps.get_model("workflows", "WorkflowInstance")
     Role = apps.get_model("users", "Role")
     User = apps.get_model("users", "User")
 
     with transaction.atomic():
         for workflow_def in definitions:
+            validate_workflow_definition(workflow_def)
             model = apps.get_model(workflow_def.model)
             content_type = ContentType.objects.get_for_model(model)
+            existing_workflow = (
+                Workflow.objects.select_related("content_type")
+                .filter(code=workflow_def.code)
+                .first()
+            )
+            if (
+                existing_workflow is not None
+                and existing_workflow.content_type_id != content_type.pk
+            ):
+                raise WorkflowConfigurationError(
+                    f"Workflow '{workflow_def.code}' is already bound to "
+                    f"'{existing_workflow.content_type.app_label}."
+                    f"{existing_workflow.content_type.model}' and cannot be rebound to "
+                    f"'{workflow_def.model}'"
+                )
+            adapter = get_workflow_adapter(workflow_def.model)
+            supported_guards = set(getattr(adapter, "guards", ())) | {"", "always"}
+            supported_actions = set(getattr(adapter, "actions", ())) | {""}
+            unknown_guards = {
+                transition.guard
+                for transition in workflow_def.transitions
+                if transition.guard not in supported_guards
+            }
+            unknown_actions = {
+                transition.action
+                for transition in workflow_def.transitions
+                if transition.action not in supported_actions
+            }
+            if unknown_guards or unknown_actions:
+                details = []
+                if unknown_guards:
+                    details.append(f"guards={', '.join(sorted(unknown_guards))}")
+                if unknown_actions:
+                    details.append(f"actions={', '.join(sorted(unknown_actions))}")
+                raise WorkflowConfigurationError(
+                    f"Workflow '{workflow_def.code}' references unsupported adapter handlers: "
+                    + "; ".join(details)
+                )
+            referenced_roles = {
+                role
+                for step in workflow_def.steps
+                for permission in step.permissions
+                for role in permission.roles
+            } | {
+                role
+                for transition_def in workflow_def.transitions
+                for role in transition_def.roles
+            }
+            available_roles = set(
+                Role.objects.filter(slug__in=referenced_roles).values_list("slug", flat=True)
+            )
+            missing_referenced_roles = referenced_roles - available_roles
+            if missing_referenced_roles:
+                missing = ", ".join(sorted(missing_referenced_roles))
+                raise WorkflowConfigurationError(
+                    f"Workflow '{workflow_def.code}' references missing roles: {missing}"
+                )
 
             workflow, _ = Workflow.objects.update_or_create(
                 code=workflow_def.code,
@@ -50,12 +119,82 @@ def sync_workflow_definitions(definitions: Sequence[WorkflowDefinition] | None =
                 },
             )
 
+            specification = definition_to_spec(workflow_def)
+            serialized = json.dumps(
+                specification,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            checksum = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+            version = WorkflowDefinitionVersion.objects.filter(
+                workflow=workflow,
+                checksum=checksum,
+            ).first()
+            if version is None:
+                latest = (
+                    WorkflowDefinitionVersion.objects.filter(workflow=workflow)
+                    .aggregate(value=Max("version"))
+                    .get("value")
+                    or 0
+                )
+                version = WorkflowDefinitionVersion.objects.create(
+                    workflow=workflow,
+                    version=latest + 1,
+                    checksum=checksum,
+                    specification=specification,
+                )
+            if workflow.active_version_id != version.pk:
+                workflow.active_version = version
+                workflow.save(update_fields=["active_version", "updated_at"])
+
+            # Pin every existing object once. Later publishes never rewrite running instances.
+            state_codes = {step.status for step in workflow_def.steps}
+            initial_state = next(step.status for step in workflow_def.steps if step.is_initial)
+            existing_object_ids = set(
+                WorkflowInstance.objects.filter(
+                    workflow=workflow,
+                    content_type=content_type,
+                ).values_list("object_id", flat=True)
+            )
+            model_fields = {field.name for field in model._meta.fields}
+            value_fields = ["pk"] + (["status"] if "status" in model_fields else [])
+            pending_instances = []
+            for row in model._default_manager.values(*value_fields).iterator(chunk_size=500):
+                object_id = str(row["pk"])
+                if object_id in existing_object_ids:
+                    continue
+                projected_state = row.get("status") or initial_state
+                current_state = projected_state if projected_state in state_codes else initial_state
+                pending_instances.append(
+                    WorkflowInstance(
+                        workflow=workflow,
+                        definition_version=version,
+                        content_type=content_type,
+                        object_id=object_id,
+                        current_state=current_state,
+                    )
+                )
+                if len(pending_instances) >= 500:
+                    WorkflowInstance.objects.bulk_create(pending_instances, ignore_conflicts=True)
+                    pending_instances = []
+            if pending_instances:
+                WorkflowInstance.objects.bulk_create(pending_instances, ignore_conflicts=True)
+
             existing_steps = {
                 step.key: step
                 for step in workflow.steps.all().prefetch_related("permissions")
             }
-            seen_step_keys: set[str] = set()
+            desired_states = {step.key: step.status for step in workflow_def.steps}
+            for key in set(existing_steps) - set(desired_states):
+                existing_steps.pop(key).delete()
 
+            # Free unique state values before key renames or state swaps are applied.
+            for key, step in existing_steps.items():
+                if step.state == desired_states[key]:
+                    continue
+                step.state = f"__sync__{step.pk.hex}"
+                step.save(update_fields=["state"])
             ordered_step_defs = sorted(
                 workflow_def.steps,
                 key=lambda step: (step.order, step.key),
@@ -73,8 +212,6 @@ def sync_workflow_definitions(definitions: Sequence[WorkflowDefinition] | None =
                         "is_initial": step_def.is_initial,
                     },
                 )
-                seen_step_keys.add(step.key)
-
                 expected_permissions: set[Tuple[str, int | None, int | None]] = set()
                 for permission_def in step_def.permissions:
                     role_slugs = set(permission_def.roles or ())
@@ -84,24 +221,15 @@ def sync_workflow_definitions(definitions: Sequence[WorkflowDefinition] | None =
                         role.slug: role.id
                         for role in Role.objects.filter(slug__in=role_slugs)
                     }
-                    missing_roles = role_slugs - set(role_map.keys())
-                    for slug in sorted(missing_roles):
-                        logger.debug(
-                            "Role '%s' not found during workflow sync for step '%s'",
-                            slug,
-                            step.key,
-                        )
-
                     user_map = {
                         user.username: user.id
                         for user in User.objects.filter(username__in=user_names)
                     }
                     missing_users = user_names - set(user_map.keys())
-                    for username in sorted(missing_users):
-                        logger.debug(
-                            "User '%s' not found during workflow sync for step '%s'",
-                            username,
-                            step.key,
+                    if missing_users:
+                        missing = ", ".join(sorted(missing_users))
+                        raise WorkflowConfigurationError(
+                            f"Workflow '{workflow_def.code}' references missing users: {missing}"
                         )
 
                     expected_permissions.update(
@@ -131,8 +259,3 @@ def sync_workflow_definitions(definitions: Sequence[WorkflowDefinition] | None =
                             role_id=permission[1],
                             user_id=permission[2],
                         )
-
-            # Delete removed steps
-            for key, step in existing_steps.items():
-                if key not in seen_step_keys:
-                    step.delete()

@@ -62,8 +62,8 @@ const LIKEC4_METADATA_TOKEN = (process.env.LIKEC4_METADATA_TOKEN || '').trim();
 const LIKEC4_API_TOKEN = (process.env.LIKEC4_API_TOKEN || '').trim();
 const PUBLIC_DIR = join(ROOT_DIR, 'ui');
 const ROOT_PUBLIC_ASSETS = new Map([
-  ['Cintamaya_Logo.png', join(ROOT_DIR, 'Cintamaya_Logo.png')],
-  ['Cintamaya_Logo.svg', join(ROOT_DIR, 'Cintamaya_Logo.svg')],
+  ['logo.png', join(ROOT_DIR, 'logo.png')],
+  ['logo.svg', join(ROOT_DIR, 'logo.svg')],
 ]);
 const LIKEC4_BIN = (process.env.LIKEC4_BIN || 'likec4').trim() || 'likec4';
 const LIKEC4_WEBCOMPONENT_PUBLIC_NAME = 'likec4-webcomponent.js';

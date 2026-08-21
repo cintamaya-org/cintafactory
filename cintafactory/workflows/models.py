@@ -3,7 +3,9 @@ from __future__ import annotations
 import uuid
 
 from django.conf import settings
+from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
@@ -22,6 +24,13 @@ class Workflow(models.Model):
         related_name="workflows",
     )
     is_active = models.BooleanField(default=True)
+    active_version = models.ForeignKey(
+        "WorkflowDefinitionVersion",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="active_for_workflows",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -33,6 +42,140 @@ class Workflow(models.Model):
 
     def __str__(self) -> str:  # pragma: no cover - human readable helper
         return self.name
+
+
+class WorkflowDefinitionVersion(models.Model):
+    """Immutable, validated snapshot used by running workflow instances."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    workflow = models.ForeignKey(
+        Workflow,
+        on_delete=models.CASCADE,
+        related_name="versions",
+    )
+    version = models.PositiveIntegerField()
+    checksum = models.CharField(max_length=64)
+    specification = models.JSONField()
+    published_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "workflow_definition_version"
+        ordering = ["workflow", "-version"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["workflow", "version"],
+                name="workflow_definition_version_unique_number",
+            ),
+            models.UniqueConstraint(
+                fields=["workflow", "checksum"],
+                name="workflow_definition_version_unique_checksum",
+            ),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover - human readable helper
+        return f"{self.workflow.code} v{self.version}"
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            original = type(self).objects.filter(pk=self.pk).values(
+                "workflow_id",
+                "version",
+                "checksum",
+                "specification",
+            ).first()
+            if original is not None and any(
+                (
+                    original["workflow_id"] != self.workflow_id,
+                    original["version"] != self.version,
+                    original["checksum"] != self.checksum,
+                    original["specification"] != self.specification,
+                )
+            ):
+                raise ValidationError("Published workflow versions are immutable.")
+        return super().save(*args, **kwargs)
+
+
+class WorkflowInstance(models.Model):
+    """Pinned workflow state for any model object."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    workflow = models.ForeignKey(
+        Workflow,
+        on_delete=models.PROTECT,
+        related_name="instances",
+    )
+    definition_version = models.ForeignKey(
+        WorkflowDefinitionVersion,
+        on_delete=models.PROTECT,
+        related_name="instances",
+    )
+    content_type = models.ForeignKey(
+        ContentType,
+        on_delete=models.CASCADE,
+        related_name="workflow_instances",
+    )
+    object_id = models.CharField(max_length=64)
+    content_object = GenericForeignKey("content_type", "object_id")
+    current_state = models.CharField(max_length=64)
+    data = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "workflow_instance"
+        ordering = ["-updated_at", "-pk"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["workflow", "content_type", "object_id"],
+                name="workflow_instance_unique_object",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["workflow", "current_state"],
+                name="workflow_instance_state_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover - human readable helper
+        return f"{self.workflow.code}:{self.object_id}@{self.current_state}"
+
+
+class WorkflowTransitionEvent(models.Model):
+    """Append-only audit record emitted for each successful transition."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    instance = models.ForeignKey(
+        WorkflowInstance,
+        on_delete=models.CASCADE,
+        related_name="transition_events",
+    )
+    event = models.SlugField(max_length=64)
+    from_state = models.CharField(max_length=64)
+    to_state = models.CharField(max_length=64)
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="workflow_transition_events",
+    )
+    actor_display = models.CharField(max_length=255, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    occurred_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "workflow_transition_event"
+        ordering = ["-occurred_at", "-pk"]
+        indexes = [
+            models.Index(
+                fields=["instance", "occurred_at"],
+                name="workflow_transition_time_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover - human readable helper
+        return f"{self.from_state} → {self.to_state} ({self.event})"
 
 
 class WorkflowStep(models.Model):

@@ -22,7 +22,7 @@ class AccountProfileView(LoginRequiredMixin, TemplateView):
             "microsoft": "imgs/microsoft_logo.svg",
             "amazon": "imgs/amazon_logo.svg",
             "okta": "imgs/okta_logo.svg",
-            "cintamaya": "imgs/cintamaya_logo.svg",
+            "cintamaya": "imgs/logo.svg",
         }
         connected_counts = Counter(user.oauth_accounts.values_list("provider", flat=True))
         providers = []
