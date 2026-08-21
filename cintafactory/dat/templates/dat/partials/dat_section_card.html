@@ -253,13 +253,13 @@
 	    {% endif %}
     {% if container.section.metadata.slug == "validation" %}
       <div class="dat-validation-actions">
-        {% if dat.status == "en_attente_de_revue" %}
+        {% if dat_is_reviewable %}
           <p class="u-m-0 text-body">Toutes les sections sont validées. Choisissez une décision finale.</p>
           {% if can_review_dat %}
             <div class="dat-validation-actions__buttons">
               <form method="post" action="{% url 'dat:my_validation_decision' dat.pk %}">
                 {% csrf_token %}
-                <input type="hidden" name="decision" value="valider">
+                <input type="hidden" name="decision" value="approve">
                 <button type="submit" class="btn waves-effect waves-light cinta-btn-primary">
                   <i class="material-icons left" aria-hidden="true">task_alt</i>
                   Valider
@@ -267,7 +267,7 @@
               </form>
               <form method="post" action="{% url 'dat:my_validation_decision' dat.pk %}">
                 {% csrf_token %}
-                <input type="hidden" name="decision" value="refuse">
+                <input type="hidden" name="decision" value="reject">
                 <button type="submit" class="btn btn-flat waves-effect cinta-btn-secondary dat-validation-actions__decline">
                   <i class="material-icons left" aria-hidden="true">highlight_off</i>
                   Refusé
@@ -275,7 +275,7 @@
               </form>
               <form method="post" action="{% url 'dat:my_validation_decision' dat.pk %}">
                 {% csrf_token %}
-                <input type="hidden" name="decision" value="reserve">
+                <input type="hidden" name="decision" value="request_changes">
                 <button type="submit" class="btn btn-flat waves-effect cinta-btn-secondary">
                   <i class="material-icons left" aria-hidden="true">undo</i>
                   Mettre en réserve
@@ -285,9 +285,9 @@
           {% else %}
             <p class="u-m-0 text-muted-soft">Seuls les réviseurs peuvent valider, refuser ou placer ce dossier en réserve.</p>
           {% endif %}
-        {% elif dat.status == "reserve" %}
+        {% elif dat_requires_corrections %}
           <p class="u-m-0 text-body">Le DAT est en réserve : mettez à jour les sections puis validez-les à nouveau pour repasser en revue.</p>
-        {% elif dat.status == "valider" or dat.status == "refuse" %}
+        {% elif dat_is_terminal %}
           <p class="u-m-0 text-muted-soft">Ce DAT est clôturé. Les décisions ne sont plus modifiables.</p>
         {% endif %}
       </div>

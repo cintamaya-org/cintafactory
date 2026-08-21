@@ -3,7 +3,7 @@ const { createServer } = require('http');
 const { access, mkdir, rename, writeFile, readdir, unlink } = require('fs').promises;
 const { chmodSync, createReadStream, lstatSync, mkdirSync, mkdtempSync, realpathSync } = require('fs');
 const { execFile } = require('child_process');
-const { createHash } = require('crypto');
+const { createHash, timingSafeEqual } = require('crypto');
 const { tmpdir } = require('os');
 const { extname, join, basename, dirname, posix, resolve, sep } = require('path');
 const { promisify } = require('util');
@@ -58,12 +58,12 @@ const stripSlashes = (value) => {
 const SEAWEEDFS_FILER_URL = stripTrailingSlashes(process.env.SEAWEEDFS_FILER_URL);
 const SEAWEEDFS_BASE_DIR = stripSlashes(process.env.SEAWEEDFS_BASE_DIR);
 const LIKEC4_METADATA_URL = process.env.LIKEC4_METADATA_URL || '';
-const LIKEC4_METADATA_TOKEN = process.env.LIKEC4_METADATA_TOKEN || 'dev_token_idHaf';
-const LIKEC4_API_TOKEN = (process.env.LIKEC4_API_TOKEN || 'dev_likec4_api_token_change_me').trim();
+const LIKEC4_METADATA_TOKEN = (process.env.LIKEC4_METADATA_TOKEN || '').trim();
+const LIKEC4_API_TOKEN = (process.env.LIKEC4_API_TOKEN || '').trim();
 const PUBLIC_DIR = join(ROOT_DIR, 'ui');
 const ROOT_PUBLIC_ASSETS = new Map([
-  ['Cintamaya_Logo.png', join(ROOT_DIR, 'Cintamaya_Logo.png')],
-  ['Cintamaya_Logo.svg', join(ROOT_DIR, 'Cintamaya_Logo.svg')],
+  ['logo.png', join(ROOT_DIR, 'logo.png')],
+  ['logo.svg', join(ROOT_DIR, 'logo.svg')],
 ]);
 const LIKEC4_BIN = (process.env.LIKEC4_BIN || 'likec4').trim() || 'likec4';
 const LIKEC4_WEBCOMPONENT_PUBLIC_NAME = 'likec4-webcomponent.js';
@@ -159,7 +159,6 @@ const postMetadata = async ({ filePath, size, contentType }) => {
     };
     if (LIKEC4_METADATA_TOKEN) {
       headers['X-LikeC4-Token'] = LIKEC4_METADATA_TOKEN;
-      payload.token = LIKEC4_METADATA_TOKEN;
     }
     const response = await fetch(url, {
       method: 'POST',
@@ -195,12 +194,13 @@ const getAuthToken = (req) => {
   if (tokenHeader) {
     return String(tokenHeader).trim();
   }
-  try {
-    const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-    return url.searchParams.get('token') || '';
-  } catch {
-    return '';
-  }
+  return '';
+};
+
+const tokensMatch = (provided, expected) => {
+  const providedDigest = createHash('sha256').update(String(provided || ''), 'utf8').digest();
+  const expectedDigest = createHash('sha256').update(String(expected || ''), 'utf8').digest();
+  return timingSafeEqual(providedDigest, expectedDigest);
 };
 
 const requireApiAuth = (req, res) => {
@@ -209,7 +209,7 @@ const requireApiAuth = (req, res) => {
     return false;
   }
   const provided = getAuthToken(req);
-  if (!provided || provided !== LIKEC4_API_TOKEN) {
+  if (!provided || !tokensMatch(provided, LIKEC4_API_TOKEN)) {
     send(res, 401, 'Unauthorized');
     return false;
   }
@@ -687,6 +687,7 @@ const server = createServer(async (req, res) => {
 
   // API: get current C4 file contents
   if (req.method === 'GET' && url === '/c4') {
+    if (!requireApiAuth(req, res)) return;
     const { requested, canonical } = resolveStoragePaths(req);
     const responsePath = canonical || requested;
     const logSuffix = requested !== responsePath ? ` -> ${responsePath}` : '';
@@ -735,6 +736,7 @@ const server = createServer(async (req, res) => {
 
   // API: export current C4 file as downloadable JSON
   if (req.method === 'GET' && url === '/export-json') {
+    if (!requireApiAuth(req, res)) return;
     const { requested, canonical } = resolveStoragePaths(req);
     const responsePath = canonical || requested;
     try {
@@ -778,6 +780,7 @@ const server = createServer(async (req, res) => {
 
   // API: export flows/matrix only as JSON
   if (req.method === 'GET' && url === '/flow-matrix') {
+    if (!requireApiAuth(req, res)) return;
     const { requested, canonical } = resolveStoragePaths(req);
     const responsePath = canonical || requested;
     try {

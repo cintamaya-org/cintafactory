@@ -7,11 +7,19 @@ from django.urls import reverse
 from django.utils.functional import cached_property
 from django.views.generic import TemplateView
 
-from dat.models import DATStatus, DATHistoryAction
+from dat.models import DATHistoryAction
 from dat.permissions import filter_dat_queryset_for_user
-from dat.views import get_current_responsibles, get_next_status, user_can_progress_dat
+from dat.views import get_current_responsibles
 
 from .models import Workflow
+from .services import (
+    bind_workflow_instances,
+    workflow_actor_has_any_state_permission,
+    workflow_has_capability,
+    workflow_state,
+    workflow_state_label,
+    workflow_state_metadata,
+)
 from .notifications import (
     DEFAULT_NOTIFICATION_LIMIT,
     fetch_notifications_for_user,
@@ -33,11 +41,6 @@ class WorkflowBoardView(LoginRequiredMixin, TemplateView):
 
     template_name = "workflows/board.html"
     workflow_code = "dat-validation"
-    initial_status = DATStatus.NOUVELLE_DEMANDE
-    completed_statuses = {
-        DATStatus.VALIDER,
-        DATStatus.REFUSE,
-    }
     column_titles = {
         "initial": "Nouveau besoin",
         "in_progress": "Projets en cours",
@@ -48,7 +51,7 @@ class WorkflowBoardView(LoginRequiredMixin, TemplateView):
     def workflow(self) -> Workflow:
         queryset = (
             Workflow.objects.filter(code=self.workflow_code, is_active=True)
-            .select_related("content_type")
+            .select_related("content_type", "active_version")
             .prefetch_related(
                 "steps__permissions__role",
                 "steps__permissions__user",
@@ -77,7 +80,7 @@ class WorkflowBoardView(LoginRequiredMixin, TemplateView):
     def _build_column(self, *, key, states, step_by_state, dat_items):
         steps = [step_by_state[state] for state in states if state in step_by_state]
         status_codes = [step.state for step in steps]
-        items = [dat for dat in dat_items if dat.status in status_codes] if status_codes else []
+        items = [dat for dat in dat_items if dat.workflow_lane == key]
         description = steps[0].description if len(steps) == 1 else ""
         return {
             "key": key,
@@ -114,18 +117,16 @@ class WorkflowBoardView(LoginRequiredMixin, TemplateView):
             dat_queryset = dat_queryset.select_related("owner")
 
         dat_items = list(dat_queryset)
+        bind_workflow_instances(dat_items, workflow_code=self.workflow_code)
 
         for dat in dat_items:
-            dat.can_progress = user_can_progress_dat(dat, self.request.user)
-            next_status = get_next_status(dat.status)
-            dat.next_status = next_status
-            if next_status:
-                try:
-                    dat.next_status_label = DATStatus(next_status).label
-                except ValueError:
-                    dat.next_status_label = ""
-            else:
-                dat.next_status_label = ""
+            dat.workflow_state = workflow_state(dat, workflow_code=self.workflow_code)
+            dat.workflow_state_display = workflow_state_label(dat, workflow_code=self.workflow_code)
+            metadata = workflow_state_metadata(dat, workflow_code=self.workflow_code)
+            dat.workflow_lane = metadata.get("lane", "in_progress")
+            dat.can_progress = False
+            dat.next_status = None
+            dat.next_status_label = ""
             responsibles = get_current_responsibles(dat)
             dat.current_responsibles = responsibles
             assigned_labels = [
@@ -163,12 +164,16 @@ class WorkflowBoardView(LoginRequiredMixin, TemplateView):
         steps = list(self.workflow.steps.all())
         step_by_state = {step.state: step for step in steps}
 
-        initial_states = [self.initial_status] if self.initial_status in step_by_state else []
-        completed_states = [
-            step.state for step in steps if step.state in self.completed_statuses
+        active_spec = self.workflow.active_version.specification if self.workflow.active_version else {}
+        state_lanes = {
+            item.get("status"): item.get("lane", "in_progress")
+            for item in active_spec.get("steps", [])
+        }
+        initial_states = [step.state for step in steps if state_lanes.get(step.state) == "initial"]
+        in_progress_states = [
+            step.state for step in steps if state_lanes.get(step.state) == "in_progress"
         ]
-        excluded_states = set(initial_states + completed_states)
-        in_progress_states = [step.state for step in steps if step.state not in excluded_states]
+        completed_states = [step.state for step in steps if state_lanes.get(step.state) == "completed"]
 
         return [
             self._build_column(
@@ -333,39 +338,9 @@ class MyTasksBoardView(WorkflowBoardView):
         ),
     }
 
-    def _step_has_user_write_access(self, step):
-        user = self.request.user
-        user_id = getattr(user, "id", None)
-        role_id = getattr(getattr(user, "role", None), "id", None)
-        if user_id is None and role_id is None:
-            return False
-        for permission in step.write_permissions.all():
-            if permission.user_id == user_id:
-                return True
-            if role_id and permission.role_id == role_id:
-                return True
-        return False
-
     def get_columns(self):
-        steps = list(self.workflow.steps.all())
-        if not steps:
+        if self.workflow.active_version_id is None:
             return []
-
-        step_indices = {step.state: index for index, step in enumerate(steps)}
-
-        user_step_indices = [
-            index for index, step in enumerate(steps) if self._step_has_user_write_access(step)
-        ]
-        user_step_indices.sort()
-        user_step_index_set = set(user_step_indices)
-
-        validation_statuses = {
-            DATStatus.EN_ATTENTE_DE_REVUE,
-        }
-        final_statuses = {
-            DATStatus.VALIDER,
-            DATStatus.REFUSE,
-        }
 
         columns = {
             "blocked": [],
@@ -374,32 +349,21 @@ class MyTasksBoardView(WorkflowBoardView):
         }
 
         dat_items = self.get_dat_items()
-        if not user_step_indices:
-            # user has no assigned steps; return empty columns
-            pass
-        else:
-            for dat in dat_items:
-                current_index = step_indices.get(dat.status)
-                if current_index is None:
-                    continue
+        for dat in dat_items:
+            if not workflow_actor_has_any_state_permission(
+                dat,
+                self.request.user,
+                workflow_code=self.workflow_code,
+            ):
+                continue
+            if workflow_has_capability(dat, "terminal", workflow_code=self.workflow_code):
+                # Nothing to do once workflow reaches terminal capability.
+                continue
+            if workflow_has_capability(dat, "reviewable", workflow_code=self.workflow_code):
+                columns["validation"].append(dat)
+                continue
 
-                if dat.status in final_statuses:
-                    # Nothing to do once the DAT is accepted or refused.
-                    continue
-
-                has_future_assignment = any(idx > current_index for idx in user_step_indices)
-                has_past_assignment = any(idx < current_index for idx in user_step_indices)
-                is_current_step = current_index in user_step_index_set
-
-                if not (has_future_assignment or has_past_assignment or is_current_step):
-                    # Skip DAT items unrelated to the user's responsibilities.
-                    continue
-
-                if dat.status in validation_statuses:
-                    columns["validation"].append(dat)
-                    continue
-
-                columns["in_progress"].append(dat)
+            columns["in_progress"].append(dat)
 
         ordered_keys = ["blocked", "in_progress", "validation"]
         return [

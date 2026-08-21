@@ -1,6 +1,6 @@
 const http = require('http');
 const { chmod, lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } = require('fs').promises;
-const { createHash } = require('crypto');
+const { createHash, timingSafeEqual } = require('crypto');
 const { dirname, join, posix, relative, resolve, sep } = require('path');
 const { spawn } = require('child_process');
 const { URL } = require('url');
@@ -37,8 +37,8 @@ const stripBoundarySlashes = (value) => {
 const SEAWEEDFS_FILER_URL = stripTrailingSlashes(process.env.SEAWEEDFS_FILER_URL);
 const SEAWEEDFS_BASE_DIR = stripBoundarySlashes(process.env.SEAWEEDFS_BASE_DIR);
 const LIKEC4_METADATA_URL = process.env.LIKEC4_METADATA_URL || '';
-const LIKEC4_METADATA_TOKEN = process.env.LIKEC4_METADATA_TOKEN || 'dev_token_idHaf';
-const LIKEC4_API_TOKEN = (process.env.LIKEC4_API_TOKEN || 'dev_likec4_api_token_change_me').trim();
+const LIKEC4_METADATA_TOKEN = (process.env.LIKEC4_METADATA_TOKEN || '').trim();
+const LIKEC4_API_TOKEN = (process.env.LIKEC4_API_TOKEN || '').trim();
 const EXPORT_ROOT = stripTrailingSlashes(process.env.LIKEC4_EXPORT_TMP || '');
 const LOCAL_EXPORT_DIR = stripTrailingSlashes(process.env.LIKEC4_EXPORT_LOCAL_DIR || '/var/likec4-exports');
 const EXPORT_FORMAT = process.env.LIKEC4_EXPORT_FORMAT || 'png';
@@ -355,7 +355,6 @@ const postMetadata = async ({ filePath, size, contentType, pngPath, pngSize, png
   };
   if (LIKEC4_METADATA_TOKEN) {
     headers['X-LikeC4-Token'] = LIKEC4_METADATA_TOKEN;
-    payload.token = LIKEC4_METADATA_TOKEN;
   }
   if (Array.isArray(pngPaths) && pngPaths.length) {
     payload.png_paths = pngPaths;
@@ -537,13 +536,19 @@ const getAuthToken = (req) => {
   return '';
 };
 
+const tokensMatch = (provided, expected) => {
+  const providedDigest = createHash('sha256').update(String(provided || ''), 'utf8').digest();
+  const expectedDigest = createHash('sha256').update(String(expected || ''), 'utf8').digest();
+  return timingSafeEqual(providedDigest, expectedDigest);
+};
+
 const requireApiAuth = (req, res) => {
   if (!LIKEC4_API_TOKEN) {
     sendJson(res, 500, { ok: false, error: 'Server not configured' });
     return false;
   }
   const provided = getAuthToken(req);
-  if (!provided || provided !== LIKEC4_API_TOKEN) {
+  if (!provided || !tokensMatch(provided, LIKEC4_API_TOKEN)) {
     sendJson(res, 401, { ok: false, error: 'Unauthorized' });
     return false;
   }

@@ -42,7 +42,7 @@ class LoginViewWithProviders(auth_views.LoginView):
             "microsoft": "imgs/microsoft_logo.svg",
             "amazon": "imgs/amazon_logo.svg",
             "okta": "imgs/okta_logo.svg",
-            "cintamaya": "imgs/cintamaya_logo.svg"
+            "cintamaya": "imgs/logo.svg"
         }
         providers = []
         for provider in list_oauth_providers():

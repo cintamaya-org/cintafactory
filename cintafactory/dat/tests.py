@@ -64,6 +64,14 @@ def get_default_business_direction():
     return direction
 
 
+def get_secondary_business_direction():
+    direction, _ = BusinessDirection.objects.get_or_create(
+        slug="direction-metier-secondaire-test",
+        defaults={"name": "Direction Métier Secondaire Test"},
+    )
+    return direction
+
+
 def get_default_technical_direction():
     direction, _ = TechnicalDirection.objects.get_or_create(
         slug="direction-technique-test",
@@ -147,6 +155,49 @@ class DATApplicationRelationTest(TestCase):
             owner=self.user,
         )
         self.assertEqual(dat.business_direction, self.business_direction)
+
+    def test_dat_ignores_direct_business_direction_on_create(self):
+        other_direction = get_secondary_business_direction()
+        dat = DAT.objects.create(
+            reference="DAT-004",
+            title="Direction Create Integrity Test",
+            application=self.application,
+            business_direction=other_direction,
+            status=DATStatus.NOUVELLE_DEMANDE,
+            owner=self.user,
+        )
+        self.assertEqual(dat.business_direction, self.business_direction)
+
+    def test_dat_resets_direct_business_direction_change_on_save(self):
+        other_direction = get_secondary_business_direction()
+        dat = DAT.objects.create(
+            reference="DAT-005",
+            title="Direction Save Integrity Test",
+            application=self.application,
+            status=DATStatus.NOUVELLE_DEMANDE,
+            owner=self.user,
+        )
+        dat.business_direction = other_direction
+        dat.save()
+        dat.refresh_from_db()
+        self.assertEqual(dat.business_direction, self.business_direction)
+
+    def test_dat_tracks_application_business_direction_after_application_change(self):
+        other_direction = get_secondary_business_direction()
+        dat = DAT.objects.create(
+            reference="DAT-006",
+            title="Direction Application Change Test",
+            application=self.application,
+            status=DATStatus.NOUVELLE_DEMANDE,
+            owner=self.user,
+        )
+        self.application.business_direction = other_direction
+        self.application.save(update_fields=["business_direction"])
+
+        dat.save()
+        dat.refresh_from_db()
+
+        self.assertEqual(dat.business_direction, other_direction)
 
 class ApplicationOptionsViewTest(TestCase):
     def setUp(self) -> None:
