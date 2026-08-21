@@ -47,6 +47,10 @@ jobs:
           DEV_DJANGO_SECRET_KEY: ${{ secrets.DEV_DJANGO_SECRET_KEY }}
           DEV_LIKEC4_METADATA_TOKEN: ${{ secrets.DEV_LIKEC4_METADATA_TOKEN }}
           DEV_LIKEC4_API_TOKEN: ${{ secrets.DEV_LIKEC4_API_TOKEN }}
+          DEV_SEAWEEDFS_JWT_WRITE_KEY: ${{ secrets.DEV_SEAWEEDFS_JWT_WRITE_KEY }}
+          DEV_SEAWEEDFS_JWT_READ_KEY: ${{ secrets.DEV_SEAWEEDFS_JWT_READ_KEY }}
+          DEV_SEAWEEDFS_VOLUME_JWT_WRITE_KEY: ${{ secrets.DEV_SEAWEEDFS_VOLUME_JWT_WRITE_KEY }}
+          DEV_SEAWEEDFS_VOLUME_JWT_READ_KEY: ${{ secrets.DEV_SEAWEEDFS_VOLUME_JWT_READ_KEY }}
           DEV_POSTGRES_DB: ${{ secrets.DEV_POSTGRES_DB }}
           DEV_POSTGRES_USER: ${{ secrets.DEV_POSTGRES_USER }}
           DEV_POSTGRES_PASSWORD: ${{ secrets.DEV_POSTGRES_PASSWORD }}
@@ -54,12 +58,56 @@ jobs:
         run: |
           set -euo pipefail
           : "${DEV_DJANGO_SECRET_KEY:?Missing DEV_DJANGO_SECRET_KEY secret}"
+          : "${DEV_LIKEC4_METADATA_TOKEN:?Missing DEV_LIKEC4_METADATA_TOKEN secret}"
+          : "${DEV_LIKEC4_API_TOKEN:?Missing DEV_LIKEC4_API_TOKEN secret}"
+          : "${DEV_SEAWEEDFS_JWT_WRITE_KEY:?Missing DEV_SEAWEEDFS_JWT_WRITE_KEY secret}"
+          : "${DEV_SEAWEEDFS_JWT_READ_KEY:?Missing DEV_SEAWEEDFS_JWT_READ_KEY secret}"
+          : "${DEV_SEAWEEDFS_VOLUME_JWT_WRITE_KEY:?Missing DEV_SEAWEEDFS_VOLUME_JWT_WRITE_KEY secret}"
+          : "${DEV_SEAWEEDFS_VOLUME_JWT_READ_KEY:?Missing DEV_SEAWEEDFS_VOLUME_JWT_READ_KEY secret}"
           : "${DEV_POSTGRES_PASSWORD:?Missing DEV_POSTGRES_PASSWORD secret}"
           : "${DEV_ALLOWED_HOST:?Missing DEV_ALLOWED_HOST secret}"
+
+          for secret_name in \
+            DEV_LIKEC4_METADATA_TOKEN \
+            DEV_LIKEC4_API_TOKEN \
+            DEV_SEAWEEDFS_JWT_WRITE_KEY \
+            DEV_SEAWEEDFS_JWT_READ_KEY \
+            DEV_SEAWEEDFS_VOLUME_JWT_WRITE_KEY \
+            DEV_SEAWEEDFS_VOLUME_JWT_READ_KEY; do
+            secret_value="${!secret_name}"
+            if [ "${#secret_value}" -lt 32 ]; then
+              echo "${secret_name} must contain at least 32 characters." >&2
+              exit 1
+            fi
+            case "${secret_value}" in
+              replace-*|*change-me*|*change_me*)
+                echo "${secret_name} still contains a placeholder value." >&2
+                exit 1
+                ;;
+            esac
+          done
+
+          if [ "${DEV_LIKEC4_METADATA_TOKEN}" = "${DEV_LIKEC4_API_TOKEN}" ]; then
+            echo "LikeC4 metadata and API tokens must be distinct." >&2
+            exit 1
+          fi
+          if [ "${DEV_SEAWEEDFS_JWT_WRITE_KEY}" = "${DEV_SEAWEEDFS_JWT_READ_KEY}" ] || \
+             [ "${DEV_SEAWEEDFS_VOLUME_JWT_WRITE_KEY}" = "${DEV_SEAWEEDFS_VOLUME_JWT_READ_KEY}" ] || \
+             [ "${DEV_SEAWEEDFS_JWT_WRITE_KEY}" = "${DEV_SEAWEEDFS_VOLUME_JWT_WRITE_KEY}" ] || \
+             [ "${DEV_SEAWEEDFS_JWT_WRITE_KEY}" = "${DEV_SEAWEEDFS_VOLUME_JWT_READ_KEY}" ] || \
+             [ "${DEV_SEAWEEDFS_JWT_READ_KEY}" = "${DEV_SEAWEEDFS_VOLUME_JWT_WRITE_KEY}" ] || \
+             [ "${DEV_SEAWEEDFS_JWT_READ_KEY}" = "${DEV_SEAWEEDFS_VOLUME_JWT_READ_KEY}" ]; then
+            echo "All SeaweedFS read/write and filer/volume keys must be distinct." >&2
+            exit 1
+          fi
 
           DEV_DJANGO_SECRET_KEY_B64="$(printf '%s' "${DEV_DJANGO_SECRET_KEY}" | base64 -w0)"
           DEV_LIKEC4_METADATA_TOKEN_B64="$(printf '%s' "${DEV_LIKEC4_METADATA_TOKEN}" | base64 -w0)"
           DEV_LIKEC4_API_TOKEN_B64="$(printf '%s' "${DEV_LIKEC4_API_TOKEN}" | base64 -w0)"
+          DEV_SEAWEEDFS_JWT_WRITE_KEY_B64="$(printf '%s' "${DEV_SEAWEEDFS_JWT_WRITE_KEY}" | base64 -w0)"
+          DEV_SEAWEEDFS_JWT_READ_KEY_B64="$(printf '%s' "${DEV_SEAWEEDFS_JWT_READ_KEY}" | base64 -w0)"
+          DEV_SEAWEEDFS_VOLUME_JWT_WRITE_KEY_B64="$(printf '%s' "${DEV_SEAWEEDFS_VOLUME_JWT_WRITE_KEY}" | base64 -w0)"
+          DEV_SEAWEEDFS_VOLUME_JWT_READ_KEY_B64="$(printf '%s' "${DEV_SEAWEEDFS_VOLUME_JWT_READ_KEY}" | base64 -w0)"
           DEV_POSTGRES_DB_B64="$(printf '%s' "${DEV_POSTGRES_DB}" | base64 -w0)"
           DEV_POSTGRES_USER_B64="$(printf '%s' "${DEV_POSTGRES_USER}" | base64 -w0)"
           DEV_POSTGRES_PASSWORD_B64="$(printf '%s' "${DEV_POSTGRES_PASSWORD}" | base64 -w0)"
@@ -69,6 +117,10 @@ jobs:
             "DEV_DJANGO_SECRET_KEY_B64='${DEV_DJANGO_SECRET_KEY_B64}' \
              DEV_LIKEC4_METADATA_TOKEN_B64='${DEV_LIKEC4_METADATA_TOKEN_B64}' \
              DEV_LIKEC4_API_TOKEN_B64='${DEV_LIKEC4_API_TOKEN_B64}' \
+             DEV_SEAWEEDFS_JWT_WRITE_KEY_B64='${DEV_SEAWEEDFS_JWT_WRITE_KEY_B64}' \
+             DEV_SEAWEEDFS_JWT_READ_KEY_B64='${DEV_SEAWEEDFS_JWT_READ_KEY_B64}' \
+             DEV_SEAWEEDFS_VOLUME_JWT_WRITE_KEY_B64='${DEV_SEAWEEDFS_VOLUME_JWT_WRITE_KEY_B64}' \
+             DEV_SEAWEEDFS_VOLUME_JWT_READ_KEY_B64='${DEV_SEAWEEDFS_VOLUME_JWT_READ_KEY_B64}' \
              DEV_POSTGRES_DB_B64='${DEV_POSTGRES_DB_B64}' \
              DEV_POSTGRES_USER_B64='${DEV_POSTGRES_USER_B64}' \
              DEV_POSTGRES_PASSWORD_B64='${DEV_POSTGRES_PASSWORD_B64}' \
@@ -86,6 +138,10 @@ jobs:
             export DJANGO_SECRET_KEY="$(printf '%s' "${DEV_DJANGO_SECRET_KEY_B64}" | base64 -d)"
             export LIKEC4_METADATA_TOKEN="$(printf '%s' "${DEV_LIKEC4_METADATA_TOKEN_B64}" | base64 -d)"
             export LIKEC4_API_TOKEN="$(printf '%s' "${DEV_LIKEC4_API_TOKEN_B64}" | base64 -d)"
+            export SEAWEEDFS_JWT_WRITE_KEY="$(printf '%s' "${DEV_SEAWEEDFS_JWT_WRITE_KEY_B64}" | base64 -d)"
+            export SEAWEEDFS_JWT_READ_KEY="$(printf '%s' "${DEV_SEAWEEDFS_JWT_READ_KEY_B64}" | base64 -d)"
+            export SEAWEEDFS_VOLUME_JWT_WRITE_KEY="$(printf '%s' "${DEV_SEAWEEDFS_VOLUME_JWT_WRITE_KEY_B64}" | base64 -d)"
+            export SEAWEEDFS_VOLUME_JWT_READ_KEY="$(printf '%s' "${DEV_SEAWEEDFS_VOLUME_JWT_READ_KEY_B64}" | base64 -d)"
             export DJANGO_ALLOWED_HOSTS="$(printf '%s' "${DEV_ALLOWED_HOST_B64}" | base64 -d)"
             export APP_PORT=8000
             export HOST_PORT=8101
