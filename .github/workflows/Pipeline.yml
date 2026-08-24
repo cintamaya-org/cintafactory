@@ -1,0 +1,106 @@
+name: DevSecOps Pipeline (SCA, SBOM & SAST)
+
+on:
+  pull_request:
+    branches: [ main, dev ]
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------
+  # JOB 1 : Analyse des dépendances et de l'image (SCA)
+  # ---------------------------------------------------------
+  security_scan:
+    runs-on: ubuntu-latest
+    container:
+      image: alpine:latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Préparation de l'environnement Alpine
+        run: apk update && apk add --no-cache git nodejs python3 curl bash tar wget
+
+      - name: Installation Syft, Grype, Hadolint et Grant
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+          curl -sL https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64 -o /usr/local/bin/hadolint
+          chmod +x /usr/local/bin/hadolint
+          wget -q https://github.com/anchore/grant/releases/download/v0.1.0/grant_0.1.0_linux_amd64.tar.gz
+          tar -xzf grant_0.1.0_linux_amd64.tar.gz
+          mv grant /usr/local/bin/
+
+      - name: Importation du repo
+        uses: actions/checkout@v4
+        with:
+          clean: true
+          fetch-depth: 0
+
+      - name: Initialisation des répertoires de travail
+        run: |
+          echo "REPORT_DIR=${{ github.workspace }}/reports" >> "$GITHUB_ENV"
+          echo "DATE=$(date +%d-%m-%Y)" >> "$GITHUB_ENV"
+          mkdir -p "${{ github.workspace }}/reports/syft" \
+                   "${{ github.workspace }}/reports/grype/txt" \
+                   "${{ github.workspace }}/reports/grype/json" \
+                   "${{ github.workspace }}/reports/grant"
+
+      - name: Hadolint check
+        run: hadolint --failure-threshold error dockerfile
+
+      - name: Génération du SBOM
+        run: syft dir:. -o cyclonedx-json > "$REPORT_DIR/syft/${DATE}_SBOM.json"
+
+      - name: Scan avec Grype et Grant
+        run: |
+          grype db update
+          grype sbom:"$REPORT_DIR/syft/${DATE}_SBOM.json" -o table > "$REPORT_DIR/grype/txt/${DATE}_SCA.txt"
+          grype sbom:"$REPORT_DIR/syft/${DATE}_SBOM.json" -o json > "$REPORT_DIR/grype/json/${DATE}_SCA.json"
+          grant list "$REPORT_DIR/syft/${DATE}_SBOM.json" > "$REPORT_DIR/grant/${DATE}_LICENCE.txt" || true
+
+      - name: Évaluation de sévérité CVE
+        run: python3 ./script/blocage-grype.py "$REPORT_DIR/grype/json/${DATE}_SCA.json"
+
+      - name: Envoi des rapports sur le VPS
+        if: always()
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_CHECK_IP }}
+          username: ${{ secrets.VPS_CHECK_HOST }}
+          key: ${{ secrets.VPS_CHECK_KEY }}
+          port: ${{ secrets.VPS_CHECK_PORT }}
+          source: "reports/*"
+          target: "/home/debian/${{ github.event.repository.name }}"
+          strip_components: 1
+
+      - name: Archivage des rapports sur GitHub Actions
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports-${{ github.sha }}
+          path: reports/
+          retention-days: 14
+
+  # ---------------------------------------------------------
+  # JOB 2 : Analyse statique du code source (SAST)
+  # ---------------------------------------------------------
+  sonarqube:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Importation du repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Requis par SonarQube pour l'historique complet
+
+      - name: SonarQube Scan
+        uses: sonarsource/sonarqube-scan-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.projectKey=${{ github.event.repository.name }}
+            -Dsonar.projectName="${{ github.event.repository.name }}"
