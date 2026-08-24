@@ -2,11 +2,21 @@ from material import Layout, Row, Fieldset
 from material.frontend.views import CreateModelView, DetailModelView, ListModelView, ModelViewSet, UpdateModelView
 from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
+from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from material.frontend.registry import modules as module_registry
 from types import SimpleNamespace
 from django.core.exceptions import PermissionDenied
-from django.db.models import Count
+from django.db.models import Count, Q
+from django.http import JsonResponse
+from django.views.decorators.http import require_safe
+
+from cintafactory.pagination import (
+    DEFAULT_PAGE_SIZE,
+    PaginatedMaterialListMixin,
+    PaginatedModelViewSetMixin,
+)
+from cintafactory.select_options import MAX_REMOTE_SELECT_RESULTS, normalize_remote_select_query
 
 from .forms import BusinessDirectionForm, BusinessGroupForm, RoleForm, TechnicalDirectionForm, UserForm
 from .models import BusinessDirection, BusinessGroup, TechnicalDirection, Role, User
@@ -55,12 +65,8 @@ class ModuleAwareCreateView(ModuleContextMixin, CreateModelView):
     pass
 
 
-class ModuleAwareListView(ModuleContextMixin, ListModelView):
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        if context.get("object_list") is None:
-            context["object_list"] = self.get_queryset()
-        return context
+class ModuleAwareListView(ModuleContextMixin, PaginatedMaterialListMixin, ListModelView):
+    pass
 
 
 class ModuleAwareUpdateView(ModuleContextMixin, UpdateModelView):
@@ -105,8 +111,9 @@ class SuperAdminRequiredMixin(LoginRequiredMixin):
         return super().dispatch(request, *args, **kwargs)
 
 
-class BaseSecuredViewSet(SuperAdminRequiredMixin, ModelViewSet):
+class BaseSecuredViewSet(PaginatedModelViewSetMixin, SuperAdminRequiredMixin, ModelViewSet):
     list_view_class = ModuleAwareListView
+
     def has_view_permission(self, request, obj=None):
         return self._is_super_admin(request)
 
@@ -119,15 +126,10 @@ class BaseSecuredViewSet(SuperAdminRequiredMixin, ModelViewSet):
     def has_delete_permission(self, request, obj=None):
         return self._is_super_admin(request)
 
-    def get_list_context_data(self, **kwargs):
-        context = super().get_list_context_data(**kwargs)
-        context["object_list"] = self.get_queryset()
-        return context
 
 class RoleViewSet(BaseSecuredViewSet):
     model = Role
     queryset = Role.objects.select_related("technical_direction")
-    paginate_by = None
     list_display = ("name", "slug", "technical_direction", "is_admin_role")
     list_display_links = ("name",)
     ordering = ("name",)
@@ -143,7 +145,6 @@ class RoleViewSet(BaseSecuredViewSet):
 class TechnicalDirectionViewSet(BaseSecuredViewSet):
     model = TechnicalDirection
     queryset = TechnicalDirection.objects.all()
-    paginate_by = None
     list_display = ("name", "slug")
     list_display_links = ("name",)
     ordering = ("name",)
@@ -158,7 +159,6 @@ class TechnicalDirectionViewSet(BaseSecuredViewSet):
 class BusinessDirectionViewSet(BaseSecuredViewSet):
     model = BusinessDirection
     queryset = BusinessDirection.objects.all()
-    paginate_by = None
     list_display = ("name", "slug")
     list_display_links = ("name",)
     ordering = ("name",)
@@ -175,7 +175,6 @@ class BusinessGroupViewSet(BaseSecuredViewSet):
     queryset = BusinessGroup.objects.select_related("direction", "business_direction", "responsible").annotate(
         user_total=Count("users")
     )
-    paginate_by = None
     list_display = ("name", "direction", "business_direction", "responsible", "is_default", "user_total")
     list_display_links = ("name",)
     ordering = ("name",)
@@ -195,11 +194,6 @@ class BusinessGroupViewSet(BaseSecuredViewSet):
 
     user_total.short_description = "Utilisateurs"
 
-    def get_list_context_data(self, **kwargs):
-        context = super().get_list_context_data(**kwargs)
-        context["object_list"] = self.get_queryset()
-        return context
-
 
 class UserViewSet(BaseSecuredViewSet):
     model = User
@@ -211,7 +205,6 @@ class UserViewSet(BaseSecuredViewSet):
         "role",
         "role__technical_direction",
     )
-    paginate_by = None
     list_template_name = "users/user_crud_list.html"
     list_display = (
         "username",
@@ -251,10 +244,55 @@ class UserViewSet(BaseSecuredViewSet):
     role_direction.short_description = "Direction technique (rôle)"
 
 
+@login_required
+@require_safe
+def user_options(request):
+    if not getattr(request.user, "is_superuser", False):
+        raise PermissionDenied
+
+    query = normalize_remote_select_query(request.GET.get("q"))
+    users = User.objects.all()
+    if query:
+        users = users.filter(
+            Q(username__icontains=query)
+            | Q(email__icontains=query)
+            | Q(first_name__icontains=query)
+            | Q(last_name__icontains=query)
+        )
+    users = list(
+        users.order_by("username", "pk")
+        .only("pk", "username", "email", "first_name", "last_name")[
+            : MAX_REMOTE_SELECT_RESULTS + 1
+        ]
+    )
+    has_more = len(users) > MAX_REMOTE_SELECT_RESULTS
+    options = []
+    for candidate in users[:MAX_REMOTE_SELECT_RESULTS]:
+        full_name = candidate.get_full_name().strip()
+        if full_name:
+            details = candidate.username
+            if candidate.email:
+                details = f"{details} · {candidate.email}"
+            label = f"{full_name} ({details})"
+        elif candidate.email:
+            label = f"{candidate.username} ({candidate.email})"
+        else:
+            label = candidate.username
+        options.append({"value": candidate.pk, "label": label})
+    return JsonResponse(
+        {
+            "options": options,
+            "has_more": has_more,
+            "max_results": MAX_REMOTE_SELECT_RESULTS,
+        }
+    )
+
+
 class RoleList(SuperAdminRequiredMixin, ListView):
     model = Role
     template_name = "users/role_list.html"
     context_object_name = "object_list"
+    paginate_by = DEFAULT_PAGE_SIZE
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -295,12 +333,14 @@ class TechnicalDirectionList(SuperAdminRequiredMixin, ListView):
     model = TechnicalDirection
     template_name = "users/technical_direction_list.html"
     context_object_name = "object_list"
+    paginate_by = DEFAULT_PAGE_SIZE
 
 
 class BusinessDirectionList(SuperAdminRequiredMixin, ListView):
     model = BusinessDirection
     template_name = "users/business_direction_list.html"
     context_object_name = "object_list"
+    paginate_by = DEFAULT_PAGE_SIZE
 
 
 class UserDetail(UserGraphContextMixin, ModuleContextMixin, SuperAdminRequiredMixin, DetailView):
@@ -328,6 +368,7 @@ class UserList(SuperAdminRequiredMixin, ListView):
     model = User
     template_name = "users/user_list.html"
     context_object_name = "object_list"
+    paginate_by = DEFAULT_PAGE_SIZE
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -351,10 +392,13 @@ class BusinessGroupList(SuperAdminRequiredMixin, ListView):
     model = BusinessGroup
     template_name = "users/group_list.html"
     context_object_name = "object_list"
+    paginate_by = DEFAULT_PAGE_SIZE
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        return queryset.select_related("direction", "responsible").annotate(user_total=Count("users"))
+        return queryset.select_related(
+            "direction", "business_direction", "responsible"
+        ).annotate(user_total=Count("users")).order_by("name", "pk")
 
 
 class BusinessGroupDetail(ModuleContextMixin, SuperAdminRequiredMixin, DetailView):

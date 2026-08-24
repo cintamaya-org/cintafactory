@@ -14,7 +14,7 @@
             {{ notifications_unread_count }} non lus
           </span>
           <span class="chip grey lighten-3">
-            {{ notifications|length }} éléments
+            {{ paginator.count }} élément{{ paginator.count|pluralize:"s" }}
           </span>
           {% if notifications %}
             <form method="post" action="{% url 'workflows:notifications' %}">
@@ -163,6 +163,7 @@
             </li>
           {% endfor %}
         </ul>
+        {% include "components/pagination.html" %}
       {% else %}
         <div class="wf-notifications__empty">
           <i class="material-icons wf-notifications__empty-icon" aria-hidden="true">notifications_none</i>
