@@ -1,7 +1,12 @@
+import uuid
+
 from django import forms
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import UploadedFile
+from django.urls import reverse
+
+from cintafactory.select_options import MAX_REMOTE_SELECT_RESULTS
 
 from .models import BusinessDirection, BusinessGroup, TechnicalDirection, Role, User
 from .profile_pictures import process_profile_picture_upload
@@ -181,6 +186,30 @@ class BusinessGroupForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        responsible = self.fields.get("responsible")
+        if responsible:
+            raw_responsible_id = (
+                self.data.get(self.add_prefix("responsible"))
+                if self.is_bound
+                else getattr(self.instance, "responsible_id", None)
+            )
+            try:
+                responsible_id = uuid.UUID(str(raw_responsible_id)) if raw_responsible_id else None
+            except (TypeError, ValueError, AttributeError):
+                responsible_id = None
+            responsible.queryset = User.objects.filter(
+                pk__in=[responsible_id] if responsible_id else []
+            ).order_by("username")
+            responsible.widget.attrs.update(
+                {
+                    "class": "browser-default",
+                    "data-remote-select-url": reverse("users:user_options"),
+                    "data-remote-select-limit": str(MAX_REMOTE_SELECT_RESULTS),
+                    "data-remote-select-placeholder": (
+                        "Rechercher un responsable par nom, identifiant ou e-mail"
+                    ),
+                }
+            )
         business_direction = self.fields.get("business_direction")
         if business_direction:
             business_direction.required = False

@@ -38,6 +38,8 @@ from material.frontend.views import CreateModelView, DetailModelView, ListModelV
 from diagrams.models import DrawIODiagram
 from diagrams.validation import sanitize_diagram_title
 from cintafactory.url_safety import is_http_url
+from cintafactory.pagination import PaginatedMaterialListMixin, PaginatedModelViewSetMixin
+from cintafactory.select_options import MAX_REMOTE_SELECT_RESULTS, normalize_remote_select_query
 
 from .attachments import (
     AttachmentSecurityError,
@@ -229,7 +231,7 @@ class ModuleContextMixin:
         return context
 
 
-class ModuleAwareListView(ModuleContextMixin, ListModelView):
+class ModuleAwareListView(ModuleContextMixin, PaginatedMaterialListMixin, ListModelView):
     pass
 
 
@@ -237,16 +239,11 @@ class ApplicationListView(ModuleAwareListView):
     template_name = "dat/application_list.html"
 
     def get_queryset(self):
-        return Application.objects.select_related("business_direction").order_by("name")
+        return Application.objects.select_related("business_direction").order_by("name", "pk")
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        object_list = context.get("object_list")
-        if object_list is None:
-            # Material's ListModelView may not expose object_list; populate it to keep the template simple.
-            object_list = list(self.get_queryset())
-            context["object_list"] = object_list
-        context["total_applications"] = len(object_list)
+        context["total_applications"] = context["paginator"].count
         return context
 
 
@@ -2804,10 +2801,9 @@ class ApplicationDetailView(ModuleContextMixin, DetailModelView):
     pass
 
 
-class ApplicationViewSet(BaseSecuredViewSet):
+class ApplicationViewSet(PaginatedModelViewSetMixin, BaseSecuredViewSet):
     model = Application
-    queryset = Application.objects.all()
-    paginate_by = None
+    queryset = Application.objects.select_related("business_direction")
     list_view_class = ApplicationListView
     create_view_class = ApplicationCreateView
     update_view_class = ApplicationUpdateView
@@ -2828,6 +2824,15 @@ class ApplicationViewSet(BaseSecuredViewSet):
     )
 
 
+def visible_application_queryset(user):
+    visible_application_ids = (
+        filter_dat_queryset_for_user(DAT.objects.all(), user)
+        .order_by()
+        .values("application_id")
+    )
+    return Application.objects.filter(pk__in=visible_application_ids)
+
+
 class DatList(ModuleContextMixin, LoginRequiredMixin, ListView):
     model = DAT
     template_name = "dat/dat_list.html"
@@ -2841,8 +2846,8 @@ class DatList(ModuleContextMixin, LoginRequiredMixin, ListView):
         self.search_too_short = bool(cleaned_query and not self.search_query)
         self.application_filter = self.request.GET.get("application", "").strip()
         try:
-            self.application_filter_id = int(self.application_filter) if self.application_filter else None
-        except (TypeError, ValueError):
+            self.application_filter_id = uuid.UUID(self.application_filter) if self.application_filter else None
+        except (TypeError, ValueError, AttributeError):
             self.application_filter_id = None
         base_queryset = (
             DAT.objects.select_related("application", "application__business_direction", "business_direction", "owner")
@@ -2873,17 +2878,15 @@ class DatList(ModuleContextMixin, LoginRequiredMixin, ListView):
         context["search_query"] = getattr(self, "raw_search_query", "")
         context["search_too_short"] = getattr(self, "search_too_short", False)
         context["application_filter"] = getattr(self, "application_filter", "")
-        base_queryset = getattr(self, "base_queryset_for_filters", None)
-        if base_queryset is None:
-            base_queryset = filter_dat_queryset_for_user(
-                DAT.objects.select_related("application").all(),
-                self.request.user,
+        selected_application = None
+        if getattr(self, "application_filter_id", None):
+            selected_application = (
+                visible_application_queryset(self.request.user)
+                .filter(pk=self.application_filter_id)
+                .only("pk", "code", "name")
+                .first()
             )
-        context["application_choices"] = (
-            Application.objects.filter(dats__in=base_queryset)
-            .distinct()
-            .order_by("name")
-        )
+        context["application_choices"] = [selected_application] if selected_application else []
         base_params = {}
         if search_query:
             base_params["q"] = search_query
@@ -3616,6 +3619,36 @@ class DatDashboardView(ModuleContextMixin, DatManagerAccessMixin, TemplateView):
         )
 
         return context
+
+
+@login_required
+@require_safe
+def my_application_options(request):
+    query = normalize_remote_select_query(request.GET.get("q"))
+    applications = visible_application_queryset(request.user)
+    if query:
+        applications = applications.filter(
+            Q(code__icontains=query) | Q(name__icontains=query)
+        )
+    applications = list(
+        applications.order_by("name", "pk")
+        .values("id", "code", "name")[: MAX_REMOTE_SELECT_RESULTS + 1]
+    )
+    has_more = len(applications) > MAX_REMOTE_SELECT_RESULTS
+    options = [
+        {
+            "value": application["id"],
+            "label": f'{application["code"]} — {application["name"]}',
+        }
+        for application in applications[:MAX_REMOTE_SELECT_RESULTS]
+    ]
+    return JsonResponse(
+        {
+            "options": options,
+            "has_more": has_more,
+            "max_results": MAX_REMOTE_SELECT_RESULTS,
+        }
+    )
 
 
 @login_required

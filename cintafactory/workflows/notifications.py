@@ -5,7 +5,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Iterable, List, Sequence, Set
 
-from django.db.models import QuerySet
+from django.db.models import CharField, F, QuerySet, Value
+from django.db.models.functions import Cast
 from django.http import HttpRequest
 from django.utils import timezone
 
@@ -106,42 +107,66 @@ def fetch_notifications_for_user(
     user,
     *,
     limit: int = DEFAULT_NOTIFICATION_LIMIT,
+    offset: int = 0,
     with_related: bool = False,
 ) -> List[NotificationEntry]:
-    queryset = notification_queryset_for_user(user)
-    if with_related:
-        queryset = queryset.select_related("dat", "dat__application", "performed_by")
-    history_entries = list(queryset[:limit])
-    user_queryset = user_notification_queryset(user)
-    if with_related:
-        user_queryset = user_queryset.select_related("dat", "dat__application", "created_by")
-    user_entries = list(user_queryset[:limit])
-    combined = [
-        NotificationEntry(source="history", history=entry)
-        for entry in history_entries
-    ]
-    combined.extend(
-        NotificationEntry(source="user", user_notification=entry)
-        for entry in user_entries
+    offset = max(int(offset), 0)
+    limit = max(int(limit), 0)
+    if limit == 0:
+        return []
+    history_queryset = notification_queryset_for_user(user).order_by()
+    user_queryset = user_notification_queryset(user).order_by()
+    history_rows = history_queryset.annotate(
+        source=Value("history", output_field=CharField()),
+        source_id=Cast("pk", output_field=CharField()),
+        event_at=F("performed_at"),
+    ).values("source", "source_id", "event_at")
+    user_rows = user_queryset.annotate(
+        source=Value("user", output_field=CharField()),
+        source_id=Cast("pk", output_field=CharField()),
+        event_at=F("created_at"),
+    ).values("source", "source_id", "event_at")
+    rows = list(
+        history_rows.union(user_rows, all=True)
+        .order_by("-event_at", "-source_id")[offset : offset + limit]
     )
-    def _sort_key(entry: NotificationEntry):
-        identifier = 0
-        if entry.history is not None:
-            identifier = entry.history.id
-        elif entry.user_notification is not None:
-            identifier = entry.user_notification.id
-        return (entry.created_at or timezone.now(), identifier)
 
-    combined.sort(key=_sort_key, reverse=True)
-    if limit:
-        combined = combined[:limit]
-    return combined
+    history_ids = [row["source_id"] for row in rows if row["source"] == "history"]
+    user_ids = [row["source_id"] for row in rows if row["source"] == "user"]
+    history_objects = DATHistory.objects.filter(pk__in=history_ids)
+    if with_related:
+        history_objects = history_objects.select_related("dat", "dat__application", "performed_by")
+    history_by_id = {str(entry.pk): entry for entry in history_objects}
+    user_objects = UserNotification.objects.filter(pk__in=user_ids)
+    if with_related:
+        user_objects = user_objects.select_related("dat", "dat__application", "created_by")
+    user_by_id = {str(entry.pk): entry for entry in user_objects}
+
+    entries = []
+    for row in rows:
+        source_id = row["source_id"]
+        if row["source"] == "history" and source_id in history_by_id:
+            entries.append(NotificationEntry(source="history", history=history_by_id[source_id]))
+        elif row["source"] == "user" and source_id in user_by_id:
+            entries.append(NotificationEntry(source="user", user_notification=user_by_id[source_id]))
+    return entries
+
+
+def notification_count_for_user(user) -> int:
+    """Count both notification sources without loading their payloads."""
+
+    return notification_queryset_for_user(user).order_by().count() + user_notification_queryset(
+        user
+    ).order_by().count()
 
 
 def get_unread_notification_count(request: HttpRequest | None, *, limit: int | None = None) -> int:
     user = getattr(request, "user", None)
     if not getattr(user, "is_authenticated", False):
         return 0
+    cache_key = "_workflow_unread_notification_count"
+    if limit is None and hasattr(request, cache_key):
+        return getattr(request, cache_key)
     if limit is not None:
         entries = fetch_notifications_for_user(user, limit=limit)
         history_ids = [entry.history.id for entry in entries if entry.history is not None]
@@ -159,7 +184,9 @@ def get_unread_notification_count(request: HttpRequest | None, *, limit: int | N
     seen_history_ids = HistoryNotificationSeen.objects.filter(user=user).values("history_id")
     history_unread = history_queryset.exclude(pk__in=seen_history_ids).count()
     user_unread = UserNotification.objects.filter(user=user, viewed_at__isnull=True).count()
-    return history_unread + user_unread
+    unread_count = history_unread + user_unread
+    setattr(request, cache_key, unread_count)
+    return unread_count
 
 
 def _format_user_display(user) -> str:

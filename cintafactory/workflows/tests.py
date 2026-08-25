@@ -417,6 +417,55 @@ class WorkflowBoardViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, "Passer a l'etape suivante")
 
+    def test_board_enriches_only_current_page(self):
+        DAT.objects.bulk_create(
+            [
+                DAT(
+                    reference=f"DAT-PAGINATION-{index:02d}",
+                    title=f"Pagination {index:02d}",
+                    status=DATStatus.NOUVELLE_DEMANDE,
+                    application=self.application,
+                    business_direction=self.business_direction,
+                    owner=self.user,
+                )
+                for index in range(30)
+            ]
+        )
+
+        response = self.client.get(reverse("workflows:board"), {"page": 2})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["paginator"].count, 30)
+        self.assertEqual(response.context["page_obj"].number, 2)
+        rendered_items = sum(
+            (column["items"] for column in response.context["columns"]),
+            [],
+        )
+        self.assertEqual(len(rendered_items), 5)
+        self.assertContains(response, "Page 2 sur 2")
+
+    def test_my_tasks_board_uses_same_server_side_pagination(self):
+        DAT.objects.bulk_create(
+            [
+                DAT(
+                    reference=f"DAT-TASK-PAGINATION-{index:02d}",
+                    title=f"Task pagination {index:02d}",
+                    status=DATStatus.NOUVELLE_DEMANDE,
+                    application=self.application,
+                    business_direction=self.business_direction,
+                    owner=self.user,
+                )
+                for index in range(30)
+            ]
+        )
+
+        response = self.client.get(reverse("workflows:my_tasks"), {"page": 2})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["paginator"].count, 30)
+        self.assertEqual(response.context["page_obj"].number, 2)
+        self.assertContains(response, "Page 2 sur 2")
+
 
 class WorkflowNotificationsViewTests(TestCase):
     def setUp(self):
@@ -544,6 +593,31 @@ class WorkflowNotificationsViewTests(TestCase):
 
         self.user_notification.refresh_from_db()
         self.assertIsNotNone(self.user_notification.viewed_at)
+
+    def test_notifications_are_paginated_across_both_sources(self):
+        UserNotification.objects.bulk_create(
+            [
+                UserNotification(
+                    user=self.user,
+                    notification_type=self.notification_type,
+                    notification_message=self.notification_message,
+                    dat=self.dat,
+                )
+                for _index in range(30)
+            ]
+        )
+
+        first_page = self.client.get(reverse("workflows:notifications"))
+        second_page = self.client.get(reverse("workflows:notifications"), {"page": 2})
+
+        self.assertEqual(first_page.status_code, 200)
+        self.assertEqual(second_page.status_code, 200)
+        self.assertEqual(len(first_page.context["notifications"]), 25)
+        self.assertEqual(second_page.context["page_obj"].number, 2)
+        self.assertLessEqual(len(second_page.context["notifications"]), 25)
+        self.assertContains(second_page, "Page 2 sur 2")
+
+
 def get_default_business_direction():
     direction, _ = BusinessDirection.objects.get_or_create(
         slug="direction-metier-test",
