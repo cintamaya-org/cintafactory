@@ -1,0 +1,16 @@
+cat << 'EOF' > k8s/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: cintafactory-service
+  labels:
+    app: cintafactory
+spec:
+  type: LoadBalancer
+  selector:
+    app: cintafactory
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000
+EOF
