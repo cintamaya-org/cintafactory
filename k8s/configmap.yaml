@@ -1,0 +1,11 @@
+cat << 'EOF' > k8s/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cintafactory-config
+  labels:
+    app: cintafactory
+data:
+  PORT: "8000"
+  PYTHONUNBUFFERED: "1"
+EOF
