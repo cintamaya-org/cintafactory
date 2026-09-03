@@ -40,9 +40,9 @@ jobs:
         with:
           persist-credentials: false # Ne persiste pas le GITHUB_TOKEN sur le disque du runner
 
-      # astral-sh/setup-uv@v5.1.0
+      # astral-sh/setup-uv (tag officiel)
       - name: Install uv
-        uses: astral-sh/setup-uv@f94e3d4e8e11718612a219a1a2d4174473370f9d
+        uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
 
