@@ -17,3 +17,5 @@ class DatConfig(ModuleMixin, AppConfig):
         ensure_section_blueprints_file_exists()
         # Import signals to register DAT lifecycle logging hooks.
         from . import signals  # noqa: F401
+        # Register DAT boundary with generic workflow subsystem.
+        from . import workflow  # noqa: F401

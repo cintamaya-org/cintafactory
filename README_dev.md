@@ -1,5 +1,7 @@
 # CintaFactory Developer Guide
 
+Tests de charge et génération de données synthétiques : [`docs/LoadTesting.md`](docs/LoadTesting.md).
+
 ## Stack Packs
 Use these packs depending on what you need to work on.
 

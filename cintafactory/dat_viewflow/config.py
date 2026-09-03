@@ -3,64 +3,16 @@ from __future__ import annotations
 import json
 import re
 import threading
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
 from cintafactory.conf_utils import ensure_conf_dir
+from workflows.definitions import DAT_WORKFLOW_VISUALIZATION
+from workflows.exceptions import WorkflowError
+from workflows.services import ensure_workflow_instance
 
-DEFAULT_WORKFLOW_TEMPLATE: dict[str, Any] = {
-    "layout": {
-        "height": 720,
-        "padding": 44,
-    },
-    "nodes": [
-        {
-            "id": "urbanisme",
-            "title": "Urbanisme",
-            "content": "",
-            "variant": "mid",
-            "row": 0,
-            "col": 0,
-            "links": ["validation"],
-        },
-        {
-            "id": "architecture-technique",
-            "title": "Architecture Technique",
-            "content": "",
-            "variant": "mid",
-            "row": 1,
-            "col": 0,
-            "links": ["validation"],
-        },
-        {
-            "id": "cybersecurite",
-            "title": "Cybersecurite",
-            "content": "",
-            "variant": "start",
-            "row": 2,
-            "col": 0,
-            "links": ["validation"],
-        },
-        {
-            "id": "exploitation",
-            "title": "Exploitation",
-            "content": "",
-            "variant": "mid",
-            "row": 3,
-            "col": 0,
-            "links": ["validation"],
-        },
-        {
-            "id": "validation",
-            "title": "Validation",
-            "content": "DAT {{ dat.reference }}",
-            "variant": "mid",
-            "row": 2,
-            "col": 2,
-            "links": [],
-        },
-    ]
-}
+DEFAULT_WORKFLOW_TEMPLATE: dict[str, Any] = deepcopy(DAT_WORKFLOW_VISUALIZATION)
 
 _config_lock = threading.Lock()
 _config_cache: dict[str, Any] | None = None
@@ -104,7 +56,13 @@ def load_dat_viewflow_template() -> dict[str, Any]:
 
 
 def build_dat_viewflow_template(dat, workflow_process=None) -> dict[str, Any]:
-    template = load_dat_viewflow_template()
+    try:
+        workflow_instance = ensure_workflow_instance(dat)
+        raw_template = workflow_instance.definition_version.specification.get("visualization") or {}
+        template = _normalize_template(raw_template)
+    except WorkflowError:
+        # Compatibility fallback for deployments before workflow sync has run.
+        template = load_dat_viewflow_template()
     overrides = {}
     workflow_data = {}
 
@@ -162,6 +120,10 @@ def _normalize_template(raw: Any) -> dict[str, Any]:
         if variant not in {"start", "mid", "end"}:
             variant = "mid"
         content = str(entry.get("content") or "").strip()
+        scope = str(entry.get("scope") or "display").strip().lower()
+        if scope not in {"section", "workflow", "display"}:
+            scope = "display"
+        section = str(entry.get("section") or "").strip()
         nodes.append(
             {
                 "id": node_id,
@@ -171,6 +133,8 @@ def _normalize_template(raw: Any) -> dict[str, Any]:
                 "row": idx // 3,
                 "col": idx % 3,
                 "links": [],
+                "scope": scope,
+                "section": section,
             }
         )
         node_ids.add(node_id)

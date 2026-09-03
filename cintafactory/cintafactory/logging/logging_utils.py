@@ -130,7 +130,10 @@ class JSONFormatter(logging.Formatter):
             "module": record.module,
             "line": record.lineno,
         }
-        return json.dumps({key: value for key, value in record_dict.items() if value is not None})
+        return json.dumps(
+            {key: value for key, value in record_dict.items() if value is not None},
+            default=str,
+        )
 
 
 class ColorFormatter(logging.Formatter):

@@ -7,6 +7,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from .models import BusinessDirection, BusinessGroup, TechnicalDirection, Role
+from .forms import BusinessGroupForm
 from .oauth_providers import OAuthProvider, list_enabled_oauth_providers
 from .oauth_service import build_authorize_url, resolve_oauth_user
 from .profile_pictures import (
@@ -68,6 +69,158 @@ class UserDetailViewTests(TestCase):
         self.client.force_login(outsider)
         response = self.client.get(reverse("users:user_detail", kwargs={"pk": self.target_user.pk}))
         self.assertEqual(response.status_code, 403)
+
+
+class ManagementListPaginationTests(TestCase):
+    def setUp(self):
+        self.UserModel = get_user_model()
+        self.superuser = self.UserModel.objects.create_superuser(
+            username="pagination-admin",
+            email="pagination-admin@example.com",
+            password="pwd",
+        )
+        self.client.force_login(self.superuser)
+        self.initial_totals = {
+            "users": self.UserModel.objects.count(),
+            "groups": BusinessGroup.objects.count(),
+            "technical_directions": TechnicalDirection.objects.count(),
+            "business_directions": BusinessDirection.objects.count(),
+            "roles": Role.objects.count(),
+        }
+
+        self.technical_directions = [
+            TechnicalDirection(name=f"Direction {index:02d}", slug=f"direction-{index:02d}")
+            for index in range(30)
+        ]
+        TechnicalDirection.objects.bulk_create(self.technical_directions)
+        self.business_directions = [
+            BusinessDirection(name=f"Métier {index:02d}", slug=f"metier-{index:02d}")
+            for index in range(30)
+        ]
+        BusinessDirection.objects.bulk_create(self.business_directions)
+        Role.objects.bulk_create(
+            [
+                Role(
+                    name=f"Role {index:02d}",
+                    slug=f"role-{index:02d}",
+                    technical_direction=self.technical_directions[index],
+                )
+                for index in range(30)
+            ]
+        )
+        BusinessGroup.objects.bulk_create(
+            [
+                BusinessGroup(
+                    name=f"Groupe {index:02d}",
+                    direction=self.technical_directions[index],
+                    business_direction=self.business_directions[index],
+                    responsible=self.superuser,
+                )
+                for index in range(30)
+            ]
+        )
+        self.UserModel.objects.bulk_create(
+            [self.UserModel(username=f"pagination-user-{index:02d}") for index in range(30)]
+        )
+
+    def assert_second_page_is_bounded(self, url, *, expected_total):
+        response = self.client.get(url, {"page": 2})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["paginator"].count, expected_total)
+        self.assertEqual(response.context["page_obj"].number, 2)
+        self.assertLessEqual(len(response.context["object_list"]), 25)
+        self.assertContains(response, "Page 2 sur 2")
+        self.assertContains(response, "Aller à la page")
+
+    def test_user_crud_is_paginated(self):
+        self.assert_second_page_is_bounded(
+            "/users/manage/users/crud/",
+            expected_total=self.initial_totals["users"] + 30,
+        )
+
+    def test_group_list_is_paginated(self):
+        self.assert_second_page_is_bounded(
+            reverse("users:group_list"),
+            expected_total=self.initial_totals["groups"] + 30,
+        )
+
+    def test_technical_direction_list_is_paginated(self):
+        self.assert_second_page_is_bounded(
+            reverse("users:technical_direction_list"),
+            expected_total=self.initial_totals["technical_directions"] + 30,
+        )
+
+    def test_business_direction_list_is_paginated(self):
+        self.assert_second_page_is_bounded(
+            reverse("users:business_direction_list"),
+            expected_total=self.initial_totals["business_directions"] + 30,
+        )
+
+    def test_role_crud_is_paginated(self):
+        self.assert_second_page_is_bounded(
+            "/users/manage/roles/crud/",
+            expected_total=self.initial_totals["roles"] + 30,
+        )
+
+
+class ResponsibleRemoteSelectTests(TestCase):
+    def setUp(self):
+        self.superuser = get_user_model().objects.create_superuser(
+            username="responsible-search-admin",
+            password="pwd",
+        )
+        self.regular_user = get_user_model().objects.create_user(
+            username="responsible-search-regular",
+            password="pwd",
+        )
+        get_user_model().objects.bulk_create(
+            [
+                get_user_model()(
+                    username=f"responsible-option-{index:02d}",
+                    email=f"responsible-{index:02d}@example.com",
+                )
+                for index in range(35)
+            ]
+        )
+        self.url = reverse("users:user_options")
+
+    def test_endpoint_is_superuser_only(self):
+        self.client.force_login(self.regular_user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_endpoint_caps_results_and_searches_server_side(self):
+        self.client.force_login(self.superuser)
+
+        response = self.client.get(self.url)
+        search_response = self.client.get(self.url, {"q": "responsible-34@example.com"})
+
+        payload = response.json()
+        self.assertEqual(len(payload["options"]), 30)
+        self.assertTrue(payload["has_more"])
+        self.assertEqual(payload["max_results"], 30)
+        self.assertEqual(len(search_response.json()["options"]), 1)
+
+    def test_group_form_loads_only_selected_responsible(self):
+        form = BusinessGroupForm(
+            data={
+                "name": "Remote group",
+                "direction": "",
+                "responsible": self.regular_user.pk,
+                "business_direction": "",
+            }
+        )
+
+        responsible_field = form.fields["responsible"]
+        self.assertEqual(list(responsible_field.queryset), [self.regular_user])
+        self.assertEqual(responsible_field.widget.attrs["data-remote-select-limit"], "30")
+        self.assertEqual(
+            responsible_field.widget.attrs["data-remote-select-url"],
+            self.url,
+        )
 
 
 class UserModelConstraintTests(TestCase):

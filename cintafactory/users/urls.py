@@ -15,6 +15,7 @@ urlpatterns = [
 
     # Users — list (ListView) and CRUD (ModelViewSet)
     path("manage/users/", views.UserList.as_view(), name="user_list"),
+    path("manage/users/options/", views.user_options, name="user_options"),
     path("manage/users/<uuid:pk>/", views.UserDetail.as_view(), name="user_detail"),
     path("manage/users/crud/", include(views.UserViewSet().urls)),
 

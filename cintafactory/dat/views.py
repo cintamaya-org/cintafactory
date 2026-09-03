@@ -38,6 +38,8 @@ from material.frontend.views import CreateModelView, DetailModelView, ListModelV
 from diagrams.models import DrawIODiagram
 from diagrams.validation import sanitize_diagram_title
 from cintafactory.url_safety import is_http_url
+from cintafactory.pagination import PaginatedMaterialListMixin, PaginatedModelViewSetMixin
+from cintafactory.select_options import MAX_REMOTE_SELECT_RESULTS, normalize_remote_select_query
 
 from .attachments import (
     AttachmentSecurityError,
@@ -51,7 +53,6 @@ from .constants import (
     DAT_PORTEUR_ROLE_SLUG,
     DAT_REQUIRED_PARTICIPANT_ROLE_LABELS,
     DAT_REQUIRED_PARTICIPANT_ROLE_SLUGS,
-    DAT_STATUS_REQUIRED_ROLES,
 )
 from .drawio_parser import BRIQUE_COLUMNS, FLUX_COLUMNS, dedupe_architecture_rows, parse_architecture_diagram
 from .export_access import (
@@ -121,30 +122,26 @@ from .utils import (
     store_dat_pdf_export,
 )
 from workflows.notifications import create_user_notification
+from workflows.exceptions import WorkflowPermissionDenied, WorkflowTransitionUnavailable
+from workflows.services import (
+    transition_workflow,
+    workflow_can,
+    workflow_has_capability,
+    workflow_state_label,
+    workflow_state_permission_roles,
+    workflow_states,
+)
 from cintafactory.notifications.external import ExternalNotificationEvent, dispatch_external_notification
 
 
 logger = logging.getLogger(__name__)
 
 PORTEUR_ROLE_SLUG = DAT_PORTEUR_ROLE_SLUG
-OWNER_EDITABLE_STATUSES = {
-    DATStatus.NOUVELLE_DEMANDE,
-    DATStatus.EN_COURS,
-    DATStatus.RESERVE,
-}
-FINAL_DAT_STATUSES = {DATStatus.VALIDER, DATStatus.REFUSE}
 VALIDATION_STATUS_LABELS = {
     DATStatus.EN_ATTENTE_DE_REVUE.label,
     DATStatus.RESERVE.label,
     DATStatus.VALIDER.label,
     DATStatus.REFUSE.label,
-}
-
-WORKFLOW_NODE_SECTION_SLUGS = {
-    "urbanisme": "urbanisme",
-    "architecture-technique": "architecture",
-    "cybersecurite": "cybersecurite",
-    "exploitation": "exploitation",
 }
 
 SECTION_FORCED_RESPONSIBLE_ROLE_SLUGS = {
@@ -234,7 +231,7 @@ class ModuleContextMixin:
         return context
 
 
-class ModuleAwareListView(ModuleContextMixin, ListModelView):
+class ModuleAwareListView(ModuleContextMixin, PaginatedMaterialListMixin, ListModelView):
     pass
 
 
@@ -242,16 +239,11 @@ class ApplicationListView(ModuleAwareListView):
     template_name = "dat/application_list.html"
 
     def get_queryset(self):
-        return Application.objects.select_related("business_direction").order_by("name")
+        return Application.objects.select_related("business_direction").order_by("name", "pk")
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        object_list = context.get("object_list")
-        if object_list is None:
-            # Material's ListModelView may not expose object_list; populate it to keep the template simple.
-            object_list = list(self.get_queryset())
-            context["object_list"] = object_list
-        context["total_applications"] = len(object_list)
+        context["total_applications"] = context["paginator"].count
         return context
 
 
@@ -290,48 +282,13 @@ class MyApplicationListView(ModuleContextMixin, LoginRequiredMixin, ListView):
         return context
 
 
-def get_required_roles_for_status(status: str) -> tuple[str, ...]:
-    return DAT_STATUS_REQUIRED_ROLES.get(status, ())
-
-
-REVIEWER_ROLE_SLUGS = {"architecte-referent", "comite-validation"}
-
-
 def user_can_review_dat(dat: DAT, user) -> bool:
-    if dat is None or user is None or not getattr(user, "is_authenticated", False):
+    if dat is None or user is None:
         return False
-    if user_is_dat_admin(user):
-        return True
-    user_id = getattr(user, "id", None)
-    if user_id is None:
-        return False
-    for participant in dat.participants.all():
-        role = getattr(participant, "role", None)
-        if role and role.slug in REVIEWER_ROLE_SLUGS and participant.user_id == user_id:
-            return True
-    return False
-
-
-def _are_all_sections_validated(status_map: dict[str, dict] | None) -> bool:
-    if not status_map:
-        return False
-    for status_info in status_map.values():
-        if not status_info.get("has_status"):
-            continue
-        if status_info.get("value") != SECTION_STATUS_VALIDATED_VALUE:
-            return False
-    return True
-
-
-def _are_all_sections_responsible_validated(status_map: dict[str, dict] | None) -> bool:
-    if not status_map:
-        return False
-    for status_info in status_map.values():
-        if not status_info.get("has_status"):
-            continue
-        if status_info.get("responsable_value") != SECTION_STATUS_VALIDATED_VALUE:
-            return False
-    return True
+    return any(
+        workflow_can(dat, event, user)
+        for event in ("approve", "reject", "request_changes")
+    )
 
 
 def refresh_dat_status(
@@ -345,36 +302,26 @@ def refresh_dat_status(
     """
     Synchronise the DAT status with the completion state of its sections.
     """
-    if dat.status in FINAL_DAT_STATUSES:
+    if workflow_has_capability(dat, "terminal"):
         return False
 
     computed_status_map = status_map
     if computed_status_map is None or status_choices is None:
         computed_status_map, status_choices = build_section_status_map(dat)
 
-    all_validated = _are_all_sections_validated(computed_status_map)
-    all_responsable_validated = _are_all_sections_responsible_validated(computed_status_map)
-    target_status = dat.status
-
-    if all_responsable_validated:
-        target_status = DATStatus.VALIDER
-    elif dat.status == DATStatus.RESERVE:
-        target_status = DATStatus.EN_ATTENTE_DE_REVUE if all_validated else DATStatus.RESERVE
-    elif all_validated:
-        target_status = DATStatus.EN_ATTENTE_DE_REVUE
-    elif dat.status == DATStatus.EN_ATTENTE_DE_REVUE:
-        target_status = DATStatus.EN_COURS
-    elif force_in_progress:
-        target_status = DATStatus.EN_COURS
-
-    if target_status == dat.status:
-        return False
-
-    if actor is not None:
-        dat._history_actor = actor  # type: ignore[attr-defined]
-    dat.status = target_status
-    dat.save(update_fields=["status", "updated_at"])
-    return True
+    result = transition_workflow(
+        dat,
+        "sections_changed",
+        actor,
+        context={
+            "status_map": computed_status_map,
+            "status_choices": status_choices,
+            "force_in_progress": force_in_progress,
+        },
+        metadata={"trigger": "section_status_update"},
+        strict=False,
+    )
+    return result.changed
 
 
 def build_participant_overview(dat: DAT):
@@ -384,7 +331,7 @@ def build_participant_overview(dat: DAT):
         if role and role.slug in DAT_REQUIRED_PARTICIPANT_ROLE_SLUGS:
             participant_map.setdefault(role.slug, participant)
 
-    required_roles = set(get_required_roles_for_status(dat.status))
+    required_roles = set(workflow_state_permission_roles(dat))
     overview = []
     for slug in DAT_REQUIRED_PARTICIPANT_ROLE_SLUGS:
         participant = participant_map.get(slug)
@@ -419,7 +366,7 @@ def build_participant_overview(dat: DAT):
 
 
 def get_current_responsibles(dat: DAT):
-    required_roles = get_required_roles_for_status(dat.status)
+    required_roles = workflow_state_permission_roles(dat)
     if not required_roles:
         return []
     participants = {
@@ -909,7 +856,6 @@ def build_dat_admin_editor(dat: DAT, user):
 
 
 def build_dat_overview_context(dat: DAT, user):
-    next_status = get_next_status(dat.status)
     return {
         "dat": dat,
         "participant_overview": build_participant_overview(dat),
@@ -917,13 +863,15 @@ def build_dat_overview_context(dat: DAT, user):
         "section_responsible_editor": build_section_responsible_editor(dat, user),
         "section_participant_editor": build_section_participant_editor(dat, user),
         "dat_admin_editor": build_dat_admin_editor(dat, user),
-        "owner_editable_statuses": {status.value for status in OWNER_EDITABLE_STATUSES},
         "owner_can_edit": user_is_dat_admin_for_dat(dat, user),
         "can_create_dat": user_can_create_dat_entities(user),
-        "next_status": next_status,
-        "next_status_label": DATStatus(next_status).label if next_status else None,
+        "next_status": None,
+        "next_status_label": None,
         "can_progress_dat": user_can_progress_dat(dat, user),
         "can_review_dat": user_can_review_dat(dat, user),
+        "dat_is_reviewable": workflow_has_capability(dat, "reviewable"),
+        "dat_requires_corrections": workflow_has_capability(dat, "requires_corrections"),
+        "dat_is_terminal": workflow_has_capability(dat, "terminal"),
     }
 
 
@@ -1188,7 +1136,11 @@ def build_section_status_map(dat: DAT, sections_list: list[DATSection] | None = 
     return status_map, choice_map
 
 
-def build_workflow_node_statuses(dat: DAT, status_map: dict[str, dict] | None = None) -> dict[str, dict[str, str]]:
+def build_workflow_node_statuses(
+    dat: DAT,
+    status_map: dict[str, dict] | None = None,
+    workflow_template: dict | None = None,
+) -> dict[str, dict[str, str]]:
     if status_map is None:
         status_map, _ = build_section_status_map(dat)
 
@@ -1202,7 +1154,14 @@ def build_workflow_node_statuses(dat: DAT, status_map: dict[str, dict] | None = 
         return ("unknown", "help_outline")
 
     node_statuses: dict[str, dict[str, str]] = {}
-    for node_id, section_slug in WORKFLOW_NODE_SECTION_SLUGS.items():
+    nodes = (workflow_template or {}).get("nodes") or ()
+    for node in nodes:
+        if not isinstance(node, dict) or node.get("scope") != "section":
+            continue
+        node_id = str(node.get("id") or "").strip()
+        section_slug = str(node.get("section") or "").strip()
+        if not node_id or not section_slug:
+            continue
         section_info = status_map.get(section_slug) or {}
         raw_value = section_info.get("value")
         value = str(raw_value) if raw_value not in (None, "") else None
@@ -1229,31 +1188,36 @@ def build_workflow_node_statuses(dat: DAT, status_map: dict[str, dict] | None = 
 
     validation_tone = "in_progress"
     validation_icon = "pending_actions"
-    if dat.status == DATStatus.VALIDER:
+    if workflow_has_capability(dat, "approved"):
         validation_tone = "validated"
         validation_icon = "task_alt"
-    elif dat.status in {DATStatus.REFUSE, DATStatus.RESERVE}:
+    elif workflow_has_capability(dat, "rejected") or workflow_has_capability(
+        dat, "requires_corrections"
+    ):
         validation_tone = "blocked"
         validation_icon = "gpp_maybe"
-    elif dat.status == DATStatus.EN_ATTENTE_DE_REVUE:
+    elif workflow_has_capability(dat, "reviewable"):
         validation_tone = "review"
         validation_icon = "rate_review"
 
-    # The validation node intentionally reflects the whole DAT lifecycle status,
-    # not any section-level status value.
-    node_statuses["validation"] = {
-        "scope": "dat",
-        "tone": validation_tone,
-        "icon": validation_icon,
-        "message": "",
-        "message_kind": "",
-    }
+    for node in nodes:
+        if not isinstance(node, dict) or node.get("scope") != "workflow":
+            continue
+        node_id = str(node.get("id") or "").strip()
+        if node_id:
+            node_statuses[node_id] = {
+                "scope": "workflow",
+                "tone": validation_tone,
+                "icon": validation_icon,
+                "message": "",
+                "message_kind": "",
+            }
     return node_statuses
 
 
 def section_is_locked(status_info: dict | None, *, dat: DAT | None = None) -> bool:
     if dat is not None:
-        if dat.status in FINAL_DAT_STATUSES:
+        if workflow_has_capability(dat, "terminal"):
             return True
         return False
     return False
@@ -1409,7 +1373,7 @@ def build_section_payload(
         )
         is_locked = section_is_locked(section_status, dat=dat)
         section_can_edit = False if section.slug == "validation" else section.can_user_edit(user)
-        if dat.status in FINAL_DAT_STATUSES:
+        if workflow_has_capability(dat, "terminal"):
             section_can_edit = False
         elif is_locked:
             section_can_edit = False
@@ -1433,7 +1397,7 @@ def build_section_payload(
             for target in validation_targets:
                 if not section_has_status(target.slug):
                     continue
-                if dat.status in FINAL_DAT_STATUSES:
+                if workflow_has_capability(dat, "terminal"):
                     continue
                 if target.can_user_edit(user):
                     validation_allowed_sections[target.slug] = True
@@ -1446,7 +1410,7 @@ def build_section_payload(
                 for target in validation_targets:
                     if not section_has_status(target.slug):
                         continue
-                    if dat.status in FINAL_DAT_STATUSES:
+                    if workflow_has_capability(dat, "terminal"):
                         continue
                     if not target.can_user_edit(user):
                         continue
@@ -1531,7 +1495,7 @@ def build_section_payload(
                 "can_update_status": bool(
                     section_status.get("has_status")
                     and user_can_update_section_status(dat, section, user)
-                    and dat.status not in FINAL_DAT_STATUSES
+                    and not workflow_has_capability(dat, "terminal")
                 ),
                 "validation_allowed_sections": validation_allowed_sections,
                 "validation_reserve_allowed_sections": validation_reserve_allowed_sections,
@@ -1611,7 +1575,7 @@ def render_section_attachments_snippet(
 def upload_section_attachment(request, dat_pk: int, section_slug: str):
     base_queryset = filter_dat_queryset_for_user(DAT.objects.all(), request.user)
     dat = get_object_or_404(base_queryset, pk=dat_pk)
-    if dat.status in FINAL_DAT_STATUSES:
+    if workflow_has_capability(dat, "terminal"):
         raise PermissionDenied
     section = get_object_or_404(DATSection, dat=dat, metadata__slug=section_slug)
     if not section.can_user_edit(request.user):
@@ -1739,7 +1703,7 @@ def download_section_attachment(request, dat_pk: int, attachment_pk: int):
 def remove_section_attachment(request, dat_pk: int, attachment_pk: int):
     base_queryset = filter_dat_queryset_for_user(DAT.objects.all(), request.user)
     dat = get_object_or_404(base_queryset, pk=dat_pk)
-    if dat.status in FINAL_DAT_STATUSES:
+    if workflow_has_capability(dat, "terminal"):
         raise PermissionDenied
     attachment = get_object_or_404(
         DATSectionAttachment.objects.select_related("section__dat"),
@@ -2076,7 +2040,7 @@ def remove_dat_admin_from_overview(request, pk: int, user_id: str):
 def update_section_status(request, dat_pk: int, section_slug: str):
     base_queryset = filter_dat_queryset_for_user(DAT.objects.all(), request.user)
     dat = get_object_or_404(base_queryset, pk=dat_pk)
-    if dat.status in FINAL_DAT_STATUSES:
+    if workflow_has_capability(dat, "terminal"):
         raise PermissionDenied
     section = get_object_or_404(DATSection, dat=dat, metadata__slug=section_slug)
     if sync_dat_sections_if_needed(dat):
@@ -2228,7 +2192,7 @@ def update_section_status(request, dat_pk: int, section_slug: str):
 def update_section_responsible_status(request, dat_pk: int, section_slug: str):
     base_queryset = filter_dat_queryset_for_user(DAT.objects.all(), request.user)
     dat = get_object_or_404(base_queryset, pk=dat_pk)
-    if dat.status in FINAL_DAT_STATUSES:
+    if workflow_has_capability(dat, "terminal"):
         raise PermissionDenied
     section = get_object_or_404(DATSection, dat=dat, metadata__slug=section_slug)
     sync_dat_sections_if_needed(dat)
@@ -2346,7 +2310,7 @@ def update_section_responsible_status(request, dat_pk: int, section_slug: str):
 def update_section_reserve(request, dat_pk: int, section_slug: str):
     base_queryset = filter_dat_queryset_for_user(DAT.objects.all(), request.user)
     dat = get_object_or_404(base_queryset, pk=dat_pk)
-    if dat.status in FINAL_DAT_STATUSES:
+    if workflow_has_capability(dat, "terminal"):
         raise PermissionDenied
     section = get_object_or_404(DATSection, dat=dat, metadata__slug=section_slug)
     sync_dat_sections_if_needed(dat)
@@ -2585,32 +2549,39 @@ def submit_validation_decision(request, pk: int):
         request.user,
     )
     dat = get_object_or_404(base_queryset, pk=pk)
-    if dat.status != DATStatus.EN_ATTENTE_DE_REVUE:
+    if not workflow_has_capability(dat, "reviewable"):
         messages.error(request, "Ce DAT n'est pas en attente de revue.")
         return redirect(reverse("dat:my_detail", args=[dat.pk]))
-    if not user_can_review_dat(dat, request.user):
-        raise PermissionDenied
 
     decision_value = request.POST.get("decision")
-    valid_targets = {DATStatus.VALIDER, DATStatus.REFUSE, DATStatus.RESERVE}
-    try:
-        target_status = DATStatus(decision_value)
-    except Exception:
-        target_status = None
-    if target_status not in valid_targets:
+    event_by_decision = {
+        DATStatus.VALIDER: "approve",
+        DATStatus.REFUSE: "reject",
+        DATStatus.RESERVE: "request_changes",
+    }
+    allowed_events = {"approve", "reject", "request_changes"}
+    event = decision_value if decision_value in allowed_events else event_by_decision.get(decision_value)
+    if event is None:
         messages.error(request, "Décision de validation invalide.")
         return redirect(reverse("dat:my_detail", args=[dat.pk]))
 
     status_map, status_choices = build_section_status_map(dat)
-    if target_status == DATStatus.RESERVE:
-        reset_section_statuses_to_default(dat, status_map=status_map, status_choices=status_choices)
+    try:
+        transition_workflow(
+            dat,
+            event,
+            request.user,
+            context={"status_map": status_map, "status_choices": status_choices},
+            metadata={"decision": decision_value},
+        )
+    except WorkflowPermissionDenied as exc:
+        raise PermissionDenied from exc
+    except WorkflowTransitionUnavailable:
+        messages.error(request, "Cette décision n'est plus disponible pour ce DAT.")
+        return redirect(reverse("dat:my_detail", args=[dat.pk]))
 
-    dat.status = target_status
-    dat._history_actor = request.user  # type: ignore[attr-defined]
-    dat.save(update_fields=["status", "updated_at"])
-
-    label = dat.get_status_display()
-    if target_status in FINAL_DAT_STATUSES:
+    label = workflow_state_label(dat)
+    if workflow_has_capability(dat, "terminal"):
         messages.success(request, f"Le DAT est maintenant clôturé ({label}).")
     else:
         messages.success(request, f"Le DAT est placé en réserve ({label}). Les sections sont à nouveau éditables.")
@@ -2637,14 +2608,6 @@ def user_can_manage_dat(user):
         or getattr(user, "is_staff", False)
         or (callable(is_role) and is_role("admin"))
     )
-
-
-def get_next_status(current_status: str) -> str | None:
-    if current_status == DATStatus.NOUVELLE_DEMANDE:
-        return DATStatus.EN_COURS
-    if current_status in (DATStatus.EN_COURS, DATStatus.RESERVE):
-        return DATStatus.EN_ATTENTE_DE_REVUE
-    return None
 
 
 def user_can_progress_dat(dat: DAT, user) -> bool:
@@ -2764,6 +2727,7 @@ class DATDetailView(LoginRequiredMixin, ModuleContextMixin, DetailModelView):
         context["workflow_node_statuses"] = build_workflow_node_statuses(
             self.object,
             section_status_map,
+            context["viewflow_workflow_template"],
         )
         context["section_nav"] = list(
             self.object.sections.order_by("order", "id").values(
@@ -2837,10 +2801,9 @@ class ApplicationDetailView(ModuleContextMixin, DetailModelView):
     pass
 
 
-class ApplicationViewSet(BaseSecuredViewSet):
+class ApplicationViewSet(PaginatedModelViewSetMixin, BaseSecuredViewSet):
     model = Application
-    queryset = Application.objects.all()
-    paginate_by = None
+    queryset = Application.objects.select_related("business_direction")
     list_view_class = ApplicationListView
     create_view_class = ApplicationCreateView
     update_view_class = ApplicationUpdateView
@@ -2861,13 +2824,20 @@ class ApplicationViewSet(BaseSecuredViewSet):
     )
 
 
+def visible_application_queryset(user):
+    visible_application_ids = (
+        filter_dat_queryset_for_user(DAT.objects.all(), user)
+        .order_by()
+        .values("application_id")
+    )
+    return Application.objects.filter(pk__in=visible_application_ids)
+
+
 class DatList(ModuleContextMixin, LoginRequiredMixin, ListView):
     model = DAT
     template_name = "dat/dat_list.html"
     context_object_name = "object_list"
     paginate_by = 10
-
-    owner_editable_statuses = OWNER_EDITABLE_STATUSES
 
     def get_queryset(self):
         self.raw_search_query = self.request.GET.get("q", "")
@@ -2876,8 +2846,8 @@ class DatList(ModuleContextMixin, LoginRequiredMixin, ListView):
         self.search_too_short = bool(cleaned_query and not self.search_query)
         self.application_filter = self.request.GET.get("application", "").strip()
         try:
-            self.application_filter_id = int(self.application_filter) if self.application_filter else None
-        except (TypeError, ValueError):
+            self.application_filter_id = uuid.UUID(self.application_filter) if self.application_filter else None
+        except (TypeError, ValueError, AttributeError):
             self.application_filter_id = None
         base_queryset = (
             DAT.objects.select_related("application", "application__business_direction", "business_direction", "owner")
@@ -2896,7 +2866,11 @@ class DatList(ModuleContextMixin, LoginRequiredMixin, ListView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["owner_editable_statuses"] = {status.value for status in self.owner_editable_statuses}
+        for dat in context.get("object_list") or ():
+            dat.workflow_owner_editable = workflow_has_capability(  # type: ignore[attr-defined]
+                dat, "owner_editable"
+            )
+            dat.workflow_state_display = workflow_state_label(dat)  # type: ignore[attr-defined]
         user = self.request.user
         context["owner_can_edit"] = user_is_dat_admin(user)
         context["can_create_dat"] = user_can_create_dat_entities(user)
@@ -2904,17 +2878,15 @@ class DatList(ModuleContextMixin, LoginRequiredMixin, ListView):
         context["search_query"] = getattr(self, "raw_search_query", "")
         context["search_too_short"] = getattr(self, "search_too_short", False)
         context["application_filter"] = getattr(self, "application_filter", "")
-        base_queryset = getattr(self, "base_queryset_for_filters", None)
-        if base_queryset is None:
-            base_queryset = filter_dat_queryset_for_user(
-                DAT.objects.select_related("application").all(),
-                self.request.user,
+        selected_application = None
+        if getattr(self, "application_filter_id", None):
+            selected_application = (
+                visible_application_queryset(self.request.user)
+                .filter(pk=self.application_filter_id)
+                .only("pk", "code", "name")
+                .first()
             )
-        context["application_choices"] = (
-            Application.objects.filter(dats__in=base_queryset)
-            .distinct()
-            .order_by("name")
-        )
+        context["application_choices"] = [selected_application] if selected_application else []
         base_params = {}
         if search_query:
             base_params["q"] = search_query
@@ -3036,12 +3008,10 @@ class DatDetail(ModuleContextMixin, LoginRequiredMixin, DetailView):
         context["reserve_history_entries"] = get_dat_reserve_history_entries(self.object)
         context["reserve_validation_history_entries"] = build_dat_reserve_validation_history(self.object)
         context["dat_history_user_choices"] = build_dat_history_user_choices(self.object)
-        context["owner_editable_statuses"] = {status.value for status in OWNER_EDITABLE_STATUSES}
         context["owner_can_edit"] = user_is_dat_admin_for_dat(self.object, self.request.user)
         context["can_create_dat"] = user_can_create_dat_entities(self.request.user)
-        next_status = get_next_status(self.object.status)
-        context["next_status"] = next_status
-        context["next_status_label"] = DATStatus(next_status).label if next_status else None
+        context["next_status"] = None
+        context["next_status_label"] = None
         context["can_progress_dat"] = user_can_progress_dat(self.object, self.request.user)
         context["export_urls"] = {
             "pdf_trigger": reverse("dat:my_export_pdf_trigger", args=[self.object.pk]),
@@ -3073,6 +3043,7 @@ class DatDetail(ModuleContextMixin, LoginRequiredMixin, DetailView):
         context["workflow_node_statuses"] = build_workflow_node_statuses(
             self.object,
             section_status_map,
+            context["viewflow_workflow_template"],
         )
         valid_slugs = {entry["slug"] for entry in section_nav}
         default_slug = (
@@ -3343,7 +3314,7 @@ class DatSubSectionUpdateView(ModuleContextMixin, LoginRequiredMixin, FormView):
             )
             self.section = self.sub_section.section
             dat = self.section.dat
-            if dat.status in FINAL_DAT_STATUSES:
+            if workflow_has_capability(dat, "terminal"):
                 raise PermissionDenied
             if sync_dat_sections_if_needed(self.section.dat):
                 self.sub_section = get_object_or_404(
@@ -3546,8 +3517,14 @@ class DatDashboardView(ModuleContextMixin, DatManagerAccessMixin, TemplateView):
         context = super().get_context_data(**kwargs)
         total = DAT.objects.count()
         status_counts = DAT.objects.values("status").annotate(count=Count("id"))
-        status_labels = dict(DATStatus.choices)
-        status_order = {choice[0]: index for index, choice in enumerate(DATStatus.choices)}
+        state_definitions = workflow_states()
+        status_labels = {
+            state["status"]: state.get("name") or state["status"]
+            for state in state_definitions
+        }
+        status_order = {
+            state["status"]: index for index, state in enumerate(state_definitions)
+        }
         status_summary = {
             key: {
                 "status": key,
@@ -3561,8 +3538,15 @@ class DatDashboardView(ModuleContextMixin, DatManagerAccessMixin, TemplateView):
             status = entry["status"]
             count = entry["count"]
             bucket = status_summary.get(status)
-            if bucket:
-                bucket["count"] = count
+            if bucket is None:
+                bucket = {
+                    "status": status,
+                    "label": status,
+                    "count": 0,
+                    "percentage": 0,
+                }
+                status_summary[status] = bucket
+            bucket["count"] = count
         if total:
             for bucket in status_summary.values():
                 bucket["percentage"] = round(bucket["count"] / total * 100, 1)
@@ -3639,6 +3623,36 @@ class DatDashboardView(ModuleContextMixin, DatManagerAccessMixin, TemplateView):
 
 @login_required
 @require_safe
+def my_application_options(request):
+    query = normalize_remote_select_query(request.GET.get("q"))
+    applications = visible_application_queryset(request.user)
+    if query:
+        applications = applications.filter(
+            Q(code__icontains=query) | Q(name__icontains=query)
+        )
+    applications = list(
+        applications.order_by("name", "pk")
+        .values("id", "code", "name")[: MAX_REMOTE_SELECT_RESULTS + 1]
+    )
+    has_more = len(applications) > MAX_REMOTE_SELECT_RESULTS
+    options = [
+        {
+            "value": application["id"],
+            "label": f'{application["code"]} — {application["name"]}',
+        }
+        for application in applications[:MAX_REMOTE_SELECT_RESULTS]
+    ]
+    return JsonResponse(
+        {
+            "options": options,
+            "has_more": has_more,
+            "max_results": MAX_REMOTE_SELECT_RESULTS,
+        }
+    )
+
+
+@login_required
+@require_safe
 def application_options(request):
     if not (user_can_manage_dat(request.user) or user_can_create_dat_entities(request.user)):
         raise PermissionDenied
@@ -3686,7 +3700,7 @@ def _sub_section_has_drawio_repeater(sub_section: DATSubSection) -> bool:
 @require_POST
 def create_schema_diagram(request, dat_pk: int):
     dat = get_object_or_404(DAT.objects.prefetch_related("sections__allowed_roles"), pk=dat_pk)
-    if dat.status in FINAL_DAT_STATUSES:
+    if workflow_has_capability(dat, "terminal"):
         raise PermissionDenied
 
     try:
@@ -4097,7 +4111,7 @@ def _update_repeater_part(part: DATPart, rows: list[dict[str, str]]) -> tuple[bo
 def parse_schema_diagram(request, dat_pk: int):
     base_queryset = filter_dat_queryset_for_user(DAT.objects.all(), request.user)
     dat = get_object_or_404(base_queryset, pk=dat_pk)
-    if dat.status in FINAL_DAT_STATUSES:
+    if workflow_has_capability(dat, "terminal"):
         raise PermissionDenied
     architecture_section = dat.sections.select_related("metadata").filter(metadata__slug="architecture").first()
     if architecture_section is None:

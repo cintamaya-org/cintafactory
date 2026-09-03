@@ -7,6 +7,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 
 from users.models import Role
+from workflows.services import workflow_initial_state, workflow_states
 
 from .constants import DAT_PORTEUR_ROLE_SLUG
 from .models import Application, DAT, DATParticipant, DATStatus
@@ -76,6 +77,7 @@ class DATImportService:
                 owner=owner,
             )
             dat._history_actor = self.actor  # type: ignore[attr-defined]
+            dat._workflow_initial_state = status  # type: ignore[attr-defined]
             dat.save()
 
             participants_payload = payload.get("participants")
@@ -139,7 +141,8 @@ class DATImportService:
         return role
 
     def _normalise_status(self, raw_status: str | None):
-        status = raw_status or DATStatus.NOUVELLE_DEMANDE
+        initial_state = workflow_initial_state()
+        status = raw_status or initial_state
         mapping = {
             "demande_initiale": DATStatus.NOUVELLE_DEMANDE,
             "validation_referent": DATStatus.EN_COURS,
@@ -153,15 +156,16 @@ class DATImportService:
             "dat_refuse": DATStatus.REFUSE,
             "dat_valide": DATStatus.VALIDER,
         }
-        if status in DATStatus.values:
+        valid_states = {state["status"] for state in workflow_states()}
+        if status in valid_states:
             return status
-        if status in mapping:
+        if status in mapping and mapping[status] in valid_states:
             self._warn(
                 f"Statut hérité « {status} » converti en « {mapping[status]} » lors de l'import."
             )
             return mapping[status]
         self._warn(f"Statut inconnu « {status} ». Utilisation du statut initial par défaut.")
-        return DATStatus.NOUVELLE_DEMANDE
+        return initial_state
 
     def _import_participants(self, dat: DAT, payload: Any):
         if not isinstance(payload, (list, tuple)):

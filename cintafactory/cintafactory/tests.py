@@ -11,8 +11,10 @@ from django.core.cache import cache
 from django.core.exceptions import RequestDataTooBig
 from django.core.checks import Tags, run_checks
 from django.core import mail
+from django.contrib.staticfiles import finders
 from django.http import HttpResponse
 from django.test import RequestFactory, SimpleTestCase, override_settings
+from PIL import Image
 
 from . import admin_config, context_processors, rate_limit, url_safety
 from .upload import upload_limit
@@ -112,6 +114,15 @@ class ConfigFileTests(SimpleTestCase):
             include_http=False,
         )
         self.assertEqual(origins, {"https://example.com", "https://example.org"})
+
+
+class FrontendAssetTests(SimpleTestCase):
+    def test_favicon_has_real_ico_content(self):
+        favicon_path = finders.find("imgs/logo.ico")
+
+        self.assertIsNotNone(favicon_path)
+        with Image.open(favicon_path) as favicon:
+            self.assertEqual(favicon.format, "ICO")
 
 
 class UrlSafetyTests(SimpleTestCase):

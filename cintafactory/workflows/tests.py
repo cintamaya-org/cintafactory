@@ -1,13 +1,33 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from django.contrib.auth import get_user_model
 from django.test import Client, RequestFactory, TestCase
 from django.urls import reverse
 
 from dat.models import Application, DAT, DATParticipant, DATStatus, DATHistory, DATHistoryAction
 from users.models import BusinessDirection, Role, TechnicalDirection
-from .models import HistoryNotificationSeen, NotificationMessage, NotificationType, Workflow, UserNotification
+from .definitions import WORKFLOW_DEFINITIONS, WorkflowTransitionDefinition
+from .exceptions import WorkflowConfigurationError
+from .models import (
+    HistoryNotificationSeen,
+    NotificationMessage,
+    NotificationType,
+    UserNotification,
+    Workflow,
+    WorkflowDefinitionVersion,
+    WorkflowInstance,
+    WorkflowTransitionEvent,
+)
 from .notifications import get_unread_notification_count, mark_all_notifications_as_seen, mark_notifications_as_seen
+from .services import (
+    ensure_workflow_instance,
+    migrate_workflow_instances,
+    transition_workflow,
+    workflow_can,
+    workflow_has_capability,
+)
 from .sync import sync_workflow_definitions
 
 
@@ -49,6 +69,225 @@ class WorkflowSyncTests(TestCase):
         )
         review_read_roles = {perm.role for perm in review_step.read_permissions}
         self.assertIn(self.roles["porteur-demande"], review_read_roles)
+
+    def test_sync_publishes_immutable_version_and_reuses_same_checksum(self):
+        sync_workflow_definitions()
+        workflow = Workflow.objects.get(code="dat-validation")
+        first_version = workflow.active_version
+
+        sync_workflow_definitions()
+        workflow.refresh_from_db()
+
+        self.assertEqual(workflow.active_version, first_version)
+        self.assertEqual(WorkflowDefinitionVersion.objects.filter(workflow=workflow).count(), 1)
+
+    def test_existing_instance_remains_pinned_when_new_version_is_published(self):
+        sync_workflow_definitions()
+        owner = get_user_model().objects.create_user(username="version-owner", password="pwd")
+        application = Application.objects.create(
+            code="versioned-workflow-app",
+            name="Versioned workflow",
+            business_direction=get_default_business_direction(),
+        )
+        dat = DAT.objects.create(
+            reference="DAT-VERSION-1",
+            title="Pinned",
+            application=application,
+            owner=owner,
+        )
+        instance = ensure_workflow_instance(dat)
+        original_version = instance.definition_version
+
+        modified = replace(WORKFLOW_DEFINITIONS[0], name="Validation des DAT v2")
+        sync_workflow_definitions((modified,))
+        instance.refresh_from_db()
+
+        self.assertEqual(instance.definition_version, original_version)
+        self.assertEqual(WorkflowInstance.objects.filter(pk=instance.pk).count(), 1)
+        self.assertNotEqual(instance.workflow.active_version, original_version)
+
+    def test_instance_migration_is_explicit_and_audited(self):
+        sync_workflow_definitions()
+        owner = get_user_model().objects.create_user(username="migration-owner", password="pwd")
+        application = Application.objects.create(
+            code="migration-workflow-app",
+            name="Migration workflow",
+            business_direction=get_default_business_direction(),
+        )
+        dat = DAT.objects.create(
+            reference="DAT-MIGRATION-1",
+            title="Migrated",
+            application=application,
+            owner=owner,
+        )
+        instance = ensure_workflow_instance(dat)
+        original_version = instance.definition_version
+
+        modified = replace(WORKFLOW_DEFINITIONS[0], name="Validation des DAT v2")
+        sync_workflow_definitions((modified,))
+        workflow = Workflow.objects.get(code="dat-validation")
+
+        result = migrate_workflow_instances(workflow_code="dat-validation")
+        instance.refresh_from_db()
+
+        self.assertEqual(result.examined, 1)
+        self.assertEqual(result.migrated, 1)
+        self.assertNotEqual(instance.definition_version, original_version)
+        self.assertEqual(instance.definition_version, workflow.active_version)
+        self.assertTrue(
+            WorkflowTransitionEvent.objects.filter(
+                instance=instance,
+                event="workflow-migrated",
+                metadata__from_version=original_version.version,
+                metadata__to_version=workflow.active_version.version,
+            ).exists()
+        )
+
+    def test_sync_supports_step_key_rename_without_state_collision(self):
+        sync_workflow_definitions()
+        definition = WORKFLOW_DEFINITIONS[0]
+        modified = replace(
+            definition,
+            steps=tuple(
+                replace(step, key="quality-gate")
+                if step.status == "en_attente_de_revue"
+                else step
+                for step in definition.steps
+            ),
+        )
+
+        sync_workflow_definitions((modified,))
+
+        workflow = Workflow.objects.get(code="dat-validation")
+        self.assertFalse(workflow.steps.filter(key="en-attente-revue").exists())
+        self.assertEqual(
+            workflow.steps.get(state="en_attente_de_revue").key,
+            "quality-gate",
+        )
+
+    def test_sync_supports_atomic_state_code_swap(self):
+        sync_workflow_definitions()
+        definition = WORKFLOW_DEFINITIONS[0]
+        state_map = {"en_cours": "reserve", "reserve": "en_cours"}
+        modified = replace(
+            definition,
+            steps=tuple(
+                replace(step, status=state_map.get(step.status, step.status))
+                for step in definition.steps
+            ),
+            transitions=tuple(
+                replace(
+                    transition,
+                    sources=tuple(
+                        state_map.get(source, source) for source in transition.sources
+                    ),
+                    target=state_map.get(transition.target, transition.target),
+                )
+                for transition in definition.transitions
+            ),
+        )
+
+        sync_workflow_definitions((modified,))
+
+        workflow = Workflow.objects.get(code="dat-validation")
+        self.assertEqual(workflow.steps.get(key="en-cours").state, "reserve")
+        self.assertEqual(workflow.steps.get(key="reserve").state, "en_cours")
+
+    def test_sync_rejects_ambiguous_equal_priority_routes(self):
+        sync_workflow_definitions()
+        definition = WORKFLOW_DEFINITIONS[0]
+        first = WorkflowTransitionDefinition(
+            event="ambiguous-route",
+            sources=("nouvelle_demande",),
+            target="en_cours",
+            order=7,
+        )
+        modified = replace(
+            definition,
+            transitions=definition.transitions + (first, replace(first, target="refuse")),
+        )
+
+        with self.assertRaisesRegex(WorkflowConfigurationError, "ambiguous"):
+            sync_workflow_definitions((modified,))
+
+    def test_sync_rejects_rebinding_existing_code_to_another_model(self):
+        sync_workflow_definitions()
+        workflow = Workflow.objects.get(code="dat-validation")
+        original_content_type = workflow.content_type
+        original_version = workflow.active_version
+        modified = replace(WORKFLOW_DEFINITIONS[0], model="dat.Application")
+
+        with self.assertRaisesRegex(WorkflowConfigurationError, "already bound"):
+            sync_workflow_definitions((modified,))
+
+        workflow.refresh_from_db()
+        self.assertEqual(workflow.content_type, original_content_type)
+        self.assertEqual(workflow.active_version, original_version)
+
+
+class WorkflowEngineTests(TestCase):
+    def setUp(self):
+        self.roles = {slug: create_role(slug, name) for slug, name in ROLE_FIXTURES.items()}
+        sync_workflow_definitions()
+        self.owner = get_user_model().objects.create_user(username="engine-owner", password="pwd")
+        self.reviewer = get_user_model().objects.create_user(username="engine-reviewer", password="pwd")
+        self.application = Application.objects.create(
+            code="engine-app",
+            name="Engine app",
+            business_direction=get_default_business_direction(),
+        )
+        self.dat = DAT.objects.create(
+            reference="DAT-ENGINE-1",
+            title="Engine",
+            application=self.application,
+            owner=self.owner,
+        )
+        DATParticipant.objects.create(
+            dat=self.dat,
+            role=self.roles["architecte-referent"],
+            user=self.reviewer,
+        )
+
+    @staticmethod
+    def _status_map(*, validated: bool, responsible_validated: bool = False):
+        return {
+            "architecture": {
+                "has_status": True,
+                "value": "valide" if validated else "en_cours",
+                "responsable_value": "valide" if responsible_validated else "en_cours",
+            }
+        }
+
+    def test_automatic_and_human_transitions_use_engine_and_project_legacy_status(self):
+        draft = ensure_workflow_instance(self.dat)
+        self.assertEqual(draft.current_state, "nouvelle_demande")
+
+        progress = transition_workflow(
+            self.dat,
+            "sections_changed",
+            self.owner,
+            context={"status_map": self._status_map(validated=False), "force_in_progress": True},
+            strict=False,
+        )
+        self.assertTrue(progress.changed)
+        self.assertEqual(progress.to_state, "en_cours")
+
+        review = transition_workflow(
+            self.dat,
+            "sections_changed",
+            self.owner,
+            context={"status_map": self._status_map(validated=True)},
+            strict=False,
+        )
+        self.assertEqual(review.to_state, "en_attente_de_revue")
+        self.assertTrue(workflow_can(self.dat, "approve", self.reviewer))
+
+        approved = transition_workflow(self.dat, "approve", self.reviewer)
+        self.dat.refresh_from_db()
+        self.assertEqual(approved.to_state, "valider")
+        self.assertEqual(self.dat.status, "valider")
+        self.assertTrue(workflow_has_capability(self.dat, "terminal"))
+        self.assertEqual(WorkflowTransitionEvent.objects.filter(instance=approved.instance).count(), 3)
 
 
 class WorkflowBoardViewTests(TestCase):
@@ -178,6 +417,55 @@ class WorkflowBoardViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, "Passer a l'etape suivante")
 
+    def test_board_enriches_only_current_page(self):
+        DAT.objects.bulk_create(
+            [
+                DAT(
+                    reference=f"DAT-PAGINATION-{index:02d}",
+                    title=f"Pagination {index:02d}",
+                    status=DATStatus.NOUVELLE_DEMANDE,
+                    application=self.application,
+                    business_direction=self.business_direction,
+                    owner=self.user,
+                )
+                for index in range(30)
+            ]
+        )
+
+        response = self.client.get(reverse("workflows:board"), {"page": 2})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["paginator"].count, 30)
+        self.assertEqual(response.context["page_obj"].number, 2)
+        rendered_items = sum(
+            (column["items"] for column in response.context["columns"]),
+            [],
+        )
+        self.assertEqual(len(rendered_items), 5)
+        self.assertContains(response, "Page 2 sur 2")
+
+    def test_my_tasks_board_uses_same_server_side_pagination(self):
+        DAT.objects.bulk_create(
+            [
+                DAT(
+                    reference=f"DAT-TASK-PAGINATION-{index:02d}",
+                    title=f"Task pagination {index:02d}",
+                    status=DATStatus.NOUVELLE_DEMANDE,
+                    application=self.application,
+                    business_direction=self.business_direction,
+                    owner=self.user,
+                )
+                for index in range(30)
+            ]
+        )
+
+        response = self.client.get(reverse("workflows:my_tasks"), {"page": 2})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["paginator"].count, 30)
+        self.assertEqual(response.context["page_obj"].number, 2)
+        self.assertContains(response, "Page 2 sur 2")
+
 
 class WorkflowNotificationsViewTests(TestCase):
     def setUp(self):
@@ -305,6 +593,31 @@ class WorkflowNotificationsViewTests(TestCase):
 
         self.user_notification.refresh_from_db()
         self.assertIsNotNone(self.user_notification.viewed_at)
+
+    def test_notifications_are_paginated_across_both_sources(self):
+        UserNotification.objects.bulk_create(
+            [
+                UserNotification(
+                    user=self.user,
+                    notification_type=self.notification_type,
+                    notification_message=self.notification_message,
+                    dat=self.dat,
+                )
+                for _index in range(30)
+            ]
+        )
+
+        first_page = self.client.get(reverse("workflows:notifications"))
+        second_page = self.client.get(reverse("workflows:notifications"), {"page": 2})
+
+        self.assertEqual(first_page.status_code, 200)
+        self.assertEqual(second_page.status_code, 200)
+        self.assertEqual(len(first_page.context["notifications"]), 25)
+        self.assertEqual(second_page.context["page_obj"].number, 2)
+        self.assertLessEqual(len(second_page.context["notifications"]), 25)
+        self.assertContains(second_page, "Page 2 sur 2")
+
+
 def get_default_business_direction():
     direction, _ = BusinessDirection.objects.get_or_create(
         slug="direction-metier-test",

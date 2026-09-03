@@ -20,6 +20,7 @@ from django.utils.module_loading import import_string
 from diagrams.models import DrawIODiagram, LikeC4Diagram, likec4_png_path_for
 from cintafactory.storage.seaweedfs_storage import SeaweedFSStorage
 from cintafactory.url_safety import is_http_url
+from workflows.services import workflow_state, workflow_state_label
 
 from .models import (
     DAT,
@@ -27,7 +28,6 @@ from .models import (
     DATPartEntry,
     DATPartEntryType,
     DATSection,
-    DATStatus,
     DATSubSection,
 )
 from .sections import sync_dat_sections_if_needed
@@ -91,18 +91,25 @@ class DATExportModelBuilder:
         return payload
 
     def build_dat_metadata(self, dat: DAT) -> Dict[str, Any]:
+        state = workflow_state(dat)
+        self._workflow_status_labels = {state: workflow_state_label(dat)}
         return {
             "id": self._serialize_id(dat.pk),
             "reference": dat.reference,
             "title": dat.title,
             "description": dat.description,
-            "status": dat.status,
-            "status_label": self.get_status_label(dat.status),
+            "status": state,
+            "status_label": self.get_status_label(state),
             "created_at": isoformat_datetime(dat.created_at),
             "created_at_display": localize_datetime(dat.created_at),
             "updated_at": isoformat_datetime(dat.updated_at),
             "updated_at_display": localize_datetime(dat.updated_at),
         }
+
+    def get_status_label(self, status: str | None) -> str | None:
+        if not status:
+            return None
+        return getattr(self, "_workflow_status_labels", {}).get(status, status)
 
     def build_application(self, dat: DAT) -> Dict[str, Any] | None:
         application = getattr(dat, "application", None)
@@ -114,14 +121,6 @@ class DATExportModelBuilder:
             "name": application.name,
             "description": application.description,
         }
-
-    def get_status_label(self, status: str | None) -> str | None:
-        if not status:
-            return None
-        try:
-            return DATStatus(status).label
-        except ValueError:
-            return status
 
     def build_participants(self, dat: DAT) -> List[Dict[str, Any]]:
         participants = []

@@ -1,10 +1,11 @@
 const http = require('http');
 const { chmod, lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } = require('fs').promises;
-const { createHash } = require('crypto');
+const { createHash, timingSafeEqual } = require('crypto');
 const { dirname, join, posix, relative, resolve, sep } = require('path');
 const { spawn } = require('child_process');
 const { URL } = require('url');
 const { tmpdir } = require('os');
+const { seaweedAuthHeaders } = require('./seaweedfs_auth');
 
 const EXPORT_HOST = process.env.LIKEC4_EXPORT_HOST || '0.0.0.0';
 const EXPORT_PORT = Number.parseInt(process.env.LIKEC4_EXPORT_PORT || '9000', 10);
@@ -36,8 +37,8 @@ const stripBoundarySlashes = (value) => {
 const SEAWEEDFS_FILER_URL = stripTrailingSlashes(process.env.SEAWEEDFS_FILER_URL);
 const SEAWEEDFS_BASE_DIR = stripBoundarySlashes(process.env.SEAWEEDFS_BASE_DIR);
 const LIKEC4_METADATA_URL = process.env.LIKEC4_METADATA_URL || '';
-const LIKEC4_METADATA_TOKEN = process.env.LIKEC4_METADATA_TOKEN || 'dev_token_idHaf';
-const LIKEC4_API_TOKEN = (process.env.LIKEC4_API_TOKEN || 'dev_likec4_api_token_change_me').trim();
+const LIKEC4_METADATA_TOKEN = (process.env.LIKEC4_METADATA_TOKEN || '').trim();
+const LIKEC4_API_TOKEN = (process.env.LIKEC4_API_TOKEN || '').trim();
 const EXPORT_ROOT = stripTrailingSlashes(process.env.LIKEC4_EXPORT_TMP || '');
 const LOCAL_EXPORT_DIR = stripTrailingSlashes(process.env.LIKEC4_EXPORT_LOCAL_DIR || '/var/likec4-exports');
 const EXPORT_FORMAT = process.env.LIKEC4_EXPORT_FORMAT || 'png';
@@ -138,9 +139,14 @@ const buildSeaweedUrl = (path) => {
   return `${SEAWEEDFS_FILER_URL}/${encodeSeaweedPath(cleaned)}`;
 };
 
+const seaweedPath = (path) => {
+  const clean = stripLeadingSlashes(path);
+  return SEAWEEDFS_BASE_DIR ? `${SEAWEEDFS_BASE_DIR}/${clean}` : clean;
+};
+
 const readFromSeaweed = async (path) => {
   const url = buildSeaweedUrl(path);
-  const response = await fetch(url, { method: 'GET' });
+  const response = await fetch(url, { method: 'GET', headers: seaweedAuthHeaders(seaweedPath(path), 'GET') });
   if (response.status === 404) {
     throw new Error(`SeaweedFS file not found: ${path}`);
   }
@@ -152,7 +158,7 @@ const readFromSeaweed = async (path) => {
 
 const headFromSeaweed = async (path) => {
   const url = buildSeaweedUrl(path);
-  const response = await fetch(url, { method: 'HEAD' });
+  const response = await fetch(url, { method: 'HEAD', headers: seaweedAuthHeaders(seaweedPath(path), 'HEAD') });
   if (response.status === 404) {
     throw new Error(`SeaweedFS file not found: ${path}`);
   }
@@ -170,6 +176,7 @@ const writeToSeaweed = async (path, buffer, contentType) => {
   const response = await fetch(url, {
     method: 'PUT',
     headers: {
+      ...seaweedAuthHeaders(seaweedPath(path), 'PUT'),
       'Content-Type': contentType,
       'Content-Length': String(buffer.length),
     },
@@ -348,7 +355,6 @@ const postMetadata = async ({ filePath, size, contentType, pngPath, pngSize, png
   };
   if (LIKEC4_METADATA_TOKEN) {
     headers['X-LikeC4-Token'] = LIKEC4_METADATA_TOKEN;
-    payload.token = LIKEC4_METADATA_TOKEN;
   }
   if (Array.isArray(pngPaths) && pngPaths.length) {
     payload.png_paths = pngPaths;
@@ -530,13 +536,19 @@ const getAuthToken = (req) => {
   return '';
 };
 
+const tokensMatch = (provided, expected) => {
+  const providedDigest = createHash('sha256').update(String(provided || ''), 'utf8').digest();
+  const expectedDigest = createHash('sha256').update(String(expected || ''), 'utf8').digest();
+  return timingSafeEqual(providedDigest, expectedDigest);
+};
+
 const requireApiAuth = (req, res) => {
   if (!LIKEC4_API_TOKEN) {
     sendJson(res, 500, { ok: false, error: 'Server not configured' });
     return false;
   }
   const provided = getAuthToken(req);
-  if (!provided || provided !== LIKEC4_API_TOKEN) {
+  if (!provided || !tokensMatch(provided, LIKEC4_API_TOKEN)) {
     sendJson(res, 401, { ok: false, error: 'Unauthorized' });
     return false;
   }

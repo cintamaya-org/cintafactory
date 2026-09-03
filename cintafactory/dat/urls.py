@@ -10,6 +10,7 @@ urlpatterns = [
 
     # Main "My DAT" list
     path("my/", views.DatList.as_view(), name="my_list"),
+    path("my/application-options/", views.my_application_options, name="my_application_options"),
     path("my/applications/", views.MyApplicationListView.as_view(), name="my_applications"),
     path("my/<uuid:pk>/", views.DatDetail.as_view(), name="my_detail"),
     path(

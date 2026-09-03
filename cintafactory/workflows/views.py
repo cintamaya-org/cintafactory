@@ -2,24 +2,33 @@ from __future__ import annotations
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.paginator import Paginator
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 from django.utils.functional import cached_property
 from django.views.generic import TemplateView
 
-from dat.models import DATStatus, DATHistoryAction
+from dat.models import DATHistoryAction
 from dat.permissions import filter_dat_queryset_for_user
-from dat.views import get_current_responsibles, get_next_status, user_can_progress_dat
 
 from .models import Workflow
+from .services import (
+    bind_workflow_instances,
+    workflow_actor_has_any_state_permission,
+    workflow_has_capability,
+    workflow_state_metadata,
+)
 from .notifications import (
-    DEFAULT_NOTIFICATION_LIMIT,
     fetch_notifications_for_user,
+    get_unread_notification_count,
     get_seen_notification_ids,
     mark_all_notifications_as_seen,
     mark_notifications_as_seen,
     mark_user_notifications_as_viewed,
+    notification_count_for_user,
 )
+
+from cintafactory.pagination import DEFAULT_PAGE_SIZE
 
 
 class WorkflowOverviewView(LoginRequiredMixin, TemplateView):
@@ -33,11 +42,7 @@ class WorkflowBoardView(LoginRequiredMixin, TemplateView):
 
     template_name = "workflows/board.html"
     workflow_code = "dat-validation"
-    initial_status = DATStatus.NOUVELLE_DEMANDE
-    completed_statuses = {
-        DATStatus.VALIDER,
-        DATStatus.REFUSE,
-    }
+    paginate_by = DEFAULT_PAGE_SIZE
     column_titles = {
         "initial": "Nouveau besoin",
         "in_progress": "Projets en cours",
@@ -48,7 +53,7 @@ class WorkflowBoardView(LoginRequiredMixin, TemplateView):
     def workflow(self) -> Workflow:
         queryset = (
             Workflow.objects.filter(code=self.workflow_code, is_active=True)
-            .select_related("content_type")
+            .select_related("content_type", "active_version")
             .prefetch_related(
                 "steps__permissions__role",
                 "steps__permissions__user",
@@ -77,7 +82,7 @@ class WorkflowBoardView(LoginRequiredMixin, TemplateView):
     def _build_column(self, *, key, states, step_by_state, dat_items):
         steps = [step_by_state[state] for state in states if state in step_by_state]
         status_codes = [step.state for step in steps]
-        items = [dat for dat in dat_items if dat.status in status_codes] if status_codes else []
+        items = [dat for dat in dat_items if dat.workflow_lane == key]
         description = steps[0].description if len(steps) == 1 else ""
         return {
             "key": key,
@@ -98,11 +103,7 @@ class WorkflowBoardView(LoginRequiredMixin, TemplateView):
         field_names = {
             field.name for field in model._meta.get_fields() if not field.many_to_many
         }
-        order_by = "-updated_at" if "updated_at" in field_names else "-pk"
-        dat_queryset = model.objects.all().order_by(order_by)
-        dat_queryset = filter_dat_queryset_for_user(dat_queryset, self.request.user)
-        dat_queryset = dat_queryset.prefetch_related("participants__role", "participants__user")
-
+        order_by = ("-updated_at", "-pk") if "updated_at" in field_names else ("-pk",)
         relation_field_names = {
             field.name
             for field in model._meta.fields
@@ -110,52 +111,27 @@ class WorkflowBoardView(LoginRequiredMixin, TemplateView):
             and not field.many_to_many
             and field.related_model is not None
         }
-        if "owner" in relation_field_names:
-            dat_queryset = dat_queryset.select_related("owner")
+        related_fields = [
+            field_name
+            for field_name in ("owner", "application")
+            if field_name in relation_field_names
+        ]
+        dat_queryset = model.objects.all().order_by(*order_by)
+        dat_queryset = filter_dat_queryset_for_user(dat_queryset, self.request.user)
+        if related_fields:
+            dat_queryset = dat_queryset.select_related(*related_fields)
+        paginator = Paginator(dat_queryset, self.paginate_by)
+        page_obj = paginator.get_page(self.request.GET.get("page"))
+        self.paginator = paginator
+        self.page_obj = page_obj
 
-        dat_items = list(dat_queryset)
+        dat_items = list(page_obj.object_list)
+        bind_workflow_instances(dat_items, workflow_code=self.workflow_code)
 
         for dat in dat_items:
-            dat.can_progress = user_can_progress_dat(dat, self.request.user)
-            next_status = get_next_status(dat.status)
-            dat.next_status = next_status
-            if next_status:
-                try:
-                    dat.next_status_label = DATStatus(next_status).label
-                except ValueError:
-                    dat.next_status_label = ""
-            else:
-                dat.next_status_label = ""
-            responsibles = get_current_responsibles(dat)
-            dat.current_responsibles = responsibles
-            assigned_labels = [
-                item["user_display"] for item in responsibles if item["is_assigned"]
-            ]
-            missing_roles = [
-                item["role_label"] for item in responsibles if not item["is_assigned"]
-            ]
-            if assigned_labels:
-                dat.current_responsibles_display = ", ".join(assigned_labels)
-            else:
-                dat.current_responsibles_display = ""
-            dat.current_responsibles_missing = missing_roles
+            metadata = workflow_state_metadata(dat, workflow_code=self.workflow_code)
+            dat.workflow_lane = metadata.get("lane", "in_progress")
 
-        if "application" in relation_field_names and dat_items:
-            application_field = model._meta.get_field("application")
-            attname = application_field.attname  # application_id
-            related_model = application_field.remote_field.model
-            application_ids = {
-                getattr(dat, attname)
-                for dat in dat_items
-                if getattr(dat, attname) is not None
-            }
-            if application_ids:
-                applications = related_model.objects.in_bulk(application_ids)
-                cache_attr = f"_{application_field.name}_cache"
-                for dat in dat_items:
-                    app_id = getattr(dat, attname)
-                    if app_id is not None:
-                        setattr(dat, cache_attr, applications.get(app_id))
         return dat_items
 
     def get_columns(self):
@@ -163,12 +139,16 @@ class WorkflowBoardView(LoginRequiredMixin, TemplateView):
         steps = list(self.workflow.steps.all())
         step_by_state = {step.state: step for step in steps}
 
-        initial_states = [self.initial_status] if self.initial_status in step_by_state else []
-        completed_states = [
-            step.state for step in steps if step.state in self.completed_statuses
+        active_spec = self.workflow.active_version.specification if self.workflow.active_version else {}
+        state_lanes = {
+            item.get("status"): item.get("lane", "in_progress")
+            for item in active_spec.get("steps", [])
+        }
+        initial_states = [step.state for step in steps if state_lanes.get(step.state) == "initial"]
+        in_progress_states = [
+            step.state for step in steps if state_lanes.get(step.state) == "in_progress"
         ]
-        excluded_states = set(initial_states + completed_states)
-        in_progress_states = [step.state for step in steps if step.state not in excluded_states]
+        completed_states = [step.state for step in steps if state_lanes.get(step.state) == "completed"]
 
         return [
             self._build_column(
@@ -206,6 +186,12 @@ class WorkflowBoardView(LoginRequiredMixin, TemplateView):
                 "workflow": self.workflow,
                 "columns": self.get_columns(),
                 "all_statuses": status_choices,
+                "paginator": getattr(self, "paginator", None),
+                "page_obj": getattr(self, "page_obj", None),
+                "is_paginated": bool(
+                    getattr(self, "paginator", None)
+                    and self.paginator.num_pages > 1
+                ),
             }
         )
         return context
@@ -215,7 +201,7 @@ class WorkflowNotificationsView(LoginRequiredMixin, TemplateView):
     """Timeline-like view listing history events relevant to the connected user."""
 
     template_name = "workflows/notifications.html"
-    notification_limit = DEFAULT_NOTIFICATION_LIMIT
+    notification_limit = DEFAULT_PAGE_SIZE
 
     def post(self, request, *args, **kwargs):
         if request.POST.get("mark_all") == "1":
@@ -223,10 +209,11 @@ class WorkflowNotificationsView(LoginRequiredMixin, TemplateView):
             messages.success(request, "Toutes les notifications ont ete marquees comme lues.")
         return redirect("workflows:notifications")
 
-    def get_notifications(self):
+    def get_notifications(self, *, offset=0):
         entries = fetch_notifications_for_user(
             self.request.user,
             limit=self.notification_limit,
+            offset=offset,
             with_related=True,
         )
         history_ids = [entry.history.id for entry in entries if entry.history is not None]
@@ -299,13 +286,18 @@ class WorkflowNotificationsView(LoginRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        notifications = self.get_notifications()
-        unread_count = sum(1 for entry in notifications if entry.get("is_unread", False))
+        total = notification_count_for_user(self.request.user)
+        paginator = Paginator(range(total), self.notification_limit)
+        page_obj = paginator.get_page(self.request.GET.get("page"))
+        notifications = self.get_notifications(offset=page_obj.start_index() - 1)
         context.update(
             {
                 "notifications": notifications,
                 "history_actions": DATHistoryAction,
-                "notifications_unread_count": unread_count,
+                "notifications_unread_count": get_unread_notification_count(self.request),
+                "paginator": paginator,
+                "page_obj": page_obj,
+                "is_paginated": paginator.num_pages > 1,
                 "current_module": None,
             }
         )
@@ -333,39 +325,9 @@ class MyTasksBoardView(WorkflowBoardView):
         ),
     }
 
-    def _step_has_user_write_access(self, step):
-        user = self.request.user
-        user_id = getattr(user, "id", None)
-        role_id = getattr(getattr(user, "role", None), "id", None)
-        if user_id is None and role_id is None:
-            return False
-        for permission in step.write_permissions.all():
-            if permission.user_id == user_id:
-                return True
-            if role_id and permission.role_id == role_id:
-                return True
-        return False
-
     def get_columns(self):
-        steps = list(self.workflow.steps.all())
-        if not steps:
+        if self.workflow.active_version_id is None:
             return []
-
-        step_indices = {step.state: index for index, step in enumerate(steps)}
-
-        user_step_indices = [
-            index for index, step in enumerate(steps) if self._step_has_user_write_access(step)
-        ]
-        user_step_indices.sort()
-        user_step_index_set = set(user_step_indices)
-
-        validation_statuses = {
-            DATStatus.EN_ATTENTE_DE_REVUE,
-        }
-        final_statuses = {
-            DATStatus.VALIDER,
-            DATStatus.REFUSE,
-        }
 
         columns = {
             "blocked": [],
@@ -374,32 +336,21 @@ class MyTasksBoardView(WorkflowBoardView):
         }
 
         dat_items = self.get_dat_items()
-        if not user_step_indices:
-            # user has no assigned steps; return empty columns
-            pass
-        else:
-            for dat in dat_items:
-                current_index = step_indices.get(dat.status)
-                if current_index is None:
-                    continue
+        for dat in dat_items:
+            if not workflow_actor_has_any_state_permission(
+                dat,
+                self.request.user,
+                workflow_code=self.workflow_code,
+            ):
+                continue
+            if workflow_has_capability(dat, "terminal", workflow_code=self.workflow_code):
+                # Nothing to do once workflow reaches terminal capability.
+                continue
+            if workflow_has_capability(dat, "reviewable", workflow_code=self.workflow_code):
+                columns["validation"].append(dat)
+                continue
 
-                if dat.status in final_statuses:
-                    # Nothing to do once the DAT is accepted or refused.
-                    continue
-
-                has_future_assignment = any(idx > current_index for idx in user_step_indices)
-                has_past_assignment = any(idx < current_index for idx in user_step_indices)
-                is_current_step = current_index in user_step_index_set
-
-                if not (has_future_assignment or has_past_assignment or is_current_step):
-                    # Skip DAT items unrelated to the user's responsibilities.
-                    continue
-
-                if dat.status in validation_statuses:
-                    columns["validation"].append(dat)
-                    continue
-
-                columns["in_progress"].append(dat)
+            columns["in_progress"].append(dat)
 
         ordered_keys = ["blocked", "in_progress", "validation"]
         return [

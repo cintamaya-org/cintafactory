@@ -17,9 +17,9 @@ from .constants import (
     DAT_PORTEUR_ROLE_SLUG,
     DAT_REQUIRED_PARTICIPANT_ROLE_LABELS,
     DAT_REQUIRED_PARTICIPANT_ROLE_SLUGS,
-    DAT_STATUS_REQUIRED_ROLES,
 )
-from .models import DAT, DATParticipant, DATPart, DATPartEntryType, DATSubSection, DATStatus
+from .models import DAT, DATParticipant, DATPart, DATPartEntryType, DATSubSection
+from workflows.services import workflow_initial_state, workflow_permission_roles_for_state
 
 
 class RepeatableTableWidget(forms.Widget):
@@ -193,8 +193,8 @@ class DATForm(forms.ModelForm):
     def _determine_required_roles(self) -> Set[str]:
         current_status = getattr(self.instance, "status", None)
         if not current_status:
-            current_status = DATStatus.NOUVELLE_DEMANDE
-        required = set(DAT_STATUS_REQUIRED_ROLES.get(current_status, ()))
+            current_status = workflow_initial_state()
+        required = set(workflow_permission_roles_for_state(current_status))
         required.add(DAT_PORTEUR_ROLE_SLUG)
         return required
 
@@ -344,7 +344,8 @@ class DATForm(forms.ModelForm):
                 instance.owner = porteur_user
             elif self.user is not None:
                 instance.owner = self.user
-            instance.status = DATStatus.NOUVELLE_DEMANDE
+            instance.status = workflow_initial_state()
+            instance._workflow_initial_state = instance.status  # type: ignore[attr-defined]
         else:
             if porteur_user is not None and porteur_user != instance.owner:
                 instance.owner = porteur_user

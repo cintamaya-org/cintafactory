@@ -7,14 +7,14 @@ Date : 21/10/2025
 ---
 
 ## Objectif  
-Ces normes vise à :  
+Ces normes visent à :  
 - garantir la lisibilité, la cohérence et la maintenabilité du code source ;  
 - faciliter la compréhension du code et réduire les erreurs de compréhension ou de mauvais usage.
 
 ---
 
 ## Conventions générales  
-1. Tous les identifiants (variables, fonctions, classes, constantes, modules…) doivent suivre le même style du sein du projet.  
+1. Tous les identifiants (variables, fonctions, classes, constantes, modules…) doivent suivre le même style au sein du projet.  
 2. Tous les identifiants doivent être nommés en **anglais**, sauf dans les cas où l’usage de l’anglais **n’a pas de sens** pour l’objectif de l’application ou le domaine métier.  
   - Pour les acronymes ou abréviations métier ou techniques bien établis, le nom **doit être en majuscules** et clairement documenté.  
   - Exemple : `DAT` pour « Dossier d’Architecture Technique ».  
@@ -68,7 +68,6 @@ Ces normes vise à :
 
 Django Naming conventions
 
-## REUSE Strandard
+## REUSE Standard
 
 TODO
-
