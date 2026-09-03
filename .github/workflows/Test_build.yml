@@ -5,9 +5,9 @@ on:
   push:
     branches:
       - main
+      - dev
     tags:
       - 'v*.*.*'
-
 # Variables d'environnement
 env:
   REGISTRY: ghcr.io
