@@ -20,7 +20,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16-alpine@sha256:a69cefa2b52ec1d440ad88dcba38bf4ff432328135017e2cc45bfe428e219fb0 # version figée
+        image: postgres:16-alpine
         env:
           POSTGRES_DB: cintafactory_test_db
           POSTGRES_USER: cintafactory_user
