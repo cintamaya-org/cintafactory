@@ -42,7 +42,7 @@ jobs:
 
       # astral-sh/setup-uv@v5.1.0
       - name: Install uv
-        uses: astral-sh/setup-uv@1edb512b7c9a41153972952ba6e638591818804c
+        uses: astral-sh/setup-uv@f94e3d4e8e11718612a219a1a2d4174473370f9d
         with:
           enable-cache: true
 
