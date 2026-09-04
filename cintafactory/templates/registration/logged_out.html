@@ -1,0 +1,39 @@
+{% extends "material/frontend/base.html" %}
+{% load static i18n %}
+
+{% block title %}{% trans "Déconnexion" %}{% endblock %}
+
+{% block css %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'css/login.css' %}">
+{% endblock css %}
+
+{% block bodyclass %}login-body{% endblock %}
+
+{% block extrahead %}
+    {{ block.super }}
+{% endblock %}
+
+{% block body %}
+    <div class="login-page">
+        <section class="login-page__form">
+            <div class="login-card cinta-card cinta-card--narrow">
+                <h1 class="login-card__title">{% trans "Déconnexion" %}</h1>
+                <p class="login-card__subtitle">
+                    {% trans "Merci pour votre visite. Vous pouvez vous reconnecter à tout moment pour reprendre vos dossiers." %}
+                </p>
+
+                <form method="get" action="{% url 'login' %}" class="login-form" novalidate>
+                    <div class="input-field login-form__actions">
+                        <button type="submit" class="btn waves-effect waves-light cinta-btn-primary cinta-btn-primary--block">
+                            {% trans "Revenir à la page de connexion" %}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </section>
+        <aside class="login-page__illustration">
+            <img src="{% static 'imgs/cintamata_logo_typogramme_signature.png' %}" alt="{% trans 'Logo CINTAMATA' %}">
+        </aside>
+    </div>
+{% endblock %}

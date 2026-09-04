@@ -1,0 +1,74 @@
+{% load dat_extras %}
+{% if cell %}
+  {% diagram_links cell as drawio %}
+{% endif %}
+{% if not drawio and row %}
+  {% with diagram_key=column.key|add:"_diagram" %}
+    {% with diagram_payload=row|get_item:diagram_key|default:row|get_item:"drawio_diagram" %}
+      {% diagram_links diagram_payload as drawio %}
+    {% endwith %}
+  {% endwith %}
+{% endif %}
+{% if drawio %}
+  <div class="u-flex u-flex-wrap u-gap-0-5 u-items-center">
+    <span class="chip blue lighten-5 blue-text text-darken-4 u-m-0">
+      {{ drawio.title|default:"Diagramme" }} (#{{ drawio.pk }})
+    </span>
+    <button type="button"
+            class="btn btn-flat waves-effect cinta-btn-secondary dat-drawio-view-button dat-drawio-action-button dat-viewer-trigger"
+            data-diagram-id="{{ drawio.pk }}">
+      <i class="material-icons left" aria-hidden="true">visibility</i>Voir
+    </button>
+    {% if part.can_edit %}
+      {% with allow_import=column.drawio_allow_import|default_if_none:True %}
+      {% if allow_import and part.section_part.slug != "schemas" %}
+        <button type="button"
+                class="btn btn-flat waves-effect cinta-btn-secondary dat-drawio-view-button dat-drawio-action-button dat-viewer-trigger"
+                data-diagram-id="{{ drawio.pk }}"
+                data-import-url="{{ drawio.import_url }}"
+                data-diagram-title="{{ drawio.title|default_if_none:'Diagramme' }}">
+          <i class="material-icons left" aria-hidden="true">file_upload</i>
+          <span class="dat-drawio-button-label">Importer</span>
+        </button>
+      {% endif %}
+      {% endwith %}
+      <button type="button"
+              class="btn btn-flat waves-effect cinta-btn-secondary dat-drawio-export-button dat-drawio-action-button"
+              data-diagram-id="{{ drawio.pk }}"
+              data-export-url="{{ drawio.export_url }}"
+              data-diagram-title="{{ drawio.title|default_if_none:'Diagramme' }}">
+        <i class="material-icons left" aria-hidden="true">file_download</i>Exporter
+      </button>
+    {% endif %}
+  </div>
+{% elif cell %}
+  <span class="chip red lighten-5 red-text text-darken-2">ID de diagramme invalide</span>
+{% elif row and row|get_item:"schema_systeme" == "likec4" %}
+  {% with schema_reference=row|get_item:"schema_reference" %}
+    <div class="u-flex u-flex-wrap u-gap-0-5 u-items-center">
+      <span class="chip teal lighten-5 teal-text text-darken-3">Diagramme LikeC4</span>
+      {% if schema_reference %}
+        {% likec4_png_url schema_reference as likec4_png_url %}
+        {% url "diagrams:likec4_views" as likec4_views_url %}
+        <button type="button"
+                class="btn btn-flat waves-effect cinta-btn-secondary dat-drawio-view-button dat-drawio-action-button dat-viewer-trigger"
+                data-likec4-preview-url="{{ likec4_png_url }}"
+                data-likec4-views-url="{{ likec4_views_url }}?file={{ schema_reference|urlencode }}"
+                data-likec4-title="Diagramme LikeC4">
+          <i class="material-icons left" aria-hidden="true">visibility</i>Voir
+        </button>
+        {% if part.can_edit %}
+          {% url "diagrams:likec4_export" as likec4_export_url %}
+          <button type="button"
+                  class="btn btn-flat waves-effect cinta-btn-secondary dat-drawio-export-button dat-drawio-action-button"
+                  data-export-url="{{ likec4_export_url }}?file={{ schema_reference|urlencode }}"
+                  data-diagram-title="Diagramme LikeC4">
+            <i class="material-icons left" aria-hidden="true">file_download</i>Exporter
+          </button>
+        {% endif %}
+      {% endif %}
+    </div>
+  {% endwith %}
+{% else %}
+  <span class="chip grey lighten-3">Aucun diagramme</span>
+{% endif %}

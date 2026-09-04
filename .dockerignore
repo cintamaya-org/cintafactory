@@ -1,0 +1,44 @@
+# Keep local and sensitive files out of Docker build contexts.
+.git
+.gitignore
+.dockerignore
+
+# Local secrets and environment files.
+.env
+.env.*
+!.env.example
+deploy/env/*.env
+!deploy/env/*.env.example
+cintafactory/conf/
+
+# Local tooling and editor state.
+.codex
+.vscode/
+.idea/
+.sonarlint/
+AGENTS.md
+
+# Python/runtime artifacts.
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pkl
+*.so
+.venv/
+venv/
+env/
+.cache/
+.coverage
+htmlcov/
+pytest_cache/
+
+# Runtime/generated data.
+logs/
+cintafactory/logs/
+media/
+staticfiles/
+db.sqlite3
+db_old.sqlite3
+tmp/
+params_dev/

@@ -1,0 +1,10 @@
+<label class="material-radio-option">
+  <input type="radio"
+         name="{{ widget.name }}"
+         value="{{ widget.value }}"
+         {% if widget.attrs.id %}id="{{ widget.attrs.id }}{% if widget.index %}_{{ widget.index }}{% endif %}"{% endif %}
+         class="with-gap"
+         {% if widget.selected %}checked{% endif %}
+         {% include "django/forms/widgets/attrs.html" %}>
+  <span class="material-radio-option__label">{{ widget.label }}</span>
+</label>

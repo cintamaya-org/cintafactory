@@ -1,0 +1,208 @@
+{% load dat_extras %}
+{% with drawio_table_id="drawio-table-"|add:container_section.metadata.slug|add:"-"|add:part.section_part.slug %}
+<div class="section dat-sub-section" data-sub-section-slug="{{ part.section_part.slug }}" id="sub-section-{{ part.section_part.slug }}">
+  <div class="dat-sub-section__header">
+    <div class="dat-sub-section__header-body">
+      {% with part_icon=container_section.metadata.slug|section_part_icon:part.section_part.slug %}
+      <h6 class="dat-sub-section__title">
+        {% if part_icon %}
+          <span class="{{ part_icon.variant }} dat-section-part-icon" aria-hidden="true">{{ part_icon.name }}</span>
+        {% endif %}
+        {{ part.section_part.title }}
+        {% with tooltip_text=container_section.metadata.slug|section_part_tooltip:part.section_part.slug %}
+          {% if tooltip_text %}
+            <span
+              class="workflow-card__tooltip-trigger wf-tooltip-trigger"
+              data-tooltip="{{ tooltip_text|striptags }}"
+              aria-label="Details"
+            >
+              ?
+            </span>
+          {% endif %}
+        {% endwith %}
+      </h6>
+      {% endwith %}
+      {% if part.section_part.description %}
+        <p class="dat-sub-section__description">{{ part.section_part.description }}</p>
+      {% endif %}
+    </div>
+    {% if part.can_edit or part.has_drawio_table %}
+      <div class="dat-sub-section__actions">
+        {% if part.can_edit %}
+          <a
+            href="{% url 'dat:sub_section_edit' dat.pk container_section.metadata.slug part.section_part.slug %}"
+            class="btn waves-effect waves-light cinta-btn-primary dat-subsection-edit-btn"
+            data-edit-url="{% url 'dat:sub_section_edit' dat.pk container_section.metadata.slug part.section_part.slug %}"
+            data-sub-section-slug="{{ part.section_part.slug }}"
+            data-sub-section-title="{{ part.section_part.title }}"
+          >
+            <i class="material-icons left" aria-hidden="true">edit</i>
+            Modifier
+          </a>
+          {% if container_section.metadata.slug == "architecture" and part.section_part.slug == "schemas" %}
+            <button type="button"
+                    class="btn waves-effect waves-light cinta-btn-primary dat-schema-parse-trigger"
+                    data-parse-url="{% url 'dat:schema_parse_diagram' dat.pk %}">
+              <i class="material-icons left" aria-hidden="true">auto_fix_high</i>
+              Génération des Flux & Briques
+            </button>
+          {% endif %}
+        {% endif %}
+        {% if part.has_drawio_table %}
+          <div class="switch dat-subsection-drawio-toggle">
+            <label>
+              <span class="dat-drawio-toggle-label-off"></span>
+              <input
+                type="checkbox"
+                class="dat-drawio-toggle-input"
+                data-drawio-target="{{ drawio_table_id }}"
+                data-show-label="Afficher Miniature"
+                data-hide-label="Cacher Miniature"
+                aria-controls="{{ drawio_table_id }}"
+              >
+              <span class="lever"></span>
+              <span class="dat-drawio-toggle-label-on">Afficher Miniature</span>
+            </label>
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+  {% if part.entries %}
+    <div class="responsive-table" {% if part.has_drawio_table %}id="{{ drawio_table_id }}" data-drawio-table="true"{% endif %}>
+      <table class="highlight">
+        <tbody>
+          {% for entry in part.entries %}
+            {% with value=entry.formatted_value has_drawio_columns=entry.config|dat_has_drawio_columns %}
+              <tr>
+                {% if entry.data_type != "repeater" %}
+                  <th scope="row" class="dat-sub-section__label-col">
+                    {{ entry.label }}
+                    {% if entry.required %}
+                      <span class="chip amber lighten-4 dat-sub-section__chip-spaced">Obligatoire</span>
+                    {% endif %}
+                  </th>
+                {% elif not has_drawio_columns %}
+                  {% if container_section.metadata.slug == "validation" and entry.key == "suivi_sections" %}
+                  {% else %}
+                    <th scope="row" class="dat-sub-section__label-col">
+                      {{ entry.label }}
+                      {% if entry.required %}
+                        <span class="chip amber lighten-4 dat-sub-section__chip-spaced">Obligatoire</span>
+                      {% endif %}
+                    </th>
+                  {% endif %}
+                {% endif %}
+                <td {% if entry.data_type == "repeater" and has_drawio_columns %}colspan="2"{% elif entry.data_type == "repeater" and container_section.metadata.slug == "validation" and entry.key == "suivi_sections" %}colspan="2"{% endif %}>
+                  {% if entry.data_type == "repeater" %}
+                    {% with columns=entry.config|dat_columns %}
+                      {% if value %}
+                        <div class="responsive-table">
+                          <table class="highlight">
+                            <thead>
+                              <tr>
+                                {% for column in columns %}
+                                  <th>{{ column.label }}</th>
+                                {% endfor %}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {% for row in value %}
+                                <tr>
+                                  {% for column in columns %}
+                                    <td>
+                                      {% with cell=row|get_item:column.key %}
+                                        {% if column.render == "link" %}
+                                          {% if cell %}
+                                            <a href="{{ cell }}" class="btn btn-flat waves-effect cinta-btn-secondary" target="_blank" rel="noopener">
+                                              {% if column.icon %}<i class="material-icons left" aria-hidden="true">{{ column.icon }}</i>{% endif %}
+                                              {{ column.button_label|default:column.label }}
+                                            </a>
+                                          {% else %}
+                                            <span class="chip grey lighten-3">—</span>
+                                          {% endif %}
+                                        {% elif column.render == "drawio_diagram" %}
+                                          {% include "dat/components/drawio_diagram_cell.html" with cell=cell part=part column=column row=row %}
+                                        {% elif container and container_section.metadata.slug == "validation" and entry.key == "suivi_sections" and column.key == "reserve_message" %}
+                                          {% with row_slug=row|get_item:"section_slug" reserve_message=row|get_item:"reserve_message" reserve_by=row|get_item:"reserve_by_display" reserve_by_id=row|get_item:"reserve_by_id" %}
+                                            {% if reserve_message %}
+                                              <p class="u-m-0 u-pre-wrap">{{ reserve_message }}</p>
+                                              <div class="dat-sub-section__reserve-actions">
+                                                <span class="chip grey lighten-3">Par {{ reserve_by|default:"—" }}</span>
+                                                {% if row_slug and container.validation_reserve_clear_allowed_sections and container.validation_reserve_clear_allowed_sections|get_item:row_slug %}
+                                                  <form method="post" action="{% url 'dat:section_reserve_clear' dat.pk row_slug %}" class="dat-sub-section__inline-form">
+                                                    {% csrf_token %}
+                                                    <button type="submit" class="btn btn-flat waves-effect cinta-btn-secondary text-muted-dark">
+                                                      Lever la réserve
+                                                    </button>
+                                                  </form>
+                                                {% endif %}
+                                              </div>
+                                            {% else %}
+                                              <span class="chip grey lighten-3">—</span>
+                                              {% if row_slug and container.validation_reserve_allowed_sections and container.validation_reserve_allowed_sections|get_item:row_slug %}
+                                                <form method="post" action="{% url 'dat:section_reserve' dat.pk row_slug %}" class="dat-reserve-create-form dat-sub-section__inline-form-spaced" data-section-title="{{ row|get_item:'section' }}">
+                                                  {% csrf_token %}
+                                                  <input type="hidden" name="reserve_message" value="">
+                                                  <button type="submit" class="btn btn-flat waves-effect cinta-btn-secondary">
+                                                    Mettre en réserve
+                                                  </button>
+                                                </form>
+                                              {% endif %}
+                                            {% endif %}
+                                          {% endwith %}
+                                        {% elif column.type == "textarea" %}
+                                          <p class="u-m-0 u-pre-wrap">{{ cell|default:"—" }}</p>
+                                        {% else %}
+                                          <span>{{ cell|default:"—" }}</span>
+                                          {% if container and container_section.metadata.slug == "validation" and entry.key == "suivi_sections" and column.key == "statut_responsable" and container.validation_allowed_sections %}
+                                            {% with row_slug=row|get_item:"section_slug" validated_value=container.status_values|get_item:"validated" %}
+                                              {% if row_slug and container.validation_allowed_sections|get_item:row_slug %}
+                                                {% if row|get_item:"statut_responsable" == validated_value %}
+                                                  <span class="chip green lighten-4 dat-sub-section__chip-spaced">Validée</span>
+                                                {% elif row|get_item:"statut" != validated_value %}
+                                                  <span class="chip grey lighten-3 dat-sub-section__chip-spaced">Attente section</span>
+                                                {% else %}
+                                                  <form method="post" action="{% url 'dat:section_responsible_status' dat.pk row_slug %}" class="dat-sub-section__inline-form-spaced">
+                                                    {% csrf_token %}
+                                                    <input type="hidden" name="status" value="{{ validated_value }}">
+                                                    <button type="submit" class="btn waves-effect waves-light cinta-btn-primary dat-sub-section__compact-button">
+                                                      Valider
+                                                    </button>
+                                                  </form>
+                                                {% endif %}
+                                              {% endif %}
+                                            {% endwith %}
+                                          {% endif %}
+                                        {% endif %}
+                                      {% endwith %}
+                                    </td>
+                                  {% endfor %}
+                                </tr>
+                              {% endfor %}
+                            </tbody>
+                          </table>
+                        </div>
+                      {% else %}
+                        <span class="chip grey lighten-3">Aucune ligne</span>
+                      {% endif %}
+                    {% endwith %}
+                  {% elif entry.data_type == "json" %}
+                    <pre class="u-m-0 u-pre-wrap">{{ value }}</pre>
+                  {% elif entry.data_type == "long_text" %}
+                    <p class="u-m-0 u-pre-wrap">{{ value }}</p>
+                  {% else %}
+                    <span>{{ value|default:"—" }}</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endwith %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="u-m-0 text-muted-soft">Aucune donnée pour cette sous-section.</p>
+  {% endif %}
+</div>
+{% endwith %}

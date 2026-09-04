@@ -1,0 +1,59 @@
+{% extends current_module.base_template %}
+{% load static %}
+
+{% block title %}Modifier : {{ diagram.title }}{% endblock %}
+{% block page_title %}Diagrammes{% endblock %}
+{% block bodyclass %}with-sidebar diagram-editor-page{% endblock %}
+
+{% block breadcrumbs_items %}
+<a href="{% url 'diagrams:list' %}">Mes diagrammes</a>
+<a href="{% url 'diagrams:detail' diagram.pk %}">{{ diagram.title }}</a>
+<a class="active">Édition</a>
+{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+{% endblock %}
+
+{% block content %}
+<div class="section diagram-editor__section">
+  <div class="row">
+    <div class="col s12">
+      <div class="card cinta-card">
+        <div class="card-content">
+          <span class="card-title">Modifier : {{ diagram.title }}</span>
+          <p class="grey-text">Les modifications sont automatiquement sauvegardées et un aperçu est généré après chaque enregistrement.</p>
+        </div>
+        <div class="card-content card-content--no-top">
+          <form id="csrfForm">{% csrf_token %}</form>
+          <div id="editor-holder">
+            <div id="drawio-loading">
+              {% include "components/_loading_spinner.html" %}
+            </div>
+            <iframe
+              id="dio"
+              src="{{ drawio_embed_url }}">
+            </iframe>
+          </div>
+          <div class="diagram-editor__actions">
+            <a class="btn-flat waves-effect" href="{% url 'diagrams:detail' diagram.pk %}">
+              <i class="material-icons left">arrow_back</i>Retour
+            </a>
+            <button id="btnSave" class="btn waves-effect waves-light cinta-btn-primary" type="button">
+              <i class="material-icons left">save</i>Enregistrer
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="diagram-editor-config"
+     data-drawio-origin="{{ drawio_origin|escape }}"
+     data-diagram-xml="{{ diagram_xml|default:''|escape }}"
+     data-save-xml-url="{% url 'diagrams:save_xml' diagram.pk %}"
+     data-save-thumb-url="{% url 'diagrams:save_thumbnail' diagram.pk %}"
+     hidden></div>
+<script src="{% static 'js/diagrams_edit.js' %}"></script>
+{% endblock %}

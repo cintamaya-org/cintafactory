@@ -1,0 +1,2 @@
+Custom body for {{ user_display|default:user_email|default:"unknown" }}.
+{% if extra_data.section_title %}Section: {{ extra_data.section_title }}{% endif %}

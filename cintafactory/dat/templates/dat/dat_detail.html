@@ -1,0 +1,408 @@
+{% extends "material/frontend/views/detail.html" %}
+{% load dat_extras static %}
+
+{% block extrahead %}
+{{ block.super }}
+{# SRI is intentionally omitted: Google Fonts CSS is generated per request/user agent. CSP limits this external stylesheet to fonts.googleapis.com and fonts to fonts.gstatic.com. #}
+<link
+  rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24..48,400..700,0..1,-50..200"
+/>
+<script src="{% static 'js/tooltip_utils.js' %}" defer></script>
+<script src="{% static 'js/dat_workflow_diagram.js' %}" defer></script>
+{% endblock %}
+
+{% block left-panel %}
+{% include "dat/components/drawio_viewer_loader.html" %}
+{% with dat=object %}
+<div class="left-panel">
+  <div class="card">
+    <div class="card-content">
+      <div class="u-flex u-flex-col u-gap-0-5">
+        <a href="{% url 'dat:admin_list' %}" class="btn-flat waves-effect dat-section-detail__link">
+          <i class="material-icons left" aria-hidden="true">arrow_back</i>
+          Retour à la liste des DAT
+        </a>
+        <h5 class="dat-section-card__title">
+          <span>{{ dat.reference }}</span>
+          <span class="text-muted-soft">·</span>
+          <span>{{ dat.title }}</span>
+        </h5>
+        <div class="dat-section-card__actions">
+          <span class="chip blue lighten-4" title="Statut actuel">{{ dat.get_status_display }}</span>
+          {% if dat.owner %}
+            <span class="chip grey lighten-3" title="Responsable">{{ dat.owner }}</span>
+          {% endif %}
+        </div>
+        <div class="u-flex u-flex-wrap u-gap-0-75 u-mt-0-5">
+          <a href="#dat-history-modal" class="btn waves-effect waves-light modal-trigger cinta-btn-primary">
+            <i class="material-icons left" aria-hidden="true">history</i>
+            Voir l'historique
+          </a>
+        </div>
+      </div>
+
+      <div class="section u-mt-1-5">
+        <h6 class="u-mt-0">Informations principales</h6>
+        <div class="responsive-table">
+          <table class="highlight dat-info-table">
+            <tbody>
+              <tr>
+                <th scope="row">Application</th>
+                <td>{{ dat.application|default:"—" }}</td>
+              </tr>
+              <tr>
+                <th scope="row">Direction métier</th>
+                <td>{{ dat.business_direction|default:"—" }}</td>
+              </tr>
+              <tr>
+                <th scope="row">Responsable</th>
+                <td>{{ dat.owner|default:"—" }}</td>
+              </tr>
+              <tr>
+                <th scope="row">Créé le</th>
+                <td>{{ dat.created_at|date:"d/m/Y \\à H\\hi" }}</td>
+              </tr>
+              <tr>
+                <th scope="row">Mis à jour le</th>
+                <td>{{ dat.updated_at|date:"d/m/Y \\à H\\hi" }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="section u-mt-1-5">
+        <h6 class="u-mt-0">Description</h6>
+        <p class="u-pre-wrap">{{ dat.description|default:"Aucune description renseignée." }}</p>
+      </div>
+
+      {% if sections_payload %}
+        <div class="section u-mt-1-5">
+          <h6 class="u-mt-0">Sections</h6>
+          <div class="dat-section-card-list">
+            {% for container in sections_payload %}
+              <div class="card" id="section-{{ container.section.metadata.slug }}">
+                <div class="card-content">
+                  <div class="dat-section-card__subsection-header">
+                    <div>
+                      <span class="card-title dat-section-card__title">
+                        <i class="material-icons" aria-hidden="true">view_agenda</i>
+                        {{ container.section.metadata.title }}
+                      </span>
+                      {% if container.section.metadata.description %}
+                        <p class="dat-section-card__subsection-description">{{ container.section.metadata.description }}</p>
+                      {% endif %}
+                    </div>
+                  </div>
+                  <div class="dat-sub-section dat-sub-section--tight">
+                    <h6 class="u-mt-0 u-flex u-items-center u-gap-0-5 text-body">
+                      <i class="material-icons" aria-hidden="true">group</i>
+                      Responsables de la section
+                    </h6>
+                    {% if container.section_responsibles %}
+                      <div class="u-flex u-flex-wrap u-gap-0-5">
+                        {% for responsible in container.section_responsibles %}
+                          <span class="chip green lighten-5">{{ responsible.display }}</span>
+                        {% endfor %}
+                      </div>
+                    {% else %}
+                      <p class="u-m-0 text-muted">Aucun responsable affecté.</p>
+                    {% endif %}
+                  </div>
+                  {% for part in container.parts %}
+                    {% include "dat/partials/dat_sub_section_card.html" with part=part container=container container_section=container.section dat=dat %}
+                  {% endfor %}
+                  {% include "dat/partials/dat_section_attachments.html" with container=container dat=dat %}
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endwith %}
+{% endblock %}
+
+{% block right-panel %}
+<div class="right-panel">
+  {% if participant_overview %}
+  <div class="card">
+    <div class="card-content">
+      <span class="card-title dat-section-card__title">
+        <i class="material-icons" aria-hidden="true">group</i>
+        Participants
+      </span>
+      {% if current_responsibles %}
+        <p class="u-mt-0-5 u-mb-0-5 text-body">
+          Validation actuelle :
+          {% for item in current_responsibles %}
+            <strong>{{ item.role_label }}</strong>
+            {% if item.is_assigned %}
+              &nbsp;→ {{ item.user_display }}
+            {% else %}
+              &nbsp;→ <span class="text-danger">Non affecte</span>
+            {% endif %}
+            {% if not forloop.last %}&nbsp;| {% endif %}
+          {% endfor %}
+        </p>
+      {% endif %}
+      <div class="responsive-table dat-section-card__table">
+        <table class="highlight">
+          <thead>
+            <tr>
+              <th>Role</th>
+              <th>Utilisateur</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in participant_overview %}
+              <tr>
+                <th scope="row">{{ item.role_label }}</th>
+                <td>
+                  {% if item.user %}
+                    {{ item.user_display }}
+                    {% if item.is_responsible %}
+                      <span class="chip green lighten-4 u-ml-0-5" title="Acteur attendu">Responsable</span>
+                    {% endif %}
+                  {% else %}
+                    <span class="chip red lighten-4" title="Affectation requise">Non affecte</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+<div id="dat-history-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="dat-history-modal-title">
+  <div class="modal-content dat-section-card__modal-content">
+    <h5 id="dat-history-modal-title" class="dat-section-card__modal-header">
+      <i class="material-icons" aria-hidden="true">history</i>
+      Historique du dossier
+    </h5>
+    {% if history_entries %}
+      <div class="responsive-table dat-section-history-table">
+        <table class="highlight">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Action</th>
+              <th>Utilisateur</th>
+              <th>Détails</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for entry in history_entries %}
+              <tr>
+                <td>{{ entry.performed_at|date:"d/m/Y" }} à {{ entry.performed_at|time:"H\\hi" }}</td>
+                <td>{{ entry.get_action_display }}</td>
+                <td>{{ entry.actor_name }}</td>
+                <td>
+                    {% if entry.action == history_actions.STATUS_CHANGED %}
+                      Passage de <strong>{{ entry.details.from|default:"-" }}</strong> à <strong>{{ entry.details.to|default:"-" }}</strong>.
+                    {% elif entry.action == history_actions.OWNER_CHANGED %}
+                      Responsable : <strong>{{ entry.details.from_username|default:"-" }}</strong> -> <strong>{{ entry.details.to_username|default:"-" }}</strong>.
+                    {% elif entry.action == history_actions.UPDATED %}
+                      {% if entry.details.changes %}
+                        <ul>
+                          {% for field, data in entry.details.changes.items %}
+                            <li>
+                              <strong>{{ field|capfirst }}</strong> :
+                              <span>{{ data.from|default:"-" }}</span> -> <span>{{ data.to|default:"-" }}</span>
+                            </li>
+                          {% endfor %}
+                        </ul>
+                      {% else %}
+                        —
+                      {% endif %}
+                    {% elif entry.action == history_actions.RESPONSIBLE_VALIDATION %}
+                      {% with details=entry.details %}
+                        {% if details.section %}
+                          Section <strong>{{ details.section.title|default:details.section.slug }}</strong>
+                          {% if details.section.slug %}
+                            (<code>{{ details.section.slug }}</code>)
+                          {% endif %}
+                          :
+                        {% endif %}
+                        {% if details.from or details.to %}
+                          <strong>{{ details.from|default:"-" }}</strong> -> <strong>{{ details.to|default:"-" }}</strong>.
+                        {% else %}
+                          Validation référent mise à jour.
+                        {% endif %}
+                      {% endwith %}
+                    {% elif entry.action == history_actions.SECTION_UPDATED %}
+                      {% with details=entry.details %}
+                        {% if details.section %}
+                          Section <strong>{{ details.section.title|default:details.section.slug }}</strong>
+                          {% if details.section.slug %}
+                            (<code>{{ details.section.slug }}</code>)
+                        {% endif %}
+                        :
+                      {% endif %}
+                      {% if details.changes %}
+                        <ul>
+                          {% for key, change in details.changes.items %}
+                            <li>
+                              {% if change.part %}<strong>{{ change.part }}</strong> · {% endif %}
+                              <span>{{ change.label|default:key }}</span> :
+                              <span>{{ change.from|default:"-" }}</span> -> <span>{{ change.to|default:"-" }}</span>
+                            </li>
+                          {% endfor %}
+                        </ul>
+                      {% else %}
+                        -
+                      {% endif %}
+                    {% endwith %}
+                  {% else %}
+                    -
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="dat-section-history-empty">Aucun événement n'a encore été enregistré.</p>
+    {% endif %}
+  </div>
+  <div class="modal-footer dat-section-card__modal-footer">
+    <a href="#!" class="modal-close btn waves-effect waves-light grey lighten-1">
+      Fermer
+    </a>
+  </div>
+</div>
+<div id="dat-reserve-history-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="dat-reserve-history-modal-title">
+  <div class="modal-content dat-section-card__modal-content">
+    <h5 id="dat-reserve-history-modal-title" class="dat-section-card__modal-header">
+      <i class="material-icons" aria-hidden="true">bookmark</i>
+      Historique des réserves et validations
+    </h5>
+    {% if reserve_validation_history_entries %}
+      <div class="dat-section-history-meta">
+        <div class="dat-section-history-meta__item">
+          <label for="dat-history-type-filter" class="active">Type</label>
+          <select id="dat-history-type-filter" class="browser-default" data-history-filter="type">
+            <option value="all">Tous</option>
+            <option value="reserve">Réserves</option>
+            <option value="validation">Validations</option>
+          </select>
+        </div>
+        <div class="dat-section-history-meta__item">
+          <label for="dat-history-user-filter" class="active">Utilisateur</label>
+          <select id="dat-history-user-filter" class="browser-default" data-history-filter="user">
+            <option value="all">Tous les utilisateurs</option>
+            {% for user in dat_history_user_choices %}
+              <option value="{{ user.id }}">{{ user.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="responsive-table dat-section-history-table">
+        <table class="highlight">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Utilisateur</th>
+              <th>Détails</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in reserve_validation_history_entries %}
+              {% with entry=item.entry %}
+                <tr data-history-entry data-history-type="{{ item.kind }}" data-history-user="{{ item.user_id|default_if_none:'system' }}">
+                  <td>
+                    {% if item.kind == "validation" %}
+                      {{ entry.performed_at|date:"d/m/Y" }} à {{ entry.performed_at|time:"H\\hi" }}
+                    {% else %}
+                      {{ entry.reserved_at|date:"d/m/Y" }} à {{ entry.reserved_at|time:"H\\hi" }}
+                    {% endif %}
+                  </td>
+                  <td>{{ entry.actor_name }}</td>
+                  <td>
+                    {% if item.kind == "validation" %}
+                      {% if entry.action == history_actions.RESPONSIBLE_VALIDATION %}
+                        <div class="dat-section-history-entry">
+                          <span class="chip green lighten-4">Validation référent</span>
+                        </div>
+                        {% with details=entry.details %}
+                          {% if details.section %}
+                            Section <strong>{{ details.section.title|default:details.section.slug }}</strong>
+                            {% if details.section.slug %}
+                              (<code>{{ details.section.slug }}</code>)
+                            {% endif %}
+                            ·
+                          {% endif %}
+                          {% if details.from or details.to %}
+                            Statut référent : <strong>{{ details.from|default:"-" }}</strong> -> <strong>{{ details.to|default:"-" }}</strong>.
+                          {% else %}
+                            Validation référent mise à jour.
+                          {% endif %}
+                        {% endwith %}
+                      {% else %}
+                        <div class="dat-section-history-entry">
+                          <span class="chip green lighten-4">Validation</span>
+                        </div>
+                        {% if entry.details.from or entry.details.to %}
+                          Passage de <strong>{{ entry.details.from|default:"-" }}</strong> à <strong>{{ entry.details.to|default:"-" }}</strong>.
+                        {% else %}
+                          Statut de validation mis à jour.
+                        {% endif %}
+                      {% endif %}
+                    {% else %}
+                      <div class="dat-section-history-entry">
+                        {% if entry.action == "cleared" %}
+                          <span class="chip blue lighten-4">Réserve levée</span>
+                        {% else %}
+                          <span class="chip grey lighten-3">Mise en réserve</span>
+                        {% endif %}
+                      </div>
+                      {% if entry.section_title or entry.section_slug %}
+                        <div class="dat-section-history-entry dat-section-history-entry--muted">
+                          {% if entry.section_title %}<strong>{{ entry.section_title }}</strong>{% endif %}
+                          {% if entry.section_slug %}
+                            {% if entry.section_title %} · {% endif %}
+                            <code>{{ entry.section_slug }}</code>
+                          {% endif %}
+                        </div>
+                      {% endif %}
+                      {% if entry.action == "cleared" and entry.reserve_message %}
+                        <p class="dat-section-history-entry__label">Commentaire initial :</p>
+                      {% endif %}
+                      <p class="dat-section-history-entry__message">{{ entry.reserve_message|default:"—" }}</p>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endwith %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="dat-history-empty">Aucun événement pour ces filtres.</p>
+    {% else %}
+      <p class="dat-section-history-empty">Aucune réserve ou validation n'a encore été enregistrée.</p>
+    {% endif %}
+  </div>
+  <div class="modal-footer dat-section-card__modal-footer">
+    <a href="#!" class="modal-close btn waves-effect waves-light grey lighten-1">
+      Fermer
+    </a>
+  </div>
+</div>
+<div id="wf-tooltip" class="wf-tooltip" hidden>
+  <div class="wf-tooltip__spinner">
+    {% include "components/_loading_spinner.html" %}
+  </div>
+  <span class="wf-tooltip__text" hidden></span>
+</div>
+<script src="{% static 'js/dat_dat_detail.js' %}"></script>
+
+
+
+{% endblock %}

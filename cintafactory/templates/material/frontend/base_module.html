@@ -1,0 +1,19 @@
+{% extends "material/frontend/base.html" %}
+{% load static material_frontend %}
+
+{% block module-content %}
+<div class="module-container">
+  {% comment %} {% block breadcrumbs %}
+  <div class="breadcrumbs">
+    <a href="/">Accueil</a>
+    {% block breadcrumbs_items %}{% endblock %}
+  </div>
+  {% endblock breadcrumbs %} {% endcomment %}
+
+  <main class="module-body">
+    {% block content %}
+      <p>Aucun contenu defini.</p>
+    {% endblock %}
+  </main>
+</div>
+{% endblock module-content %}

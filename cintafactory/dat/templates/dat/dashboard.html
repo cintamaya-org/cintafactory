@@ -1,0 +1,102 @@
+{% extends current_module.base_template %}
+
+{% block page_title %}Tableau de bord des DAT{% endblock %}
+
+{% comment %} {% block breadcrumbs_items %}
+  <a class="active">Gestion des DAT (admin)</a>
+{% endblock %} {% endcomment %}
+
+{% block content %}
+<div class="row">
+  <div class="col s12 m4">
+    <div class="card cinta-card">
+      <div class="card-content">
+        <span class="card-title">Total des DAT</span>
+        <h4 class="u-mt-1">{{ total_dats }}</h4>
+      </div>
+      <div class="card-action">
+        <a href="{% url 'dat:admin_list' %}" class="btn waves-effect waves-light cinta-btn-primary">
+          <i class="material-icons left">settings</i>
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="col s12 m8">
+    <div class="card cinta-card">
+      <div class="card-content">
+        <span class="card-title">Activite mensuelle (6 derniers mois)</span>
+        <div class="dat-dashboard__chart">
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none" class="dat-dashboard__chart-bg">
+            <polygon points="{{ monthly_chart_area_points|default:'0,100 100,100' }}" fill="rgba(41,121,255,0.2)"></polygon>
+            <polyline points="{{ monthly_chart_points|default:'0,100 100,100' }}" fill="none" stroke="rgba(41,121,255,0.7)" stroke-width="2"></polyline>
+          </svg>
+        </div>
+        <div class="row u-mt-1">
+          {% for month in monthly_activity %}
+            <div class="col s6 m4 dat-dashboard__month">
+              <div class="dat-dashboard__month-label">{{ month.label }}</div>
+              <div class="dat-dashboard__month-count">{{ month.count }}</div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  {% comment %} <div class="col s12 m6">
+    <div class="card cinta-card">
+      <div class="card-content">
+        <span class="card-title">Repartition par statut</span>
+        {% if status_summary %}
+          <ul class="collection">
+            {% for item in status_summary %}
+              <li class="collection-item">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+                  <span style="font-weight:500;">{{ item.label }}</span>
+                  <span>{{ item.count }}</span>
+                </div>
+                <div class="progress" style="margin:0;">
+                  <div class="determinate" style="width: {{ item.percentage }}%;"></div>
+                </div>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="grey-text">Pas encore de donnees DAT.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div> {% endcomment %}
+
+  <div class="col">
+    <div class="card cinta-card">
+      <div class="card-content">
+        <span class="card-title">Contributeurs principaux</span>
+        {% if top_owners %}
+          <table class="highlight">
+            <thead>
+              <tr>
+                <th>Responsable</th>
+                <th class="right-align">DAT</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for owner in top_owners %}
+                <tr>
+                  <td>{{ owner.owner__username|default:"Inconnu" }}</td>
+                  <td class="right-align">{{ owner.total }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p class="grey-text">Pas encore de donnees sur les responsables.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

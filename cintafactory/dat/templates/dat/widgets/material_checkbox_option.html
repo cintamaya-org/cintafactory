@@ -1,0 +1,10 @@
+<label class="material-checkbox-option">
+  <input type="checkbox"
+         name="{{ widget.name }}"
+         value="{{ widget.value }}"
+         {% if widget.attrs.id %}id="{{ widget.attrs.id }}{% if widget.index %}_{{ widget.index }}{% endif %}"{% endif %}
+         class="filled-in"
+         {% if widget.selected %}checked{% endif %}
+         {% include "django/forms/widgets/attrs.html" %}>
+  <span class="material-checkbox-option__label">{{ widget.label }}</span>
+</label>

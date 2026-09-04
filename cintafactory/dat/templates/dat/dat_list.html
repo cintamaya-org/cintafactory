@@ -1,0 +1,74 @@
+{% extends current_module.base_template %}
+{% load material_frontend %}
+{% comment %} {% block breadcrumbs_items %}
+  <a class="active">Mes DAT</a>
+{% endblock %} {% endcomment %}
+{% block content %}
+<div class="card cinta-card">
+  <div class="card-content">
+      <div class="page-header">
+      <h5 class="page-header__title">Mes DAT</h5>
+
+      {% if can_create_dat %}
+        <a href="/dat/manage/dats/crud/add/" class="btn waves-effect waves-light cinta-btn-primary">Ajouter un DAT</a>
+      {% endif %}
+    </div>
+    <form method="get" class="u-mt-1 u-flex u-gap-0-5 u-items-center u-flex-wrap">
+      <div class="input-field dat-list__search-field u-m-0">
+        <input id="dat-search" type="search" name="q" placeholder="Rechercher par référence, titre, application..." value="{{ search_query|default_if_none:'' }}">
+        <label class="active" for="dat-search">Recherche</label>
+      </div>
+      <div class="dat-list__filter-field u-m-0">
+        <label for="dat-application-filter" class="active">Application</label>
+        <select
+          id="dat-application-filter"
+          name="application"
+          class="browser-default"
+          data-remote-select-url="{% url 'dat:my_application_options' %}"
+          data-remote-select-limit="30"
+          data-remote-select-placeholder="Rechercher une application par code ou nom"
+        >
+          <option value="">Toutes</option>
+          {% for application in application_choices %}
+            <option value="{{ application.id }}" {% if application.id|stringformat:"s" == application_filter %}selected{% endif %}>
+              {{ application.name }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="btn waves-effect waves-light cinta-btn-primary">Rechercher</button>
+      {% if search_query or application_filter %}
+        <a href="." class="btn-flat waves-effect">Réinitialiser</a>
+      {% endif %}
+    </form>
+    {% if search_too_short %}
+      <p class="dat-list__error">La recherche nécessite au moins 3 caractères.</p>
+    {% endif %}
+  <div class="table-wrapper">
+    <table class="highlight responsive-table">
+    <thead>
+      <tr>
+        <th>Reference</th>
+        <th>Titre</th>
+        <th>Application</th>
+        <th>Direction métier</th>
+        <th>Statut</th>
+        <th>Responsable</th>
+        <th>Cree le</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for obj in object_list %}
+        {% include "dat/_dat_row.html" %}
+      {% empty %}
+        <tr><td colspan="8">Aucun DAT pour le moment.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% include "components/pagination.html" %}
+  </div>
+</div>
+  {% comment %} <p><a class="btn" href="/dat/manage/dats/crud/add/">Ajouter un DAT</a></p> {% endcomment %}
+{% endblock %}

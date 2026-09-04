@@ -1,0 +1,221 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0},
+      "id": 1,
+      "options": {"showHeader": true, "sortBy": [{"desc": false, "displayName": "job"}]},
+      "targets": [
+        {"expr": "up", "format": "table", "instant": true, "refId": "A"}
+      ],
+      "title": "Scrape Targets (up)",
+      "type": "table"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 4, "x": 8, "y": 0},
+      "id": 2,
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "colorMode": "value", "graphMode": "none", "justifyMode": "auto"},
+      "targets": [
+        {"expr": "sum(rate(cinta_web_requests_total[5m]))", "refId": "A"}
+      ],
+      "title": "Web Throughput (RPS)",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "percentunit"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 4, "x": 12, "y": 0},
+      "id": 3,
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "colorMode": "value", "graphMode": "none", "justifyMode": "auto"},
+      "targets": [
+        {"expr": "sum(rate(cinta_web_requests_total{status_group=\"5xx\"}[5m])) / clamp_min(sum(rate(cinta_web_requests_total[5m])), 0.1)", "refId": "A"}
+      ],
+      "title": "Web 5xx Ratio (5m)",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 4, "x": 16, "y": 0},
+      "id": 4,
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "colorMode": "value", "graphMode": "none", "justifyMode": "auto"},
+      "targets": [
+        {"expr": "max(cinta_async_queue_backlog)", "refId": "A"}
+      ],
+      "title": "Async Queue Backlog",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 4, "x": 20, "y": 0},
+      "id": 5,
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "colorMode": "value", "graphMode": "none", "justifyMode": "auto"},
+      "targets": [
+        {"expr": "max(cinta_async_workers_running)", "refId": "A"}
+      ],
+      "title": "Async Workers Running",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "gridPos": {"h": 9, "w": 8, "x": 0, "y": 8},
+      "id": 6,
+      "targets": [
+        {"expr": "sum by (status_group) (rate(cinta_web_requests_total[5m]))", "refId": "A"}
+      ],
+      "title": "Web Requests by Status Group",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "gridPos": {"h": 9, "w": 8, "x": 8, "y": 8},
+      "id": 7,
+      "targets": [
+        {"expr": "topk(8, sum by (path_group) (rate(cinta_web_requests_total[5m])))", "refId": "A"}
+      ],
+      "title": "Top Path Groups by Throughput",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 9, "w": 8, "x": 16, "y": 8},
+      "id": 8,
+      "options": {"showHeader": true, "sortBy": [{"desc": true, "displayName": "Value"}]},
+      "targets": [
+        {"expr": "cinta_dependency_up", "format": "table", "instant": true, "refId": "A"}
+      ],
+      "title": "Dependency Status",
+      "type": "table"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 9, "w": 8, "x": 0, "y": 17},
+      "id": 9,
+      "targets": [
+        {"expr": "sum by (metric, success) (increase(cinta_baseline_events_total[15m]))", "refId": "A"}
+      ],
+      "title": "Baseline Events by Metric/Success",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 9, "w": 8, "x": 8, "y": 17},
+      "id": 10,
+      "options": {"showHeader": true, "sortBy": [{"desc": true, "displayName": "Value"}]},
+      "targets": [
+        {"expr": "cinta_async_jobs_status", "format": "table", "instant": true, "refId": "A"}
+      ],
+      "title": "Async Jobs by Status",
+      "type": "table"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 9, "w": 8, "x": 16, "y": 17},
+      "id": 11,
+      "targets": [
+        {"expr": "max(container_scrape_error)", "refId": "A"}
+      ],
+      "title": "cAdvisor Scrape Error",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "percentunit"}, "overrides": []},
+      "gridPos": {"h": 9, "w": 8, "x": 0, "y": 26},
+      "id": 12,
+      "targets": [
+        {"expr": "topk(10, sum by (container_id) (rate(container_cpu_usage_seconds_total{container_id!=\"\"}[5m])))", "refId": "A"}
+      ],
+      "title": "Top Containers by CPU",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []},
+      "gridPos": {"h": 9, "w": 8, "x": 8, "y": 26},
+      "id": 13,
+      "targets": [
+        {"expr": "topk(10, sum by (container_id) (container_memory_working_set_bytes{container_id!=\"\"}))", "refId": "A"}
+      ],
+      "title": "Top Containers by Memory",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "Bps"}, "overrides": []},
+      "gridPos": {"h": 9, "w": 8, "x": 16, "y": 26},
+      "id": 14,
+      "targets": [
+        {"expr": "topk(8, sum by (interface) (rate(container_network_receive_bytes_total{interface!=\"\"}[5m]) + rate(container_network_transmit_bytes_total{interface!=\"\"}[5m])))", "refId": "A"}
+      ],
+      "title": "Top Interfaces by Network Throughput",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 9, "w": 8, "x": 0, "y": 35},
+      "id": 15,
+      "targets": [
+        {"expr": "sum by (service) (count_over_time({project=~\"cintaarchifactory|cintafactory\"} |= \"ERROR\" [5m]))", "refId": "A", "queryType": "range"}
+      ],
+      "title": "Error Log Rate by Service",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 9, "w": 8, "x": 8, "y": 35},
+      "id": 16,
+      "targets": [
+        {"expr": "sum by (service) (count_over_time({project=~\"cintaarchifactory|cintafactory\"} |= \"WARN\" [5m]))", "refId": "A", "queryType": "range"}
+      ],
+      "title": "Warn Log Rate by Service",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 9, "w": 8, "x": 16, "y": 35},
+      "id": 17,
+      "targets": [
+        {"expr": "topk(10, sum by (service) (count_over_time({project=~\"cintaarchifactory|cintafactory\"} |~ \"Exception|Traceback\" [30m])))", "refId": "A", "queryType": "instant", "format": "table"}
+      ],
+      "title": "Top Exception Sources (30m)",
+      "type": "table"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 44},
+      "id": 18,
+      "targets": [
+        {"expr": "{project=~\"cintaarchifactory|cintafactory\"} |~ \"ERROR|Exception|Traceback|CRITICAL\"", "refId": "A", "queryType": "range"}
+      ],
+      "title": "Recent Error Logs",
+      "type": "logs"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["observability", "deep-dive", "metrics", "logs"],
+  "templating": {"list": []},
+  "time": {"from": "now-6h", "to": "now"},
+  "title": "Cinta Platform Deep Dive",
+  "uid": "cinta-platform-deep-dive",
+  "version": 1
+}

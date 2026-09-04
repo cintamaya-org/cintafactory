@@ -1,10 +1,8 @@
-# archi
+# TODO
 
-## environnement python :
+Redaction Readme
 
-* Django 5.2.5
-* SQLite4
+# Documentation
 
-## Modèle de données 
-
-
+- [`QUICKSTART.md`](./QUICKSTART.md) : ancien Readme
+- 

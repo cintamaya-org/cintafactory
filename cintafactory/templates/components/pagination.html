@@ -1,0 +1,34 @@
+{% if is_paginated %}
+  <nav class="dat-list__pagination" aria-label="Pagination">
+    <div>Page {{ page_obj.number }} sur {{ paginator.num_pages }} · {{ paginator.count }} élément{{ paginator.count|pluralize:"s" }}</div>
+    <div class="dat-list__pagination-actions">
+      {% if page_obj.has_previous %}
+        <a class="btn-flat waves-effect" href="?{% if base_querystring %}{{ base_querystring }}&{% endif %}page={{ page_obj.previous_page_number }}" rel="prev">Précédent</a>
+      {% else %}
+        <span class="btn-flat disabled" aria-disabled="true">Précédent</span>
+      {% endif %}
+      {% if page_obj.has_next %}
+        <a class="btn-flat waves-effect" href="?{% if base_querystring %}{{ base_querystring }}&{% endif %}page={{ page_obj.next_page_number }}" rel="next">Suivant</a>
+      {% else %}
+        <span class="btn-flat disabled" aria-disabled="true">Suivant</span>
+      {% endif %}
+    </div>
+    <form method="get" action="{{ request.path }}" class="dat-list__pagination-jump">
+      {% for key, value in request.GET.items %}
+        {% if key != "page" %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endif %}
+      {% endfor %}
+      <label for="pagination-page-{{ page_obj.number }}">Aller à la page</label>
+      <input
+        id="pagination-page-{{ page_obj.number }}"
+        type="number"
+        name="page"
+        value="{{ page_obj.number }}"
+        min="1"
+        max="{{ paginator.num_pages }}"
+        inputmode="numeric"
+        required
+      >
+      <button type="submit" class="btn-flat waves-effect">Aller</button>
+    </form>
+  </nav>
+{% endif %}

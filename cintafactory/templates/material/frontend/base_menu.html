@@ -1,0 +1,29 @@
+{% load static %}
+{% with module_obj=module|default:current_module %}
+<div class="module-menu{% if module_obj == current_module %} is-active{% endif %}"
+     data-module-menu
+     data-module-menu-initial="open"
+     data-module-menu-prefix="{{ module_obj.index_url|default:'' }}">
+  <div class="module-menu__header">
+    <a href="{{ module_obj.index_url }}" class="module-menu__link" data-turbolinks="false">
+      {% with icon_name=module_obj.icon|default:''|striptags %}
+      <span class="module-menu__icon">
+        {% if icon_name %}
+          <i class="material-icons" aria-hidden="true">{{ icon_name }}</i>
+        {% endif %}
+      </span>
+      {% endwith %}
+      <span class="module-menu__title">{{ module_obj.verbose_name }}</span>
+    </a>
+  </div>
+  <ul class="module-menu__items" data-module-menu-body>
+    {% block base_menu_items %}
+      {% include "material/frontend/_menu_items.html" %}
+    {% endblock %}
+    {% block app_menu_items %}{% endblock %}
+  </ul>
+</div>
+{% endwith %}
+{% block module_menu_scripts %}
+<script src="{% static 'js/module_menu.js' %}" defer></script>
+{% endblock %}
