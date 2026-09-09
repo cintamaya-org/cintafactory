@@ -1,0 +1,54 @@
+name: "EKS Ephemeral Infra"
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Action Terraform (apply ou destroy)"
+        required: true
+        default: "apply"
+        type: choice
+        options:
+          - apply
+          - destroy
+
+permissions:
+  id-token: write   # Indispensable pour l'échange de jeton OIDC AWS
+  contents: read
+
+jobs:
+  terraform:
+    name: "Terraform Execution"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./terraform
+
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v4
+
+      - name: Authentification AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::512584596480:role/github-actions-eks-role
+          aws-region: eu-west-3
+
+      - name: Installation de Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.8.0
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Plan
+        run: terraform plan
+
+      - name: Terraform Apply
+        if: ${{ github.event.inputs.action == 'apply' }}
+        run: terraform apply -auto-approve
+
+      - name: Terraform Destroy
+        if: ${{ github.event.inputs.action == 'destroy' }}
+        run: terraform destroy -auto-approve
