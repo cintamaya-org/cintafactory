@@ -151,4 +151,5 @@ def filter_dat_queryset_for_user(queryset: QuerySet, user) -> QuerySet:
         Q(owner=user)
         | Q(participants__user=user)
         | Q(participants__user__business_group__responsible=user)
+        | Q(dat_admins__user=user)
     ).distinct()

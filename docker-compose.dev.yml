@@ -9,7 +9,7 @@ services:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in .env}
       DJANGO_DEBUG: 1
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}
-      DATABASE_HOST: test_factory_db
+      DATABASE_HOST: db
       DATABASE_PORT: 5432
       DATABASE_NAME: test_factory_db
       DATABASE_USER: test_factory_user
@@ -46,6 +46,13 @@ services:
       GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
       LIKEC4_METADATA_TOKEN: ${LIKEC4_METADATA_TOKEN:-dev_token_idHaf}
       LIKEC4_API_TOKEN: ${LIKEC4_API_TOKEN:-dev_likec4_api_token_change_me}
+    depends_on:
+      db:
+        condition: service_healthy
+      clamav:
+        condition: service_started
+      seaweedfs:
+        condition: service_healthy
     volumes:
       # IMPORTANT: mount your app folder (which contains manage.py AND templates/)
       - ./cintafactory:/app
@@ -61,6 +68,11 @@ services:
       POSTGRES_DB: test_factory_db
       POSTGRES_USER: test_factory_user
       POSTGRES_PASSWORD: test_factory_pass
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test_factory_user -d test_factory_db -h 127.0.0.1 -p 5432"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
     volumes:
       - pgdata_dev:/var/lib/postgresql/data
     ports:
@@ -159,6 +171,11 @@ services:
     image: chrislusf/seaweedfs:latest
     container_name: test_factory_seaweedfs
     command: "server -dir=/data -master -volume -filer"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8888/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
     environment:
       WEED_JWT_FILER_SIGNING_KEY: ${SEAWEEDFS_JWT_WRITE_KEY:?Set SEAWEEDFS_JWT_WRITE_KEY in .env}
       WEED_JWT_FILER_SIGNING_EXPIRES_AFTER_SECONDS: ${SEAWEEDFS_JWT_TTL_SECONDS:-60}
@@ -171,9 +188,9 @@ services:
       WEED_CORS_ALLOWED_ORIGINS_VALUES: ${SEAWEEDFS_ALLOWED_ORIGINS:-http://localhost:8101}
       WEED_FILER_EXPOSE_DIRECTORY_METADATA_ENABLED: "false"
     ports:
-      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${SEAWEEDFS_MASTER_PORT:-9333}:9333"
-      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${SEAWEEDFS_FILER_PORT:-8888}:8888"
-      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${SEAWEEDFS_VOLUME_PORT:-8080}:8080"
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${SEAWEEDFS_MASTER_PORT:-19333}:9333"
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${SEAWEEDFS_FILER_PORT:-18888}:8888"
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${SEAWEEDFS_VOLUME_PORT:-18080}:8080"
     volumes:
       - seaweedfs_data:/data
 

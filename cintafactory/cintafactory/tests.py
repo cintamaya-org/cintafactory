@@ -169,6 +169,7 @@ class SeaweedFSStorageTests(SimpleTestCase):
         SEAWEEDFS_FILER_URL="https://files.example.com",
         SEAWEEDFS_PUBLIC_URL="https://cdn.example.com",
         SEAWEEDFS_BASE_DIR="root",
+        SEAWEEDFS_JWT_READ_KEY="",
         SEAWEEDFS_TIMEOUT=5,
     )
     def test_build_url_uses_base_dir_and_public_url(self):

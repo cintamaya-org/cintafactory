@@ -67,10 +67,12 @@ class UploadAttachmentFailureStateViewTests(SimpleTestCase):
     @mock.patch("dat.views.section_has_attachments", return_value=True)
     @mock.patch("dat.views.user_can_update_section_status", return_value=True)
     @mock.patch("dat.views.filter_dat_queryset_for_user")
+    @mock.patch("dat.views.workflow_has_capability", return_value=False)
     @mock.patch("dat.views.get_object_or_404")
     def test_upload_ajax_returns_failure_states_for_security_rejections(
         self,
         get_object_or_404,
+        _workflow_has_capability,
         _filter_queryset,
         _can_update,
         _has_attachments,
@@ -79,7 +81,11 @@ class UploadAttachmentFailureStateViewTests(SimpleTestCase):
     ):
         dat_uuid = "11111111-1111-1111-1111-111111111111"
         dat = SimpleNamespace(pk=dat_uuid, status="draft")
-        section = SimpleNamespace(slug="general", metadata=SimpleNamespace(slug="general"))
+        section = SimpleNamespace(
+            slug="general",
+            metadata=SimpleNamespace(slug="general"),
+            can_user_edit=lambda _user: True,
+        )
         get_object_or_404.side_effect = [dat, section]
         create_attachment.side_effect = AttachmentSecurityError(
             "Antivirus indisponible",
