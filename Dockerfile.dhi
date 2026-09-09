@@ -1,0 +1,43 @@
+# ==========================================
+# STAGE 1 : BUILDER (Compilation)
+# ==========================================
+FROM python:3.12-bookworm AS builder
+
+ENV UV_NO_CACHE=1 \
+    UV_PROJECT_ENVIRONMENT=/opt/venv \
+    VIRTUAL_ENV=/opt/venv \
+    PATH="/root/.local/bin:$PATH"
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential libpq-dev curl \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+
+WORKDIR /app
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev
+
+# ==========================================
+# STAGE 2 : RUNTIME (Docker Hardened Image)
+# ==========================================
+# Utilisation de l'image DHI (distroless) pour éliminer les vulnérabilités OS
+FROM dhi.io/python:3.12-debian13
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    VIRTUAL_ENV=/opt/venv \
+    PATH="/opt/venv/bin:${PATH}" \
+    PORT=8000
+
+WORKDIR /app
+
+# Les images distroless utilisent le plus souvent l'UID 65532 (nonroot) par défaut
+COPY --from=builder --chown=65532:65532 /opt/venv /opt/venv
+COPY --chown=65532:65532 . .
+
+USER 65532
+EXPOSE 8000
+
+# Exécution avec sh (pas de bash dans DHI) ou lancement direct de Gunicorn/Python
+CMD ["/bin/sh", "/app/cintafactory/entrypoint.sh"]
