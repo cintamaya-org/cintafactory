@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Cintamaya <contact@cintamaya.com>
+# SPDX-FileCopyrightText: 2026 Baptiste COQUELET <github.com/BaptisteCoquelet>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 import json
 from io import BytesIO
 from datetime import timedelta
@@ -1699,16 +1703,6 @@ class CreateSchemaDiagramViewTest(TestCase):
             status=DATStatus.NOUVELLE_DEMANDE,
             owner=self.user,
         )
-        metadata = DATSectionMetadata.objects.create(
-            title="Architecture",
-            slug="architecture",
-            description="",
-        )
-        DATSection.objects.create(
-            dat=self.dat,
-            metadata=metadata,
-            order=1,
-        )
         architecture_section = self.dat.sections.get(metadata__slug="architecture")
         DATSectionParticipant.objects.create(dat=self.dat, section=architecture_section, user=self.user)
         self.url = reverse("dat:schema_create_diagram", args=[self.dat.pk])
@@ -1780,11 +1774,9 @@ class CreateSchemaDiagramViewTest(TestCase):
             defaults={"user": self.user},
         )
         architecture_section.allowed_roles.set([role_section])
-        schema_sub_section = DATSubSection.objects.create(
+        schema_sub_section = DATSubSection.objects.get(
             section=architecture_section,
-            title="Schémas",
             slug="schemas",
-            order=1,
         )
         schema_sub_section.allowed_roles.set([role_schemas])
         other_arch_metadata = DATSectionMetadata.objects.create(
@@ -1812,34 +1804,11 @@ class CreateSchemaDiagramViewTest(TestCase):
         self.assertTrue(payload.get("ok"))
 
     def test_creates_diagram_for_editable_non_architecture_sub_section(self):
-        urbanisme_metadata = DATSectionMetadata.objects.create(
-            title="Urbanisme",
-            slug="urbanisme",
-            description="",
-        )
-        urbanisme_section = DATSection.objects.create(
-            dat=self.dat,
-            metadata=urbanisme_metadata,
-            order=2,
-        )
+        urbanisme_section = DATSection.objects.get(dat=self.dat, metadata__slug="urbanisme")
         DATSectionParticipant.objects.create(dat=self.dat, section=urbanisme_section, user=self.user)
-        sub_section = DATSubSection.objects.create(
+        sub_section = DATSubSection.objects.get(
             section=urbanisme_section,
-            title="Mapping dans l'urbanisation du SI",
             slug="mapping-urbanisation-si",
-            order=1,
-        )
-        DATPart.objects.create(
-            sub_section=sub_section,
-            key="cartographie",
-            label="Cartographie",
-            data_type=DATPartEntryType.REPEATER,
-            config={
-                "columns": [
-                    {"key": "nom_schema", "label": "Nom du diagramme", "type": "text"},
-                    {"key": "diagramme_id", "label": "Diagramme", "drawio": True},
-                ]
-            },
         )
 
         self.client.force_login(self.user)
@@ -1862,21 +1831,10 @@ class CreateSchemaDiagramViewTest(TestCase):
         self.assertEqual(payload["diagram"]["title"], "Cartographie urbanisme")
 
     def test_rejects_non_architecture_sub_section_when_user_cannot_edit_it(self):
-        urbanisme_metadata = DATSectionMetadata.objects.create(
-            title="Urbanisme",
-            slug="urbanisme",
-            description="",
-        )
-        urbanisme_section = DATSection.objects.create(
-            dat=self.dat,
-            metadata=urbanisme_metadata,
-            order=2,
-        )
-        sub_section = DATSubSection.objects.create(
+        urbanisme_section = DATSection.objects.get(dat=self.dat, metadata__slug="urbanisme")
+        sub_section = DATSubSection.objects.get(
             section=urbanisme_section,
-            title="Mapping dans l'urbanisation du SI",
             slug="mapping-urbanisation-si",
-            order=1,
         )
 
         self.client.force_login(self.user)
@@ -1897,34 +1855,11 @@ class CreateSchemaDiagramViewTest(TestCase):
         self.assertEqual(DrawIODiagram.objects.count(), 0)
 
     def test_creates_diagram_from_referer_section_when_payload_has_no_context(self):
-        urbanisme_metadata = DATSectionMetadata.objects.create(
-            title="Urbanisme",
-            slug="urbanisme",
-            description="",
-        )
-        urbanisme_section = DATSection.objects.create(
-            dat=self.dat,
-            metadata=urbanisme_metadata,
-            order=2,
-        )
+        urbanisme_section = DATSection.objects.get(dat=self.dat, metadata__slug="urbanisme")
         DATSectionParticipant.objects.create(dat=self.dat, section=urbanisme_section, user=self.user)
-        sub_section = DATSubSection.objects.create(
+        sub_section = DATSubSection.objects.get(
             section=urbanisme_section,
-            title="Mapping dans l'urbanisation du SI",
             slug="mapping-urbanisation-si",
-            order=1,
-        )
-        DATPart.objects.create(
-            sub_section=sub_section,
-            key="cartographie",
-            label="Cartographie",
-            data_type=DATPartEntryType.REPEATER,
-            config={
-                "columns": [
-                    {"key": "nom_schema", "label": "Nom du diagramme", "type": "text"},
-                    {"key": "diagramme_id", "label": "Diagramme", "drawio": True},
-                ]
-            },
         )
 
         self.client.force_login(self.user)
