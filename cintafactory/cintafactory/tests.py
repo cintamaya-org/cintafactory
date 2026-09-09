@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Cintamaya <contact@cintamaya.com>
+# SPDX-FileCopyrightText: 2026 Baptiste COQUELET <github.com/BaptisteCoquelet>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 from __future__ import annotations
 
 import json
@@ -169,6 +173,7 @@ class SeaweedFSStorageTests(SimpleTestCase):
         SEAWEEDFS_FILER_URL="https://files.example.com",
         SEAWEEDFS_PUBLIC_URL="https://cdn.example.com",
         SEAWEEDFS_BASE_DIR="root",
+        SEAWEEDFS_JWT_READ_KEY="",
         SEAWEEDFS_TIMEOUT=5,
     )
     def test_build_url_uses_base_dir_and_public_url(self):

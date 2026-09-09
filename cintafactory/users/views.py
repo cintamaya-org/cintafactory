@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Cintamaya <contact@cintamaya.com>
+# SPDX-FileCopyrightText: 2026 Baptiste COQUELET <github.com/BaptisteCoquelet>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 from material import Layout, Row, Fieldset
 from material.frontend.views import CreateModelView, DetailModelView, ListModelView, ModelViewSet, UpdateModelView
 from django.apps import apps as django_apps
