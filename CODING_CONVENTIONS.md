@@ -1,7 +1,7 @@
 
 # Norme de Nommage - CintaFactory
 
-**Version 1.0**  
+**Version 1.1**  
 Date : 21/10/2025
 
 ---
@@ -65,9 +65,3 @@ Ces normes visent à :
 | Constante             | `DEFAULT_PAGE_SIZE = 42`, `MAX_LOGIN_ATTEMPTS = 5` |
 
 ---
-
-Django Naming conventions
-
-## REUSE Standard
-
-TODO
