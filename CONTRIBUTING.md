@@ -1,4 +1,6 @@
-#SPDX-License-Identifier: AGPL-3.0-or-later
+## License
+This project is under **CC-BY-NC-ND-4.0** license.
+For more details, please check the LICENSE file or visit https://spdx.org
 *Version 1.0
 Date : 11/09/2026*
 
