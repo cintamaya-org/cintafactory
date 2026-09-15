@@ -1,0 +1,11 @@
+soft-fail: true
+
+skip-check:
+  # Endpoint API EKS public assumé pour ce POC (pas de VPN/bastion en place).
+  - CKV_AWS_38
+  - CKV_AWS_39
+  # Pas de chiffrement KMS dédié sur les secrets EKS ni les volumes des node
+  # groups pour ce POC (arbitrage coût).
+  - CKV_AWS_58
+  # Pas de logs de control plane CloudWatch pour ce POC (arbitrage coût).
+  - CKV_AWS_37

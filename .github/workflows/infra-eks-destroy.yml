@@ -1,26 +1,32 @@
-name: "EKS Ephemeral Infra"
+name: "EKS Infra Destroy"
 
 on:
-  push:
-    branches:
-      - dev-Abd
-      - main
-      - staging
-    paths:
-      - "terraform/**"
-      - ".github/workflows/infra-eks.yml"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environnement à détruire"
+        type: choice
+        required: true
+        options:
+          - dev
+          - staging
+          - production
+      confirm_cluster_name:
+        description: "Nom exact du cluster à détruire (garde-fou anti-typo)"
+        type: string
+        required: true
 
 permissions:
   id-token: write
   contents: read
 
 concurrency:
-  group: terraform-${{ github.ref_name }}
+  group: terraform-${{ github.event.inputs.environment == 'dev' && 'dev-Abd' || (github.event.inputs.environment == 'staging' && 'staging' || 'main') }}
   cancel-in-progress: false
 
 jobs:
-  plan:
-    name: "Terraform Plan"
+  destroy-plan:
+    name: "Terraform Destroy Plan"
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -37,27 +43,31 @@ jobs:
       - name: Déterminer l'environnement
         id: env
         run: |
-          case "${{ github.ref_name }}" in
-            dev-Abd)
-              ENV_NAME=dev
+          case "${{ github.event.inputs.environment }}" in
+            dev)
               CLUSTER_NAME=cintafactory-poc-dev
               ;;
             staging)
-              ENV_NAME=staging
               CLUSTER_NAME=cintafactory-poc-staging
               ;;
-            main)
-              ENV_NAME=production
+            production)
               CLUSTER_NAME=cintafactory-poc-production
               ;;
             *)
-              echo "Branche non gérée: ${{ github.ref_name }}"
+              echo "Environnement non géré: ${{ github.event.inputs.environment }}"
               exit 1
               ;;
           esac
-          echo "env_name=${ENV_NAME}" >> "$GITHUB_OUTPUT"
-          echo "backend_key=eks/${ENV_NAME}/terraform.tfstate" >> "$GITHUB_OUTPUT"
+          echo "env_name=${{ github.event.inputs.environment }}" >> "$GITHUB_OUTPUT"
+          echo "backend_key=eks/${{ github.event.inputs.environment }}/terraform.tfstate" >> "$GITHUB_OUTPUT"
           echo "cluster_name=${CLUSTER_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Vérification du nom de cluster fourni
+        run: |
+          if [ "${{ github.event.inputs.confirm_cluster_name }}" != "${{ steps.env.outputs.cluster_name }}" ]; then
+            echo "Le nom fourni (${{ github.event.inputs.confirm_cluster_name }}) ne correspond pas au cluster de l'environnement '${{ github.event.inputs.environment }}' (${{ steps.env.outputs.cluster_name }})."
+            exit 1
+          fi
 
       - name: Authentification AWS via OIDC
         uses: aws-actions/configure-aws-credentials@v4
@@ -65,56 +75,31 @@ jobs:
           role-to-assume: arn:aws:iam::512584596480:role/github-actions-eks-role
           aws-region: eu-west-3
 
-      # Test immédiat du rôle IAM assumé
-      - name: Vérification identité AWS STS
-        run: aws sts get-caller-identity
-
       - name: Installation de Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.8.0
-
-      - name: Terraform Format Check
-        run: terraform fmt -check -recursive
 
       - name: Terraform Init
         run: terraform init -input=false -backend-config="key=${{ steps.env.outputs.backend_key }}"
 
-      - name: Terraform Validate
-        run: terraform validate
-
-      - name: Installation de tflint
-        uses: terraform-linters/setup-tflint@v4
-
-      - name: Terraform Lint
+      - name: Terraform Destroy Plan
         run: |
-          tflint --init
-          tflint
-
-      - name: Scan sécurité Checkov
-        uses: bridgecrewio/checkov-action@master
-        with:
-          directory: terraform
-          config_file: terraform/.checkov.yaml
-          quiet: true
-
-      - name: Terraform Plan
-        run: |
-          terraform plan -input=false -out=tfplan \
+          terraform plan -destroy -input=false -out=tfplan-destroy \
             -var "environment=${{ steps.env.outputs.env_name }}" \
             -var "cluster_name=${{ steps.env.outputs.cluster_name }}"
 
-      - name: Upload du plan
+      - name: Upload du plan de destruction
         uses: actions/upload-artifact@v4
         with:
-          name: tfplan-${{ steps.env.outputs.env_name }}-${{ github.run_id }}
-          path: terraform/tfplan
+          name: tfplan-destroy-${{ steps.env.outputs.env_name }}-${{ github.run_id }}
+          path: terraform/tfplan-destroy
           retention-days: 3
 
-  apply-dev:
-    name: "Terraform Apply (dev, sans gate)"
-    needs: plan
-    if: needs.plan.outputs.env_name == 'dev'
+  destroy-apply-dev:
+    name: "Terraform Destroy Apply (dev, sans gate)"
+    needs: destroy-plan
+    if: needs.destroy-plan.outputs.env_name == 'dev'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -134,23 +119,23 @@ jobs:
         with:
           terraform_version: 1.8.0
 
-      - name: Download du plan
+      - name: Download du plan de destruction
         uses: actions/download-artifact@v4
         with:
-          name: tfplan-${{ needs.plan.outputs.env_name }}-${{ github.run_id }}
+          name: tfplan-destroy-${{ needs.destroy-plan.outputs.env_name }}-${{ github.run_id }}
           path: terraform
 
       - name: Terraform Init
-        run: terraform init -input=false -backend-config="key=${{ needs.plan.outputs.backend_key }}"
+        run: terraform init -input=false -backend-config="key=${{ needs.destroy-plan.outputs.backend_key }}"
 
-      - name: Terraform Apply
-        run: terraform apply tfplan
+      - name: Terraform Destroy Apply
+        run: terraform apply tfplan-destroy
 
-  apply-gated:
-    name: "Terraform Apply (staging/production, avec approbation)"
-    needs: plan
-    if: needs.plan.outputs.env_name != 'dev'
-    environment: ${{ needs.plan.outputs.env_name == 'staging' && 'test' || 'production' }}
+  destroy-apply-gated:
+    name: "Terraform Destroy Apply (staging/production, avec approbation)"
+    needs: destroy-plan
+    if: needs.destroy-plan.outputs.env_name != 'dev'
+    environment: ${{ needs.destroy-plan.outputs.env_name == 'staging' && 'test' || 'production' }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -170,14 +155,14 @@ jobs:
         with:
           terraform_version: 1.8.0
 
-      - name: Download du plan
+      - name: Download du plan de destruction
         uses: actions/download-artifact@v4
         with:
-          name: tfplan-${{ needs.plan.outputs.env_name }}-${{ github.run_id }}
+          name: tfplan-destroy-${{ needs.destroy-plan.outputs.env_name }}-${{ github.run_id }}
           path: terraform
 
       - name: Terraform Init
-        run: terraform init -input=false -backend-config="key=${{ needs.plan.outputs.backend_key }}"
+        run: terraform init -input=false -backend-config="key=${{ needs.destroy-plan.outputs.backend_key }}"
 
-      - name: Terraform Apply
-        run: terraform apply tfplan
+      - name: Terraform Destroy Apply
+        run: terraform apply tfplan-destroy
