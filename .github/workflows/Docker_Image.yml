@@ -1,6 +1,6 @@
 name: Build and Publish Docker Image
 
-# Se déclenche lors d'un push sur main ou lors de la création d'un tag (ex: v1.0.0)
+# Se déclenche lors d'un push sur main 
 on:
   push:
     branches:
@@ -8,17 +8,14 @@ on:
       - dev
     tags:
       - 'v*.*.*'
-# Variables d'environnement
 env:
   REGISTRY: ghcr.io
-  # Le nom de l'image sera ghcr.io/ton-user-github/cintafactory
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
     
-    # Autorisations nécessaires pour pousser sur GHCR
     permissions:
       contents: read
       packages: write
@@ -42,7 +39,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          # Génère le tag "latest" sur main, et le tag "vX.Y.Z" si tu crées une release
+   
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=semver,pattern={{version}}
@@ -55,6 +52,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # Utilise le cache GitHub Actions pour accélérer les builds suivants
+        
           cache-from: type=gha
           cache-to: type=gha,mode=max
