@@ -1,27 +1,23 @@
 name: "EKS Infra Destroy"
 
+# TEMPORAIRE (testing) : déclenché par push sur dev-Abd au lieu de workflow_dispatch,
+# car workflow_dispatch n'est utilisable que si ce fichier existe sur la branche par
+# défaut du repo (main), ce qu'on veut éviter pour ce test ponctuel.
+# -> Désactiver ce workflow (Actions > EKS Infra Destroy > ... > Disable workflow)
+#    juste après l'avoir utilisé, pour ne pas redétruire l'infra dev à chaque push.
 on:
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: "Environnement à détruire"
-        type: choice
-        required: true
-        options:
-          - dev
-          - staging
-          - production
-      confirm_cluster_name:
-        description: "Nom exact du cluster à détruire (garde-fou anti-typo)"
-        type: string
-        required: true
+  push:
+    branches:
+      - dev-Abd
+    paths:
+      - ".github/workflows/infra-eks-destroy.yml"
 
 permissions:
   id-token: write
   contents: read
 
 concurrency:
-  group: terraform-${{ github.event.inputs.environment == 'dev' && 'dev-Abd' || (github.event.inputs.environment == 'staging' && 'staging' || 'main') }}
+  group: terraform-dev-Abd
   cancel-in-progress: false
 
 jobs:
@@ -43,31 +39,11 @@ jobs:
       - name: Déterminer l'environnement
         id: env
         run: |
-          case "${{ github.event.inputs.environment }}" in
-            dev)
-              CLUSTER_NAME=cintafactory-poc-dev
-              ;;
-            staging)
-              CLUSTER_NAME=cintafactory-poc-staging
-              ;;
-            production)
-              CLUSTER_NAME=cintafactory-poc-production
-              ;;
-            *)
-              echo "Environnement non géré: ${{ github.event.inputs.environment }}"
-              exit 1
-              ;;
-          esac
-          echo "env_name=${{ github.event.inputs.environment }}" >> "$GITHUB_OUTPUT"
-          echo "backend_key=eks/${{ github.event.inputs.environment }}/terraform.tfstate" >> "$GITHUB_OUTPUT"
-          echo "cluster_name=${CLUSTER_NAME}" >> "$GITHUB_OUTPUT"
-
-      - name: Vérification du nom de cluster fourni
-        run: |
-          if [ "${{ github.event.inputs.confirm_cluster_name }}" != "${{ steps.env.outputs.cluster_name }}" ]; then
-            echo "Le nom fourni (${{ github.event.inputs.confirm_cluster_name }}) ne correspond pas au cluster de l'environnement '${{ github.event.inputs.environment }}' (${{ steps.env.outputs.cluster_name }})."
-            exit 1
-          fi
+          # Codé en dur sur dev pour ce test ponctuel (déclenché par push, pas par
+          # workflow_dispatch, donc pas d'input à lire).
+          echo "env_name=dev" >> "$GITHUB_OUTPUT"
+          echo "backend_key=eks/dev/terraform.tfstate" >> "$GITHUB_OUTPUT"
+          echo "cluster_name=cintafactory-poc-dev" >> "$GITHUB_OUTPUT"
 
       - name: Authentification AWS via OIDC
         uses: aws-actions/configure-aws-credentials@v4
