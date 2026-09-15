@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - dev-Abd
+      - main
+      - staging
     paths:
       - "terraform/**"
       - ".github/workflows/infra-eks.yml"
@@ -30,6 +32,10 @@ jobs:
           role-to-assume: arn:aws:iam::512584596480:role/github-actions-eks-role
           aws-region: eu-west-3
 
+      # Test immédiat du rôle IAM assumé
+      - name: Vérification identité AWS STS
+        run: aws sts get-caller-identity
+
       - name: Installation de Terraform
         uses: hashicorp/setup-terraform@v3
         with:
@@ -41,6 +47,5 @@ jobs:
       - name: Terraform Plan
         run: terraform plan
 
-      # Exécute l'apply directement pour tester la création
       - name: Terraform Apply
         run: terraform apply -auto-approve
