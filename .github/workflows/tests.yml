@@ -1,0 +1,77 @@
+name: "Tests unitaires"
+
+on:
+  push:
+    branches:
+      - dev-Abd
+    paths:
+      - "cintafactory/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/tests.yml"
+  pull_request:
+    branches:
+      - dev-Abd
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  unit-tests:
+    name: "Django — tests applicatifs"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: cintafactory_test
+          POSTGRES_USER: cintafactory
+          POSTGRES_PASSWORD: cintafactory
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cintafactory"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DJANGO_SECRET_KEY: ci-secret-key-not-used-in-production
+      DJANGO_DEBUG: "0"
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
+      DATABASE_NAME: cintafactory_test
+      DATABASE_USER: cintafactory
+      DATABASE_PASSWORD: cintafactory
+      DATABASE_HOST: localhost
+      DATABASE_PORT: "5432"
+
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v4
+
+      - name: Installation de uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Installation des dépendances
+        run: uv sync --frozen
+
+      - name: Vérification de la configuration Django
+        run: uv run python cintafactory/manage.py check
+
+      - name: Tests unitaires applicatifs
+        # tests_ops/ est volontairement exclu : ces tests font du subprocess,
+        # du socket et des appels réseau, et nécessitent la stack complète
+        # (ClamAV, SeaweedFS...). Ils seront traités dans un second temps.
+        run: >-
+          uv run python cintafactory/manage.py test
+          dat users workflows diagrams configuration
+          --verbosity 2 --noinput
