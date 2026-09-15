@@ -46,4 +46,4 @@ module "eks" {
     Environment = var.environment
     ManagedBy   = "Terraform"
   }
-}
+}# Trigger CI after EIP cleanup: 1789461486
