@@ -1,10 +1,30 @@
-eks_managed_node_groups = {
+module "eks" {
+  source  = "terraform-aws-modules/eks/aws"
+  version = "~> 20.0"
+
+  cluster_name    = var.cluster_name
+  cluster_version = "1.30"
+
+  cluster_endpoint_public_access = true
+
+  vpc_id                   = module.vpc.vpc_id
+  subnet_ids               = module.vpc.private_subnets
+  control_plane_subnet_ids = module.vpc.public_subnets
+
+  enable_cluster_creator_admin_permissions = true
+
+  # Optimisation des coûts (FinOps)
+  create_kms_key              = false
+  create_cloudwatch_log_group = false
+  cluster_encryption_config   = {}
+
+  eks_managed_node_groups = {
     spot_nodes = {
       min_size     = 1
       max_size     = 3
       desired_size = 1
 
-      # Instances modernes compatibles Spot sans conflit d'offre gratuite
+      # Suppression de t2.medium pour éviter le conflit Free Tier / Spot sur AWS
       instance_types = ["t3.medium", "t3a.medium"]
       capacity_type  = "SPOT"
 
@@ -21,3 +41,9 @@ eks_managed_node_groups = {
       }
     }
   }
+
+  tags = {
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+  }
+}
