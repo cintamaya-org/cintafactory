@@ -24,8 +24,9 @@ module "eks" {
       max_size     = 3
       desired_size = 1
 
-      # Suppression de t2.medium pour éviter le conflit Free Tier / Spot sur AWS
-      instance_types = ["t3.medium", "t3a.medium"]
+      # Le compte AWS est restreint aux types éligibles Free Tier (t3.medium/t3a.medium
+      # sont rejetés par EC2 avec InvalidParameterCombination lors du lancement Spot)
+      instance_types = ["t3.small", "t3.micro"]
       capacity_type  = "SPOT"
 
       ami_type = "AL2023_x86_64_STANDARD"
