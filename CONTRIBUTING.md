@@ -59,7 +59,7 @@ git checkout -b fix/issue-123-bug-name
 ```
 4. **Implement your changes** and add corresponding unit/integration tests.
 5. **Run the local test suite and linters** to verify that everything builds and passes.
-6. **Commit and push** your changes, then open a Pull Request.
+6. **Commit and push** your changes, then open a Pull Request on `dev`.
 ---
 # How to Report a Bug
 ### Security Vulnerabilities (Confidential)
