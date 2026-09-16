@@ -1,4 +1,3 @@
-
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
   version = "~> 20.0"
@@ -14,6 +13,7 @@ module "eks" {
 
   enable_cluster_creator_admin_permissions = true
 
+  # Optimisation des coûts (FinOps)
   create_kms_key              = false
   create_cloudwatch_log_group = false
   cluster_encryption_config   = {}
@@ -24,7 +24,11 @@ module "eks" {
       max_size     = 4
       desired_size = 2
 
-      instance_types = ["m5.large", "m5a.large", "t3.medium"]
+      # Le compte est restreint aux instances Free Tier (confirmé via
+      # `aws ec2 describe-instance-types --filters Name=free-tier-eligible,Values=true`).
+      # m7i-flex.large = 2 vCPU / 8 Go RAM -> équivalent du m5.large visé initialement,
+      # et bien éligible sur ce compte. c7i-flex.large en repli (4 Go, plus limité).
+      instance_types = ["m7i-flex.large", "c7i-flex.large"]
       capacity_type  = "SPOT"
 
       ami_type = "AL2023_x86_64_STANDARD"
