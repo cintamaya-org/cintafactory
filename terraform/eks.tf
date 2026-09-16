@@ -21,8 +21,8 @@ module "eks" {
   eks_managed_node_groups = {
     spot_nodes = {
       min_size     = 1
-      max_size     = 4
-      desired_size = 2
+      max_size     = 6
+      desired_size = 5
 
       # Le compte est restreint aux instances Free Tier (confirmé via
       # `aws ec2 describe-instance-types --filters Name=free-tier-eligible,Values=true`).

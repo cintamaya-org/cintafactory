@@ -1,0 +1,108 @@
+name: "Deploy to EKS"
+
+# Se déclenche automatiquement après un build réussi sur dev-Abd (workflow_run),
+# ou manuellement via workflow_dispatch (chemin fiable tant que dev-Abd n'est pas
+# la branche par défaut du repo, condition requise par GitHub pour que workflow_run
+# se déclenche de façon fiable).
+on:
+  workflow_run:
+    workflows: ["Build and Publish Docker Image"]
+    branches: [dev-Abd]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Tag de l'image à déployer (SHA court GHCR). Laisser vide pour utiliser le SHA du commit courant."
+        required: false
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-eks-dev
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-west-3
+  CLUSTER_NAME: cintafactory-poc-dev
+  DEPLOYMENT_NAME: cintafactory-deployment
+
+jobs:
+  deploy:
+    name: "Déploiement sur EKS (dev)"
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Déterminer le tag d'image
+        id: image
+        run: |
+          if [ -n "${{ github.event.inputs.image_tag }}" ]; then
+            TAG="${{ github.event.inputs.image_tag }}"
+          else
+            TAG=$(git rev-parse --short HEAD)
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Authentification AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::512584596480:role/github-actions-eks-role
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Vérification identité AWS STS
+        run: aws sts get-caller-identity
+
+      - name: Récupération des credentials du cluster
+        run: aws eks update-kubeconfig --name ${{ env.CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
+
+      - name: Création/mise à jour du Secret applicatif
+        run: |
+          kubectl create secret generic cintafactory-secrets \
+            --from-literal=DJANGO_SECRET_KEY="${{ secrets.DEV_DJANGO_SECRET_KEY }}" \
+            --from-literal=DATABASE_PASSWORD="${{ secrets.DEV_DATABASE_PASSWORD }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Création/mise à jour du ConfigMap applicatif dynamique
+        run: |
+          kubectl create configmap cintafactory-app-config \
+            --from-literal=DATABASE_HOST="${{ vars.DEV_DATABASE_HOST }}" \
+            --from-literal=DATABASE_PORT="${{ vars.DEV_DATABASE_PORT }}" \
+            --from-literal=DATABASE_NAME="${{ vars.DEV_DATABASE_NAME }}" \
+            --from-literal=DATABASE_USER="${{ vars.DEV_DATABASE_USER }}" \
+            --from-literal=DJANGO_ALLOWED_HOSTS="${{ vars.DEV_DJANGO_ALLOWED_HOSTS }}" \
+            --from-literal=DJANGO_CSRF_TRUSTED_ORIGINS="${{ vars.DEV_DJANGO_CSRF_TRUSTED_ORIGINS }}" \
+            --from-literal=SEAWEEDFS_FILER_URL="${{ vars.DEV_SEAWEEDFS_FILER_URL }}" \
+            --from-literal=SEAWEEDFS_PUBLIC_URL="${{ vars.DEV_SEAWEEDFS_PUBLIC_URL }}" \
+            --from-literal=CLAMAV_HOST="${{ vars.DEV_CLAMAV_HOST }}" \
+            --from-literal=CLAMAV_PORT="${{ vars.DEV_CLAMAV_PORT }}" \
+            --from-literal=DRAWIO_BASE_URL="${{ vars.DEV_DRAWIO_BASE_URL }}" \
+            --from-literal=LIKEC4_EDITOR_URL="${{ vars.DEV_LIKEC4_EDITOR_URL }}" \
+            --from-literal=LIKEC4_EXPORT_URL="${{ vars.DEV_LIKEC4_EXPORT_URL }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Application des manifests
+        run: |
+          sed -i "s|__IMAGE__|ghcr.io/${{ github.repository }}:${{ steps.image.outputs.tag }}|" k8s/deployment.yaml
+          kubectl apply -f k8s/
+
+      - name: Vérification du rollout
+        run: kubectl rollout status deployment/${{ env.DEPLOYMENT_NAME }} --timeout=300s
+
+      - name: Diagnostic en cas d'échec
+        if: failure()
+        run: |
+          echo "--- kubectl get pods ---"
+          kubectl get pods -l app=cintafactory -o wide
+          echo "--- Describe des pods non-Running ---"
+          kubectl get pods -l app=cintafactory --field-selector=status.phase!=Running -o name | xargs -r -n1 kubectl describe
+          echo "--- Logs des pods (containers courants) ---"
+          kubectl logs -l app=cintafactory --tail=200 --all-containers --prefix || true
+          echo "--- Logs des pods (containers précédents, en cas de crash) ---"
+          kubectl logs -l app=cintafactory --tail=200 --all-containers --prefix --previous || true
