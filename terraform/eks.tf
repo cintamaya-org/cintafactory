@@ -1,3 +1,4 @@
+
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
   version = "~> 20.0"
@@ -21,12 +22,14 @@ module "eks" {
   eks_managed_node_groups = {
     spot_nodes = {
       min_size     = 1
-      max_size     = 3
-      desired_size = 1
+      max_size     = 4
+      desired_size = 2
 
-      # Le compte AWS est restreint aux types éligibles Free Tier (t3.medium/t3a.medium
-      # sont rejetés par EC2 avec InvalidParameterCombination lors du lancement Spot)
-      instance_types = ["t3.small", "t3.micro"]
+      # Quota Spot vérifié le 16/09/2026 : 32 vCPU dispos sur la famille
+      # Standard (A,C,D,H,I,M,R,T,Z) en eu-west-3, 0 utilisés.
+      # m5.large = 2 vCPU / 8 Go RAM -> largement dans le quota.
+      # t3.medium gardé en repli si m5.large manque de capacité Spot ponctuellement.
+      instance_types = ["m5.large", "m5a.large", "t3.medium"]
       capacity_type  = "SPOT"
 
       ami_type = "AL2023_x86_64_STANDARD"
@@ -46,5 +49,3 @@ module "eks" {
   tags = {
     Environment = var.environment
     ManagedBy   = "Terraform"
-  }
-}
