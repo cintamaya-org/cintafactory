@@ -18,6 +18,7 @@ dependencies = [
   "defusedxml==0.7.1",
   "graphviz==0.21",
   "six==1.17.0",
+  "SQLite4==0.1.1",
   "sqlparse==0.5.5",
   "toml==0.10.2",
   "tzdata==2026.2",
@@ -35,32 +36,3 @@ dependencies = [
 
 [tool.uv]
 package = false
-
-# Outillage de test, installé par `uv sync` mais absent de l'image de production.
-[dependency-groups]
-dev = [
-  "coverage[toml]>=7.6",
-]
-
-# Partagé entre la CI et les exécutions locales : le rapport envoyé à SonarQube
-# mesure donc exactement le même périmètre que ce qu'un développeur voit.
-[tool.coverage.run]
-source = ["cintafactory"]
-branch = true
-# Chemins relatifs à la racine du dépôt (cintafactory/dat/views.py plutôt que
-# dat/views.py) : c'est ce que SonarQube attend, sonar.sources valant
-# "cintafactory". Sans cette option, il ne rattache la couverture à aucun fichier.
-relative_files = true
-omit = [
-  "*/migrations/*",
-  "*/tests.py",
-  "*/tests_*.py",
-  "*/tests_ops/*",
-  "*/manage.py",
-  "*/settings.py",
-  "*/wsgi.py",
-  "*/asgi.py",
-]
-
-[tool.coverage.report]
-skip_empty = true
