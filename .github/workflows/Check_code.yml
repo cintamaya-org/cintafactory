@@ -80,10 +80,25 @@ jobs:
           path: reports/
 #-------------------------------------------------------------------------------------
 #                                    SonarQube SCAN
-#-------------------------------------------------------------------------------------
-# Déplacé dans .github/workflows/tests.yml : le scan y tourne juste après les
-# tests, là où coverage.xml est présent sur le disque. Lancé ici, il n'aurait
-# pas accès au rapport de couverture et afficherait 0 %.
+#-------------------------------------------------------------------------------------       
+  SonarQube:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Importation du repo
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # 4.3.1
+      
+      - name: SonarQube
+        id: SonarQube
+        uses: sonarsource/sonarqube-scan-action@713881670b6b3676cda39549040e2d88c70d582e # 8.2.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.projectKey=Cintafactory-dev
+            -Dsonar.projectName="Cintafactory"
 #-------------------------------------------------------------------------------------
 #                                    Hadolint SCAN
 #-------------------------------------------------------------------------------------
