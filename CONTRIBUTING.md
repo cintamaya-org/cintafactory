@@ -30,7 +30,7 @@ We want CintaFactory to be a welcoming, friendly, and safe environment for every
 
 - **Zero tolerance for harassment**: Hostility, personal attacks, or discriminatory remarks will not be tolerated.
 
-- **Need help with an incident?** If you experience or witness inappropriate behavior, contact us in total confidence at **`coc@cintamaya.com`**. We take every report seriously and handle them discreetly and impartially.
+- **Need help with an incident?** If you experience or witness inappropriate behavior, contact us in total confidence at **`dodat-contact@cintamaya.fr`**. We take every report seriously and handle them discreetly and impartially.
 ---
 # Your Very First Contribution?
 Never contributed to open source before? You are in the right place, and we are happy to guide you through it!
@@ -63,7 +63,7 @@ git checkout -b fix/issue-123-bug-name
 ---
 # How to Report a Bug
 ### Security Vulnerabilities (Confidential)
-> ⚠️ **CRITICAL: If you find a security vulnerability, do NOT open a public GitHub issue. Email us directly instead to security@cintamaya.com.**
+> ⚠️ **CRITICAL: If you find a security vulnerability, do NOT open a public GitHub issue. Email us directly instead to cyber@cintamaya.com.**
 
 In your report, please include:
 - A description of the vulnerability and its potential impact.
