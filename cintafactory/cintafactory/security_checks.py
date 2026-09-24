@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Cintamaya <contact@cintamaya.com>
+# SPDX-FileCopyrightText: 2026 Baptiste COQUELET <github.com/BaptisteCoquelet>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 from __future__ import annotations
 
 import os
@@ -62,6 +66,19 @@ def check_runtime_secrets(app_configs=None, **_kwargs):
                 id="cintafactory.E003",
             )
         )
+
+    for setting_name, error_id in (
+        ("SEAWEEDFS_JWT_WRITE_KEY", "cintafactory.E008"),
+        ("SEAWEEDFS_JWT_READ_KEY", "cintafactory.E009"),
+    ):
+        value = str(getattr(settings, setting_name, "") or "").strip()
+        if len(value) < 32:
+            errors.append(
+                Error(
+                    f"{setting_name} must be set to a random value of at least 32 characters.",
+                    id=error_id,
+                )
+            )
 
     return errors
 

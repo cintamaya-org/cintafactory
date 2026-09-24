@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Cintamaya <contact@cintamaya.com>
+# SPDX-FileCopyrightText: 2026 Baptiste COQUELET <github.com/BaptisteCoquelet>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 from django.apps import AppConfig
 from material.frontend.apps import ModuleMixin
 
@@ -17,3 +21,5 @@ class DatConfig(ModuleMixin, AppConfig):
         ensure_section_blueprints_file_exists()
         # Import signals to register DAT lifecycle logging hooks.
         from . import signals  # noqa: F401
+        # Register DAT boundary with generic workflow subsystem.
+        from . import workflow  # noqa: F401

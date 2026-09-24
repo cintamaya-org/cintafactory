@@ -3,12 +3,12 @@ version: "3.9"
 services:
   web:
     ports:
-      - "${TEST_HTTP_PORT:-8050}:8050"
+      - "127.0.0.1:${TEST_HTTP_PORT:-8050}:8050"
     environment:
       DJANGO_SECRET_KEY: "${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in deploy/env/test.env}"
       DJANGO_ALLOWED_HOSTS: "${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}"
       DJANGO_CSRF_TRUSTED_ORIGINS: "${DJANGO_CSRF_TRUSTED_ORIGINS:-}"
-      DJANGO_DEBUG: "1"
+      DJANGO_DEBUG: "0"
       DRAWIO_BASE_URL: "${TEST_DRAWIO_BASE_URL:-}"
       DRAWIO_PUBLIC_URL: "${TEST_DRAWIO_PUBLIC_URL:-}"
       DRAWIO_LIBS: "${TEST_DRAWIO_LIBS:-general}"
@@ -24,8 +24,8 @@ services:
       - cinta_test_static:/archifactory/cintafactory/staticfiles
       - cinta_test_media:/archifactory/cintafactory/media
 
-  likec4:
-    # keep likec4 internal-only; access goes through app proxy routes
+  # keep likec4 internal-only; access goes through app proxy routes
+  likec4: {}
 
 volumes:
   cinta_test_static:

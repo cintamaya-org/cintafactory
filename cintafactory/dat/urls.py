@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Cintamaya <contact@cintamaya.com>
+# SPDX-FileCopyrightText: 2026 Baptiste COQUELET <github.com/BaptisteCoquelet>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 from django.urls import include, path
 from django.views.generic import RedirectView
 from . import views
@@ -10,6 +14,7 @@ urlpatterns = [
 
     # Main "My DAT" list
     path("my/", views.DatList.as_view(), name="my_list"),
+    path("my/application-options/", views.my_application_options, name="my_application_options"),
     path("my/applications/", views.MyApplicationListView.as_view(), name="my_applications"),
     path("my/<uuid:pk>/", views.DatDetail.as_view(), name="my_detail"),
     path(

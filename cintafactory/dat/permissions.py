@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Cintamaya <contact@cintamaya.com>
+# SPDX-FileCopyrightText: 2026 Baptiste COQUELET <github.com/BaptisteCoquelet>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 from __future__ import annotations
 
 from django.db.models import Q, QuerySet
@@ -151,4 +155,5 @@ def filter_dat_queryset_for_user(queryset: QuerySet, user) -> QuerySet:
         Q(owner=user)
         | Q(participants__user=user)
         | Q(participants__user__business_group__responsible=user)
+        | Q(dat_admins__user=user)
     ).distinct()

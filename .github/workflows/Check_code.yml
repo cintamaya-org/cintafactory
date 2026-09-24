@@ -1,0 +1,154 @@
+name: Check code
+on:
+  pull_request:
+    branches: [ dev, main ]
+
+permissions:
+  contents: read   
+
+jobs:
+#-------------------------------------------------------------------------------------
+#                                    GITLEAKS SCAN
+#-------------------------------------------------------------------------------------
+  Gitleaks:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Importation du repo
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # 4.3.1
+      
+      - name: lancement du scan
+        id: Gitleaks
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/code ghcr.io/gitleaks/gitleaks:latest detect --source="/code" --log-opts="-1" --verbose --report-format=json --report-path="gitleaks.json"
+          touch "gitleaks.json"
+        continue-on-error: true
+      
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # 7.0.1
+        with:
+          name: gitleaks
+          path: gitleaks.json
+#-------------------------------------------------------------------------------------
+#                                    SBOM SCAN
+#-------------------------------------------------------------------------------------
+  SbomScan:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Importation du repo
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # 4.3.1
+      
+      - name: Syft
+        id: Syft
+        run : |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+          syft dir:. -o cyclonedx-json@1.5="SBOM.json" --select-catalogers "-python-package-cataloger" --source-name "${{ github.event.repository.name }}" --source-version "${{ github.sha }}"
+
+      - name: Grype json
+        id: GrypeJson
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
+        with:
+          sbom: SBOM.json
+          fail-build: false
+          output-format: json
+          output-file: SCA.json
+
+      - name: Grype txt
+        id: GrypeTxt
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+          grype sbom:SBOM.json -o table > SCA.txt
+      
+      - name: Grant
+        id: Grant
+        continue-on-error: true
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/grant/main/install.sh | sh -s -- -b /usr/local/bin
+          grant check SBOM.json > LICENCE.txt
+      
+      - name: Déplacement des raports
+        run: mkdir -p reports && mv SBOM.json reports && mv SCA.json reports && mv SCA.txt reports && mv LICENCE.txt reports
+
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # 7.0.1
+        with:
+          name: sbom-reports
+          path: reports/
+#-------------------------------------------------------------------------------------
+#                                    SonarQube SCAN
+#-------------------------------------------------------------------------------------       
+  SonarQube:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Importation du repo
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # 4.3.1
+      
+      - name: SonarQube
+        id: SonarQube
+        uses: sonarsource/sonarqube-scan-action@713881670b6b3676cda39549040e2d88c70d582e # 8.2.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.projectKey=Cintafactory-dev
+            -Dsonar.projectName="Cintafactory"
+#-------------------------------------------------------------------------------------
+#                                    Hadolint SCAN
+#-------------------------------------------------------------------------------------
+  Hadolint:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Importation du repo
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # 4.3.1
+
+      - name: Hadolint
+        id: Hadolint
+        uses: hadolint/hadolint-action@54c9adbab1582c2ef04b2016b760714a4bfde3cf # 3.1.0
+        with:
+          dockerfile: dockerfile
+          no-fail: true
+#-------------------------------------------------------------------------------------
+#                              Envoie des rapports sur le VPS
+#-------------------------------------------------------------------------------------
+  RapportVps:
+    needs: [Gitleaks, SbomScan]
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Telechargement des artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # 8.0.1
+        with:
+          path: ${{ github.event.repository.name }}
+
+      - name: Génération de la Date
+        run: echo "DATE=$(date +%Y-%m-%d)" >> "$GITHUB_ENV"
+
+      - name: Reorganisation des rapports
+        run: |
+          mkdir -p ${{ github.event.repository.name }}/syft && mkdir -p ${{ github.event.repository.name }}/grype && mkdir -p ${{ github.event.repository.name }}/grant
+          mv ${{ github.event.repository.name }}/sbom-reports/SBOM.json ${{ github.event.repository.name }}/syft/${{ env.DATE }}_SBOM.json
+          mv ${{ github.event.repository.name }}/sbom-reports/SCA.json ${{ github.event.repository.name }}/grype/${{ env.DATE }}_SCA.json
+          mv ${{ github.event.repository.name }}/sbom-reports/SCA.txt ${{ github.event.repository.name }}/grype/${{ env.DATE }}_SCA.txt
+          mv ${{ github.event.repository.name }}/sbom-reports/LICENCE.txt ${{ github.event.repository.name }}/grant/${{ env.DATE }}_LICENCE.txt          
+          mv ${{ github.event.repository.name }}/gitleaks/gitleaks.json ${{ github.event.repository.name }}/gitleaks/${{ env.DATE }}_SECRETS.json
+          rm -rf ${{ github.event.repository.name }}/sbom-reports
+
+      - name: Envoie des rapports
+        uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634 # v0.1.7
+        with:
+          host: ${{ secrets.VPS_CHECK_IP }}
+          username: ${{ secrets.VPS_CHECK_HOST }}
+          key: ${{ secrets.VPS_CHECK_KEY }}
+          port: ${{ secrets.VPS_CHECK_PORT }}
+          source: "${{ github.event.repository.name }}/*"
+          target: "/home/debian/${{ github.event.repository.name }}"
+          strip_components: 1

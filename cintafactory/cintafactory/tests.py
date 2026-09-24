@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Cintamaya <contact@cintamaya.com>
+# SPDX-FileCopyrightText: 2026 Baptiste COQUELET <github.com/BaptisteCoquelet>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 from __future__ import annotations
 
 import json
@@ -11,8 +15,10 @@ from django.core.cache import cache
 from django.core.exceptions import RequestDataTooBig
 from django.core.checks import Tags, run_checks
 from django.core import mail
+from django.contrib.staticfiles import finders
 from django.http import HttpResponse
 from django.test import RequestFactory, SimpleTestCase, override_settings
+from PIL import Image
 
 from . import admin_config, context_processors, rate_limit, url_safety
 from .upload import upload_limit
@@ -114,6 +120,15 @@ class ConfigFileTests(SimpleTestCase):
         self.assertEqual(origins, {"https://example.com", "https://example.org"})
 
 
+class FrontendAssetTests(SimpleTestCase):
+    def test_favicon_has_real_ico_content(self):
+        favicon_path = finders.find("imgs/logo.ico")
+
+        self.assertIsNotNone(favicon_path)
+        with Image.open(favicon_path) as favicon:
+            self.assertEqual(favicon.format, "ICO")
+
+
 class UrlSafetyTests(SimpleTestCase):
     def test_is_http_url_accepts_http_https(self):
         self.assertTrue(url_safety.is_http_url("http://example.com"))
@@ -158,6 +173,7 @@ class SeaweedFSStorageTests(SimpleTestCase):
         SEAWEEDFS_FILER_URL="https://files.example.com",
         SEAWEEDFS_PUBLIC_URL="https://cdn.example.com",
         SEAWEEDFS_BASE_DIR="root",
+        SEAWEEDFS_JWT_READ_KEY="",
         SEAWEEDFS_TIMEOUT=5,
     )
     def test_build_url_uses_base_dir_and_public_url(self):

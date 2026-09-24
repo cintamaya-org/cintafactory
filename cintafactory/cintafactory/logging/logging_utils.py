@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Cintamaya <contact@cintamaya.com>
+# SPDX-FileCopyrightText: 2026 Baptiste COQUELET <github.com/BaptisteCoquelet>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 from __future__ import annotations
 
 import atexit
@@ -130,7 +134,10 @@ class JSONFormatter(logging.Formatter):
             "module": record.module,
             "line": record.lineno,
         }
-        return json.dumps({key: value for key, value in record_dict.items() if value is not None})
+        return json.dumps(
+            {key: value for key, value in record_dict.items() if value is not None},
+            default=str,
+        )
 
 
 class ColorFormatter(logging.Formatter):

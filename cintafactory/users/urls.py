@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Cintamaya <contact@cintamaya.com>
+# SPDX-FileCopyrightText: 2026 Baptiste COQUELET <github.com/BaptisteCoquelet>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 from django.urls import include, path
 from django.views import generic
 from django.views.generic import RedirectView
@@ -15,6 +19,7 @@ urlpatterns = [
 
     # Users — list (ListView) and CRUD (ModelViewSet)
     path("manage/users/", views.UserList.as_view(), name="user_list"),
+    path("manage/users/options/", views.user_options, name="user_options"),
     path("manage/users/<uuid:pk>/", views.UserDetail.as_view(), name="user_detail"),
     path("manage/users/crud/", include(views.UserViewSet().urls)),
 

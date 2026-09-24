@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Cintamaya <contact@cintamaya.com>
+# SPDX-FileCopyrightText: 2026 Baptiste COQUELET <github.com/BaptisteCoquelet>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 from __future__ import annotations
 
 import logging
@@ -42,7 +46,7 @@ class LoginViewWithProviders(auth_views.LoginView):
             "microsoft": "imgs/microsoft_logo.svg",
             "amazon": "imgs/amazon_logo.svg",
             "okta": "imgs/okta_logo.svg",
-            "cintamaya": "imgs/cintamaya_logo.svg"
+            "cintamaya": "imgs/logo.svg"
         }
         providers = []
         for provider in list_oauth_providers():

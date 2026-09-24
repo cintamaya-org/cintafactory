@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Cintamaya <contact@cintamaya.com>
+# SPDX-FileCopyrightText: 2026 Baptiste COQUELET <github.com/BaptisteCoquelet>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 from __future__ import annotations
 
 from typing import Tuple
@@ -20,13 +24,4 @@ DAT_REQUIRED_PARTICIPANT_ROLE_SLUGS: Tuple[str, ...] = tuple(
 )
 DAT_REQUIRED_PARTICIPANT_ROLE_LABELS = {
     slug: label for slug, label in DAT_REQUIRED_PARTICIPANT_ROLES
-}
-
-DAT_STATUS_REQUIRED_ROLES = {
-    "nouvelle_demande": ("porteur-demande",),
-    "en_cours": ("porteur-demande",),
-    "en_attente_de_revue": ("architecte-referent", "comite-validation"),
-    "valider": ("architecte-referent",),
-    "refuse": ("architecte-referent",),
-    "reserve": ("architecte-referent", "porteur-demande"),
 }

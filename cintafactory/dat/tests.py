@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Cintamaya <contact@cintamaya.com>
+# SPDX-FileCopyrightText: 2026 Baptiste COQUELET <github.com/BaptisteCoquelet>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 import json
 from io import BytesIO
 from datetime import timedelta
@@ -60,6 +64,14 @@ def get_default_business_direction():
     direction, _ = BusinessDirection.objects.get_or_create(
         slug="direction-metier-test",
         defaults={"name": "Direction Métier Test"},
+    )
+    return direction
+
+
+def get_secondary_business_direction():
+    direction, _ = BusinessDirection.objects.get_or_create(
+        slug="direction-metier-secondaire-test",
+        defaults={"name": "Direction Métier Secondaire Test"},
     )
     return direction
 
@@ -148,6 +160,49 @@ class DATApplicationRelationTest(TestCase):
         )
         self.assertEqual(dat.business_direction, self.business_direction)
 
+    def test_dat_ignores_direct_business_direction_on_create(self):
+        other_direction = get_secondary_business_direction()
+        dat = DAT.objects.create(
+            reference="DAT-004",
+            title="Direction Create Integrity Test",
+            application=self.application,
+            business_direction=other_direction,
+            status=DATStatus.NOUVELLE_DEMANDE,
+            owner=self.user,
+        )
+        self.assertEqual(dat.business_direction, self.business_direction)
+
+    def test_dat_resets_direct_business_direction_change_on_save(self):
+        other_direction = get_secondary_business_direction()
+        dat = DAT.objects.create(
+            reference="DAT-005",
+            title="Direction Save Integrity Test",
+            application=self.application,
+            status=DATStatus.NOUVELLE_DEMANDE,
+            owner=self.user,
+        )
+        dat.business_direction = other_direction
+        dat.save()
+        dat.refresh_from_db()
+        self.assertEqual(dat.business_direction, self.business_direction)
+
+    def test_dat_tracks_application_business_direction_after_application_change(self):
+        other_direction = get_secondary_business_direction()
+        dat = DAT.objects.create(
+            reference="DAT-006",
+            title="Direction Application Change Test",
+            application=self.application,
+            status=DATStatus.NOUVELLE_DEMANDE,
+            owner=self.user,
+        )
+        self.application.business_direction = other_direction
+        self.application.save(update_fields=["business_direction"])
+
+        dat.save()
+        dat.refresh_from_db()
+
+        self.assertEqual(dat.business_direction, other_direction)
+
 class ApplicationOptionsViewTest(TestCase):
     def setUp(self) -> None:
         self.url = reverse("dat:application_options")
@@ -198,6 +253,89 @@ class ApplicationOptionsViewTest(TestCase):
         payload = response.json()
         option_labels = [option["label"] for option in payload["options"]]
         self.assertNotIn("Sans direction", option_labels)
+
+
+class MyApplicationOptionsViewTest(TestCase):
+    def setUp(self) -> None:
+        self.url = reverse("dat:my_application_options")
+        self.owner = get_user_model().objects.create_user(
+            username="application-option-owner",
+            password="pwd",
+        )
+        self.other = get_user_model().objects.create_user(
+            username="application-option-other",
+            password="pwd",
+        )
+        self.direction = get_default_business_direction()
+        self.applications = [
+            Application(
+                code=f"visible-{index:02d}",
+                name=f"Visible application {index:02d}",
+                business_direction=self.direction,
+            )
+            for index in range(35)
+        ]
+        Application.objects.bulk_create(self.applications)
+        DAT.objects.bulk_create(
+            [
+                DAT(
+                    reference=f"DAT-OPTION-{index:02d}",
+                    title=f"Option {index:02d}",
+                    application=application,
+                    business_direction=self.direction,
+                    owner=self.owner,
+                )
+                for index, application in enumerate(self.applications)
+            ]
+        )
+        self.hidden_application = Application.objects.create(
+            code="hidden-application",
+            name="Hidden application",
+            business_direction=self.direction,
+        )
+        DAT.objects.create(
+            reference="DAT-OPTION-HIDDEN",
+            title="Hidden",
+            application=self.hidden_application,
+            owner=self.other,
+        )
+
+    def test_requires_authentication(self):
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 302)
+
+    def test_returns_at_most_thirty_visible_applications(self):
+        self.client.force_login(self.owner)
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(len(payload["options"]), 30)
+        self.assertTrue(payload["has_more"])
+        self.assertEqual(payload["max_results"], 30)
+
+    def test_search_is_server_side_and_visibility_scoped(self):
+        self.client.force_login(self.owner)
+
+        visible_response = self.client.get(self.url, {"q": "visible-34"})
+        hidden_response = self.client.get(self.url, {"q": "hidden-application"})
+
+        self.assertEqual(len(visible_response.json()["options"]), 1)
+        self.assertEqual(hidden_response.json()["options"], [])
+
+    def test_my_dat_application_filter_accepts_uuid(self):
+        selected_application = self.applications[34]
+        self.client.force_login(self.owner)
+
+        response = self.client.get(
+            reverse("dat:my_list"),
+            {"application": selected_application.pk},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context["object_list"]), 1)
+        self.assertEqual(response.context["object_list"][0].application, selected_application)
 
 
 class TopbarSearchViewTest(TestCase):
@@ -413,6 +551,39 @@ class DatCreationPermissionTest(TestCase):
         self.client.force_login(self.porteur)
         response = self.client.get(self.application_add_url)
         self.assertEqual(response.status_code, 200)
+
+
+class ApplicationManagementPaginationTest(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser(
+            username="application-pagination-admin",
+            password="pwd",
+        )
+        self.direction = BusinessDirection.objects.create(
+            name="Applications Pagination",
+            slug="applications-pagination",
+        )
+        Application.objects.bulk_create(
+            [
+                Application(
+                    code=f"PAGE-{index:02d}",
+                    name=f"Application pagination {index:02d}",
+                    business_direction=self.direction,
+                )
+                for index in range(30)
+            ]
+        )
+        self.client.force_login(self.user)
+
+    def test_application_crud_uses_server_side_pages(self):
+        response = self.client.get("/dat/manage/applications/crud/", {"page": 2})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["paginator"].count, 30)
+        self.assertEqual(response.context["page_obj"].number, 2)
+        self.assertEqual(len(response.context["object_list"]), 5)
+        self.assertEqual(response.context["total_applications"], 30)
+        self.assertContains(response, "Page 2 sur 2")
 
 
 class DatAdminListViewTest(TestCase):
@@ -1532,16 +1703,6 @@ class CreateSchemaDiagramViewTest(TestCase):
             status=DATStatus.NOUVELLE_DEMANDE,
             owner=self.user,
         )
-        metadata = DATSectionMetadata.objects.create(
-            title="Architecture",
-            slug="architecture",
-            description="",
-        )
-        DATSection.objects.create(
-            dat=self.dat,
-            metadata=metadata,
-            order=1,
-        )
         architecture_section = self.dat.sections.get(metadata__slug="architecture")
         DATSectionParticipant.objects.create(dat=self.dat, section=architecture_section, user=self.user)
         self.url = reverse("dat:schema_create_diagram", args=[self.dat.pk])
@@ -1613,11 +1774,9 @@ class CreateSchemaDiagramViewTest(TestCase):
             defaults={"user": self.user},
         )
         architecture_section.allowed_roles.set([role_section])
-        schema_sub_section = DATSubSection.objects.create(
+        schema_sub_section = DATSubSection.objects.get(
             section=architecture_section,
-            title="Schémas",
             slug="schemas",
-            order=1,
         )
         schema_sub_section.allowed_roles.set([role_schemas])
         other_arch_metadata = DATSectionMetadata.objects.create(
@@ -1645,34 +1804,11 @@ class CreateSchemaDiagramViewTest(TestCase):
         self.assertTrue(payload.get("ok"))
 
     def test_creates_diagram_for_editable_non_architecture_sub_section(self):
-        urbanisme_metadata = DATSectionMetadata.objects.create(
-            title="Urbanisme",
-            slug="urbanisme",
-            description="",
-        )
-        urbanisme_section = DATSection.objects.create(
-            dat=self.dat,
-            metadata=urbanisme_metadata,
-            order=2,
-        )
+        urbanisme_section = DATSection.objects.get(dat=self.dat, metadata__slug="urbanisme")
         DATSectionParticipant.objects.create(dat=self.dat, section=urbanisme_section, user=self.user)
-        sub_section = DATSubSection.objects.create(
+        sub_section = DATSubSection.objects.get(
             section=urbanisme_section,
-            title="Mapping dans l'urbanisation du SI",
             slug="mapping-urbanisation-si",
-            order=1,
-        )
-        DATPart.objects.create(
-            sub_section=sub_section,
-            key="cartographie",
-            label="Cartographie",
-            data_type=DATPartEntryType.REPEATER,
-            config={
-                "columns": [
-                    {"key": "nom_schema", "label": "Nom du diagramme", "type": "text"},
-                    {"key": "diagramme_id", "label": "Diagramme", "drawio": True},
-                ]
-            },
         )
 
         self.client.force_login(self.user)
@@ -1695,21 +1831,10 @@ class CreateSchemaDiagramViewTest(TestCase):
         self.assertEqual(payload["diagram"]["title"], "Cartographie urbanisme")
 
     def test_rejects_non_architecture_sub_section_when_user_cannot_edit_it(self):
-        urbanisme_metadata = DATSectionMetadata.objects.create(
-            title="Urbanisme",
-            slug="urbanisme",
-            description="",
-        )
-        urbanisme_section = DATSection.objects.create(
-            dat=self.dat,
-            metadata=urbanisme_metadata,
-            order=2,
-        )
-        sub_section = DATSubSection.objects.create(
+        urbanisme_section = DATSection.objects.get(dat=self.dat, metadata__slug="urbanisme")
+        sub_section = DATSubSection.objects.get(
             section=urbanisme_section,
-            title="Mapping dans l'urbanisation du SI",
             slug="mapping-urbanisation-si",
-            order=1,
         )
 
         self.client.force_login(self.user)
@@ -1730,34 +1855,11 @@ class CreateSchemaDiagramViewTest(TestCase):
         self.assertEqual(DrawIODiagram.objects.count(), 0)
 
     def test_creates_diagram_from_referer_section_when_payload_has_no_context(self):
-        urbanisme_metadata = DATSectionMetadata.objects.create(
-            title="Urbanisme",
-            slug="urbanisme",
-            description="",
-        )
-        urbanisme_section = DATSection.objects.create(
-            dat=self.dat,
-            metadata=urbanisme_metadata,
-            order=2,
-        )
+        urbanisme_section = DATSection.objects.get(dat=self.dat, metadata__slug="urbanisme")
         DATSectionParticipant.objects.create(dat=self.dat, section=urbanisme_section, user=self.user)
-        sub_section = DATSubSection.objects.create(
+        sub_section = DATSubSection.objects.get(
             section=urbanisme_section,
-            title="Mapping dans l'urbanisation du SI",
             slug="mapping-urbanisation-si",
-            order=1,
-        )
-        DATPart.objects.create(
-            sub_section=sub_section,
-            key="cartographie",
-            label="Cartographie",
-            data_type=DATPartEntryType.REPEATER,
-            config={
-                "columns": [
-                    {"key": "nom_schema", "label": "Nom du diagramme", "type": "text"},
-                    {"key": "diagramme_id", "label": "Diagramme", "drawio": True},
-                ]
-            },
         )
 
         self.client.force_login(self.user)

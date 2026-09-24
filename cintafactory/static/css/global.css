@@ -3482,6 +3482,33 @@ body.dat-modal-open {
     align-items: center;
 }
 
+.dat-list__pagination-jump {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.dat-list__pagination-jump input[type="number"] {
+    width: 5rem;
+    height: 2.25rem;
+    margin: 0;
+    text-align: center;
+}
+
+.remote-select__search {
+    width: 100%;
+    margin: 0 0 0.5rem;
+}
+
+.remote-select__control {
+    width: 100%;
+}
+
+.remote-select__status {
+    display: block;
+    margin-top: 0.35rem;
+}
+
 .dat-search-page__form {
     display: flex;
     flex-direction: column;

@@ -20,7 +20,14 @@
       </div>
       <div class="dat-list__filter-field u-m-0">
         <label for="dat-application-filter" class="active">Application</label>
-        <select id="dat-application-filter" name="application" class="browser-default">
+        <select
+          id="dat-application-filter"
+          name="application"
+          class="browser-default"
+          data-remote-select-url="{% url 'dat:my_application_options' %}"
+          data-remote-select-limit="30"
+          data-remote-select-placeholder="Rechercher une application par code ou nom"
+        >
           <option value="">Toutes</option>
           {% for application in application_choices %}
             <option value="{{ application.id }}" {% if application.id|stringformat:"s" == application_filter %}selected{% endif %}>
@@ -60,23 +67,7 @@
     </tbody>
   </table>
   </div>
-  {% if is_paginated %}
-    <div class="dat-list__pagination">
-      <div>Page {{ page_obj.number }} sur {{ paginator.num_pages }}</div>
-      <div class="dat-list__pagination-actions">
-        {% if page_obj.has_previous %}
-          <a class="btn-flat waves-effect" href="?{% if base_querystring %}{{ base_querystring }}&{% endif %}page={{ page_obj.previous_page_number }}">Précédent</a>
-        {% else %}
-          <span class="btn-flat disabled">Précédent</span>
-        {% endif %}
-        {% if page_obj.has_next %}
-          <a class="btn-flat waves-effect" href="?{% if base_querystring %}{{ base_querystring }}&{% endif %}page={{ page_obj.next_page_number }}">Suivant</a>
-        {% else %}
-          <span class="btn-flat disabled">Suivant</span>
-        {% endif %}
-      </div>
-    </div>
-  {% endif %}
+  {% include "components/pagination.html" %}
   </div>
 </div>
   {% comment %} <p><a class="btn" href="/dat/manage/dats/crud/add/">Ajouter un DAT</a></p> {% endcomment %}
