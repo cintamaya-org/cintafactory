@@ -82,6 +82,7 @@ jobs:
 #                                    SonarQube SCAN
 #-------------------------------------------------------------------------------------       
   SonarQube:
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     
     steps:
@@ -120,7 +121,7 @@ jobs:
 #-------------------------------------------------------------------------------------
   RapportVps:
     needs: [Gitleaks, SbomScan]
-    if: always()
+    if: always() && github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
 
     steps:
